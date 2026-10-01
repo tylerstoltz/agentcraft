@@ -191,6 +191,15 @@
         "#CFC2AC"
       ]
     },
+    "screen_glow": {
+      "base": 2,
+      "tones": [
+        "#4A423B",
+        "#2E2925",
+        "#26221F",
+        "#221E1B"
+      ]
+    },
     "graphite": {
       "base": 1,
       "tones": [
