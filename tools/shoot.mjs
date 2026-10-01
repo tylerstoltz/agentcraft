@@ -1,147 +1,86 @@
 #!/usr/bin/env node
 // Scene screenshot runner: drives the DevBridge through a list of shots and writes PNGs to
-// artifacts/shots/ (or AGENTCRAFT_SHOTS_DIR). The game must be running (gradlew runClient).
+// artifacts/shots/ (or AGENTCRAFT_SHOTS_DIR). The game must be running (tools\launch.ps1 or
+// gradlew runClient). Scene format: docs/QA.md ("Scene format"); runner: tools/lib/scene.mjs.
 //
-//   node tools/shoot.mjs tools/scenes/qa.json [--only a,b] [--port N] [--manifest out.json] [--verbose]
+//   node tools/shoot.mjs tools/scenes/phase1.json [--only a,b] [--port N] [--manifest out.json]
+//        [--prefix qa/run1/] [--foreman [PORT]] [--anchors anchors.json] [--release] [--strict] [--verbose]
 //
-// Scene file: either an array of shots, or
-// {
-//   "defaults": { "time": 11000, "weather": "clear", "hideHud": true, "fov": 70, "mode": "spectator" },
-//   "setup":    ["/fill ...", "/setblock ..."],          // commands run once before the shots
-//   "shots": [
-//     { "name": "phase1_a",                               // -> artifacts/shots/phase1_a.png
-//       "camera": { "x": 0, "y": 70, "z": -12, "yaw": 0, "pitch": 15, "fov": 70 },  // eye position
-//                                                           // fov omitted = the player's option (70), exact
-//       "time": 6000, "weather": "clear",                 // optional per-shot overrides
-//       "commands": ["/setblock 0 65 0 lantern"],         // optional, run before the camera move
-//       "screen": "pause" | null,                         // optional: open a screen for this shot
-//       "keepScreen": false,                              // close the screen afterwards (default)
-//       "hideHud": true, "frames": 3, "delayMs": 0, "waitChunks": true }
-//   ]
-// }
-// Prints a JSON summary; exit code 1 if any shot failed. Stops early (summary.hung) if the game hangs.
+//   --prefix P      shot names are prefixed (names may contain '/', e.g. qa/<runId>/)
+//   --foreman [N]   connect to the Foreman (default AGENTCRAFT_PORT or 7878) for scenes that send
+//                   Foreman messages or use {{merge.repoId}}-style templates; also implied when the
+//                   scene has "foreman": {"connect": true}
+//   --anchors F     JSON {name:{x,y,z,yaw,pitch}} that wins over the mod's dev.anchors
+//   --release       dev.release at the end (FOV pin off, HUD on, creative) to hand the view back
+//   --strict        skipped shots count as failures (exit 1)
+//
+// Prints a JSON summary; exit code 1 if a shot failed (or was skipped with --strict). Stops early
+// (summary.hung) if the game hangs.
 
 import fs from 'node:fs';
-import path from 'node:path';
 import { DevClient, DEFAULT_PORT } from './lib/devclient.mjs';
+import { ForemanClient, DEFAULT_FOREMAN_PORT } from './lib/foremanclient.mjs';
+import { loadScene, runScene } from './lib/scene.mjs';
 
 const argv = process.argv.slice(2);
 let sceneFile = null;
 let only = null;
 let port = DEFAULT_PORT;
 let manifest = null;
+let prefix = '';
+let foremanPort = null;
+let anchorsFile = null;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--only') only = new Set(argv[++i].split(',').map((s) => s.trim()).filter(Boolean));
   else if (a === '--port') port = Number(argv[++i]);
   else if (a === '--manifest') manifest = argv[++i];
+  else if (a === '--prefix') prefix = argv[++i];
+  else if (a === '--anchors') anchorsFile = argv[++i];
+  else if (a === '--foreman') foremanPort = argv[i + 1] && /^\d+$/.test(argv[i + 1]) ? Number(argv[++i]) : DEFAULT_FOREMAN_PORT;
   else if (!a.startsWith('--') && !sceneFile) sceneFile = a;
 }
+const flag = (f) => argv.includes(f);
 if (!sceneFile) {
-  console.error('usage: node tools/shoot.mjs <scene.json> [--only a,b] [--port N] [--manifest out.json]');
+  console.error('usage: node tools/shoot.mjs <scene.json> [--only a,b] [--port N] [--manifest out.json] [--prefix p/] [--foreman [N]] [--anchors f.json] [--release] [--strict]');
   process.exit(2);
 }
 
-const raw = JSON.parse(fs.readFileSync(sceneFile, 'utf8'));
-const scene = Array.isArray(raw) ? { shots: raw } : raw;
-const defaults = scene.defaults ?? {};
-const shots = (scene.shots ?? []).filter((s) => !only || only.has(s.name));
+const scene = loadScene(sceneFile);
 const log = (m) => process.stderr.write(`[shoot] ${m}\n`);
+if (foremanPort === null && scene.foreman?.connect) foremanPort = scene.foreman.port ?? DEFAULT_FOREMAN_PORT;
 
 let dev;
 try {
   dev = await DevClient.connect({ port, timeoutMs: 120_000, onWait: (ms) => log(`waiting for DevBridge (${Math.round(ms / 1000)}s)...`) });
   await dev.waitInWorld({ timeoutMs: 300_000, onWait: (ms) => log(`waiting for world (${Math.round(ms / 1000)}s)...`) });
 } catch (e) {
-  // Bridge missing, world never ready, or the game is hung (e.hung): report as JSON like any other failure.
   dev?.close();
   log(`cannot start: ${e.message}`);
-  console.log(JSON.stringify({ ok: false, scene: path.resolve(sceneFile), hung: e.hung ? e.message : null, error: e.message, shots: [] }, null, 2));
+  console.log(JSON.stringify({ ok: false, scene: scene.file, hung: e.hung ? e.message : null, error: e.message, shots: [] }, null, 2));
   process.exit(1);
 }
 
-async function run(type, payload) {
-  const res = await dev.request(type, payload);
-  if (!res.ok) {
-    const err = new Error(`${type} ${JSON.stringify(payload)}: ${res.error}`);
-    err.stalled = !!res.stalled;
-    throw err;
+let foreman = null;
+if (foremanPort !== null) {
+  try {
+    foreman = await ForemanClient.connect({ port: foremanPort, timeoutMs: 20_000, client: 'shoot' });
+    log(`Foreman: ${foreman.url} (${foreman.state.foreman?.backend ?? '?'}${foreman.state.foreman?.showcase ? ', showcase' : ''})`);
+  } catch (e) {
+    log(`Foreman not connected (${e.message}); shots that need it are skipped`);
   }
-  return res;
 }
 
-const verbose = argv.includes('--verbose');
-async function runCommands(cmds, label) {
-  if (!cmds?.length) return;
-  let failed = 0;
-  for (const cmd of cmds) {
-    const r = await run('dev.command', { cmd });
-    // Re-running an idempotent /fill or /setblock reports "No blocks were filled": counted, not fatal.
-    if (r.success === false) {
-      failed++;
-      if (verbose) log(`  ${cmd} -> ${r.messages?.join(' | ')}`);
-    }
-  }
-  if (failed) log(`${label}: ${failed}/${cmds.length} commands reported failure or no change${verbose ? '' : ' (--verbose for details)'}`);
-}
-
-const results = [];
-const started = Date.now();
-let hung = null;
+let summary;
 try {
-  await runCommands(scene.setup, 'setup');
-  let lastTime = null;
-  let lastWeather = null;
-  for (const shot of shots) {
-    const t0 = Date.now();
-    const s = { ...defaults, ...shot, camera: { ...(defaults.camera ?? {}), ...(shot.camera ?? {}) } };
-    try {
-      await runCommands(s.commands, s.name);
-      if (s.time !== undefined && s.time !== lastTime) {
-        await run('dev.time', { ticks: s.time });
-        lastTime = s.time;
-      }
-      if (s.weather !== undefined && s.weather !== lastWeather) {
-        await run('dev.weather', { weather: s.weather });
-        lastWeather = s.weather;
-      }
-      if (s.camera && s.camera.x !== undefined) {
-        const cam = { ...s.camera };
-        if (cam.fov === undefined && s.fov !== undefined) cam.fov = s.fov;
-        if (cam.mode === undefined && s.mode !== undefined) cam.mode = s.mode;
-        await run('dev.camera', cam);
-      }
-      if (s.screen !== undefined) await run('dev.screen', { open: s.screen });
-      if (s.delayMs) await new Promise((r) => setTimeout(r, s.delayMs));
-      const shotRes = await run('dev.screenshot', {
-        name: s.name,
-        hideHud: s.hideHud ?? true,
-        ...(s.frames !== undefined ? { frames: s.frames } : {}),
-        ...(s.waitChunks !== undefined ? { waitChunks: s.waitChunks } : {}),
-      });
-      if (s.screen !== undefined && s.screen !== null && !s.keepScreen) await run('dev.screen', { open: null });
-      const entry = { name: s.name, ok: true, path: shotRes.path, width: shotRes.width, height: shotRes.height, stats: shotRes.stats, ms: Date.now() - t0 };
-      if (shotRes.chunksTimedOut) entry.warning = 'chunks did not finish building before the capture';
-      if (shotRes.stats && shotRes.stats.meanLuma < 6) entry.warning = 'image is nearly black';
-      results.push(entry);
-      log(`${s.name}: ${shotRes.path} (${shotRes.width}x${shotRes.height}, luma ${shotRes.stats?.meanLuma}) ${entry.warning ?? ''}`);
-    } catch (e) {
-      results.push({ name: s.name, ok: false, error: e.message, ms: Date.now() - t0 });
-      log(`${s.name}: FAILED ${e.message}`);
-      // A hung game fails every later shot after long timeouts: stop and report it instead.
-      const h = await dev.health();
-      if (e.stalled || (h.ok && h.stalled) || !h.ok) {
-        hung = h.ok ? `render thread stuck for ${h.msSinceLastFrame} ms` : `bridge not answering (${h.error})`;
-        log(`aborting: the game looks hung (${hung}); relaunch it (dev.quit force-exits a hung game)`);
-        break;
-      }
-    }
-  }
+  const anchorsOverride = anchorsFile ? JSON.parse(fs.readFileSync(anchorsFile, 'utf8')) : undefined;
+  summary = await runScene({ scene, dev, foreman, prefix, only, anchorsOverride, log, verbose: flag('--verbose') });
+  if (flag('--release') && !summary.hung) await dev.request('dev.release', {}).catch(() => {});
 } finally {
   dev.close();
+  foreman?.close();
 }
-
-const summary = { ok: !hung && results.length === shots.length && results.every((r) => r.ok), scene: path.resolve(sceneFile), totalMs: Date.now() - started, hung, shots: results };
+if (flag('--strict') && summary.counts.skipped) summary.ok = false;
 if (manifest) fs.writeFileSync(manifest, JSON.stringify(summary, null, 2));
 console.log(JSON.stringify(summary, null, 2));
 process.exit(summary.ok ? 0 : 1);

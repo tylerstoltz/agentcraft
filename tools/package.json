@@ -3,15 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "AgentCraft dev tools: DevBridge CLI (devcli.mjs) and scene screenshot runner (shoot.mjs).",
+  "description": "AgentCraft dev tools: launcher helpers, DevBridge CLI (devcli.mjs), Foreman CLI (foremancli.mjs), scene screenshot runner (shoot.mjs) and the QA runner (qa.mjs).",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
+    "test": "node --test",
+    "qa": "node qa.mjs",
     "state": "node devcli.mjs state",
     "wait": "node devcli.mjs wait"
   },
   "dependencies": {
+    "pngjs": "^7.0.0",
     "ws": "^8.22.0"
   }
 }
