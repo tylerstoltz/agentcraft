@@ -7,9 +7,12 @@
 - 2026-10-01 13:30 Art track PASSED verify (in-game checked; fixed uppercase model-path + other shipping bugs). Committed e67ab16. Follow-ups: identity colours pair up by lightness (CVD), lit monitor vs task board vs framed plaster read alike at mid distance, parquet too contrasty at room scale.
 - Lesson: verify/fix loops were too slow (Phase 1 took ~7h). Phases now capped at 2 fix rounds; strictness moves to the final in-game QA loop.
 - Phase 2 (integration) launched as wf_807c7459-74d: core mod integration (Foreman link, blocks, NPCs, anchors, feature skeleton) + tools (launch.ps1, stop.ps1, qa.mjs) in a worktree.
+- 2026-10-01 ~14:00 Phase 2 PASSED: core (Foreman link, blocks+BEs, client-side NPCs w/ A* + decluttered nameplates, anchors, FEATURES.md contract) + tools (launch.ps1/stop.ps1/qa.mjs). Orchestrator re-verified: launch.ps1 -Dev -Showcase busy -> connected, 6 agents, shots artifacts/shots/orch_p2_room.png, orch_p2_desk.png; stop.ps1 clean. Commits ea00efc, a34f624.
+- Phase 3 (features) launched as wf_08436cd8-0fa: HQ / agent life / in-world displays / console+decisions+permissions+HUD / diff+library, each in a worktree (max 3 concurrent MC clients, RAM), verify + 1 fix, then merge + QA judge run.
 
 ## Known blockers
 - (resolved 2026-10-01) claude CLI re-authenticated; headless `claude -p` verified working.
+
 
 
 
