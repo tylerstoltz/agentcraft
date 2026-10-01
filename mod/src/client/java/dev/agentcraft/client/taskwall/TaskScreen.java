@@ -7,6 +7,10 @@ import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.foreman.Protocol.AgentRole;
 import dev.agentcraft.client.foreman.Protocol.CiStatus;
+import dev.agentcraft.client.foreman.Protocol.LogEntry;
+import dev.agentcraft.client.foreman.Protocol.LogKind;
+import dev.agentcraft.client.monitor.LogRows;
+import dev.agentcraft.client.monitor.MonitorFeature;
 import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.ui.Kit;
@@ -46,6 +50,10 @@ public class TaskScreen extends Screen {
 	private static final int CHIPS_H = 24;
 	private static final int FEEDBACK_H = 14;
 	private final List<Btn> buttons = new ArrayList<>();
+	/** The assignee's newest log entry, cached by the monitors' per-agent log counter. */
+	private String latestAgent = "";
+	private long latestSeq = Long.MIN_VALUE;
+	private @Nullable LogEntry latest;
 	private int px, py, ph;
 
 	private record Btn(String id, String label, int x, int y, int w, int h, boolean primary, boolean enabled, @Nullable String agent) {
@@ -155,7 +163,13 @@ public class TaskScreen extends Screen {
 		List<FormattedCharSequence> desc = t == null || t.description() == null || t.description().isBlank() ? List.of()
 			: clip(TextUtil.wrap(font, t.description().replace("`", ""), inner), 4);
 		boolean assigned = t != null && t.assignee() != null && !t.assignee().isBlank();
-		int h = pad.top() + 14 + 6 + title.size() * titleLine + 5 + (assigned ? 22 : 12) + 4 + (desc.isEmpty() ? 0 : desc.size() * 10 + 6);
+		ForemanState fs0 = Foreman.state();
+		Agent who = assigned && fs0 != null ? fs0.agent(t.assignee()) : null;
+		// while the assignee works on this very task: what they are doing right now (live), and a pulsing status
+		boolean onIt = who != null && who.isActive() && t.id().equals(who.taskId());
+		LogEntry now = onIt ? latest(fs0, who.id()) : null;
+		int assigneeH = assigned ? (now != null ? 34 : 22) : 12;
+		int h = pad.top() + 14 + 6 + title.size() * titleLine + 5 + assigneeH + 4 + (desc.isEmpty() ? 0 : desc.size() * 10 + 6);
 		int depRows = t == null ? 0 : Math.min(3, t.deps().size());
 		h += depRows > 0 ? 12 + depRows * 11 + 4 : 0;
 		h += 12; // CI + branch line
@@ -198,6 +212,10 @@ public class TaskScreen extends Screen {
 		Panels.text(g, font, t.id(), x + 6, y + 3, muted);
 		String status = statusLabel(t);
 		int sx = x + 6 + font.width(t.id()) + 6;
+		int pulse = pulseAlpha();
+		if (onIt) {
+			Panels.sprite(g, Kit.dot(statusFamily(t), true), sx - 2, y + 1, 11, 11, (pulse << 24) | 0xFFFFFF);
+		}
 		Panels.dot(g, statusFamily(t), sx, y + 3, false);
 		Panels.text(g, font, status, sx + 10, y + 3, ink);
 		String pos = (idx + 1) + " / " + all.size();
@@ -227,15 +245,21 @@ public class TaskScreen extends Screen {
 			Panels.text(g, font, role, x + 25 + font.width(n) + 6, y + 1, muted);
 			if (a != null) {
 				String fam = a.isActive() ? a.state().family() : "idle";
+				if (onIt && !fam.equals("idle") && !fam.equals("done")) {
+					Panels.sprite(g, Kit.dot(fam, true), x + 23, y + 10, 11, 11, (pulse << 24) | 0xFFFFFF);
+				}
 				Panels.dot(g, fam, x + 25, y + 12, false);
 				String act = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.activity().isBlank() ? a.state().wire().replace('_', ' ') : a.activity().replace("`", "");
 				Panels.text(g, font, TextUtil.ellipsize(font, act, inner - 40), x + 35, y + 12, muted);
+				if (now != null) {
+					drawLatest(g, now, x + 25, y + 23, inner - 25, muted, error);
+				}
 			}
 		} else {
 			Panels.dot(g, "idle", x, y + 1, false);
 			Panels.text(g, font, "Unassigned", x + 10, y, muted);
 		}
-		y += (assigned ? 22 : 12) + 4;
+		y += assigneeH + 4;
 		for (FormattedCharSequence l : desc) {
 			g.text(font, l, x, y, muted, false);
 			y += 10;
@@ -345,6 +369,39 @@ public class TaskScreen extends Screen {
 		int kx = x;
 		kx = keycap(g, "Esc", "close", kx, y);
 		keycap(g, "<  >", "browse", kx + 10, y);
+	}
+
+	/** The assignee's newest log entry (the monitors' log counter says when to fetch it again). */
+	private @Nullable LogEntry latest(ForemanState s, String agentId) {
+		long seq = MonitorFeature.logSeq(agentId);
+		if (!agentId.equals(latestAgent) || seq != latestSeq) {
+			latestAgent = agentId;
+			latestSeq = seq;
+			List<LogEntry> l = s.logs(agentId);
+			latest = l.isEmpty() ? null : l.get(l.size() - 1);
+		}
+		return latest;
+	}
+
+	/** One line of what the assignee just did: the tool's icon + call, or the first line of what they wrote. */
+	private void drawLatest(GuiGraphicsExtractor g, LogEntry e, int x, int y, int w, int muted, int error) {
+		String text = TextUtil.firstLine(e.text().replace("`", "").replace("**", ""));
+		int tx = x;
+		if (e.kind() == LogKind.TOOL || e.kind() == LogKind.DIFF) {
+			String name = text.startsWith("$") ? "$" : text.split("[ :]", 2)[0];
+			String icon = e.kind() == LogKind.DIFF ? "edit" : text.startsWith("$") ? "bash" : LogRows.iconFor(name);
+			Panels.sprite(g, Kit.icon(icon), x - 2, y - 2, 12, 12);
+			tx += 12;
+		}
+		int color = e.kind() == LogKind.ERROR ? error : muted;
+		Panels.text(g, font, TextUtil.ellipsize(font, text, w - (tx - x)), tx, y, color);
+	}
+
+	/** Halo alpha of the shared pulse (ui-style metrics.pulse_ms). */
+	private static int pulseAlpha() {
+		int ms = UiStyle.metric("metrics.pulse_ms", 1200);
+		double ph = (System.currentTimeMillis() % ms) / (double) ms;
+		return (int) (40 + 150 * (0.5 - 0.5 * Math.cos(ph * Math.PI * 2)));
 	}
 
 	/** The line under the buttons: the confirmation prompt, the Foreman's answer, or why actions are off; null = none. */

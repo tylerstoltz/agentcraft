@@ -313,7 +313,8 @@ hidden.
   of board height. Cards take the room light with a block-light floor of 10 (12 looked backlit at
   night). The board surface is a walnut pinboard (`task_board_surface`).
 - **Clicks**: right-click a card -> `TaskScreen` (title one step larger, status, assignee + live
-  activity, description, deps with their status, CI, priority, branch, blocked reason, summary;
+  activity and, while they work on this task, their newest log line (tool icon + call, errors in
+  red) with the status dots pulsing, description, deps with their status, CI, priority, branch, blocked reason, summary;
   Retry / Prioritize / Reassign (worker chips) / Cancel via `Foreman.taskAction`, the Foreman's
   answer shown in place; one clay button at a time (Cancel turns into the only primary Confirm,
   with a prompt, and lapses after 5 s); the panel's top stays put when chips or the feedback line

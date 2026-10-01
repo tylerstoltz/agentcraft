@@ -141,7 +141,7 @@ public final class MonitorFeature {
 	}
 
 	/** Log change counter for an agent (or "feed"): bumps on every append and on every snapshot. */
-	static long logSeq(String agentId) {
+	public static long logSeq(String agentId) {
 		return LOG_SEQ.getOrDefault(agentId, 0L) + (epoch << 32);
 	}
 
