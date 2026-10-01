@@ -83,7 +83,9 @@ Delete `mod/run/saves/AgentCraft HQ` to start over with a fresh world.
 | `AGENTCRAFT_AUTOWORLD` | 1 | `0`: stay on the title screen |
 | `AGENTCRAFT_SHOTS_DIR` | `<repo>/artifacts/shots` | Where `dev.screenshot` writes |
 | `AGENTCRAFT_DEV_ALLOW_ORIGIN` | 0 | `1` lets browser pages (which send an Origin header) connect. They are refused by default |
-| `AGENTCRAFT_DEV_TEST` | 0 | `1` registers test-only commands (`dev.test.stall`, which blocks the render thread to simulate a hung game). Never set it for real use |
+| `AGENTCRAFT_DEV_TEST` | 0 | `1` registers test-only commands (`dev.test.stall`, which blocks the render thread to simulate a hung game; `dev.test.foremanMessage`). Never set it for real use |
+| `AGENTCRAFT_PORT` | 7878 | Foreman WebSocket port the mod connects to (always 127.0.0.1) |
+| `AGENTCRAFT_FOREMAN` | 1 | `0` disables the Foreman link (the HUD says so) |
 
 The defaults (muted, no focus) suit unattended agent runs. `tools/launch.ps1` should set
 `AGENTCRAFT_MUTE=0 AGENTCRAFT_FOCUS=1` when Blendi launches the game himself.
@@ -131,8 +133,8 @@ treated the same, other binary frames get an `ok:false` reply).
 |---|---|---|
 | `dev.ping` | (none) | `{pong, frame, msSinceLastFrame, stalled, quitting}`. Answered on the socket thread, so it answers while the game loads **and while it is hung**. `stalled:true` = the render thread has not finished a frame for 5 s (QA: relaunch) |
 | `dev.help` | (none) | All commands with help text, plus registered screens |
-| `dev.state` | (none) | `inWorld`, **`ready`** (in a world with no loading screen or overlay: safe to shoot), `paused` (a pausing screen is open, so the integrated server is stopped), `screen{class,title}` or null, `fps`, `frame`, `window{width,height,framebufferWidth/Height,renderWidth/Height,guiScale,focused,osForeground,iconified}`, `hudHidden`, `fov` (what the last frame was rendered with), `fovOption` (the player's setting), `fovPin` (dev camera pin, null = none), `cameraType`, `audio{master,music}`, `player{name,x,y,z,eyeY,yaw,pitch,flying,gameMode}`, `camera{x,y,z,yaw,pitch,fov}`, `world{name,dimension,time,raining,thundering}`, `chunks{renderedAll,lightQueue,loadedAll,renderDistance}` (player/camera/world/chunks are null outside a world), `foreman` (null until the integration phase adds a contributor) |
-| `dev.camera` | `x,y,z` + (`yaw,pitch` **or** `lookAt:{x,y,z}`, lookAt wins), `fov?` (30-110, may be fractional; **default: the player's FOV option**), `mode?` = `spectator` (default) / `creative` (flying) / `keep`, `feet?` (default false: x,y,z is the **eye** position), `hideHud?`, `closePause?` (default true: closes a vanilla pause menu first) | Validates first: all numbers finite; `pitch` in [-90, 90]; `yaw` any finite value (wrapped to [-180, 180)); `y` in [-20000000, 19999999] (vanilla `/tp`'s limit); x/z inside the **world border** (±29999984); lookAt not equal to the eye. Then forces first person, stops spectating other entities, teleports on the server thread, waits until the client has the exact position, pins position and rotation with no interpolation, and **only replies ok once a rendered frame used exactly the requested eye position (±0.01), rotation (±0.05°) and FOV**; otherwise `ok:false` with wanted vs got (`mode:keep` skips that check, since walking players fall). Returns the actual `camera{x,y,z,yaw,pitch,fov}`. Yaw: 0 = +Z (south), 90 = -X (west), -90 = +X (east). Pitch: positive looks down. **FOV pin:** each call renders with exactly its `fov` (or the option), ignoring vanilla's dynamic FOV (flying widens it by 1.1x, so before this pin a "70" shot really rendered at 77). Nothing carries over between calls and `options.txt` is never touched |
+| `dev.state` | (none) | `inWorld`, **`ready`** (in a world with no loading screen or overlay: safe to shoot), `paused` (a pausing screen is open, so the integrated server is stopped), `screen{class,title}` or null, `fps`, `frame`, `window{width,height,framebufferWidth/Height,renderWidth/Height,guiScale,focused,osForeground,iconified}`, `hudHidden`, `fov` (what the last frame was rendered with), `fovOption` (the player's setting), `fovPin` (dev camera pin, null = none), `cameraType`, `audio{master,music}`, `player{name,x,y,z,eyeY,yaw,pitch,flying,gameMode}`, `camera{x,y,z,yaw,pitch,fov}`, `world{name,dimension,time,raining,thundering}`, `chunks{renderedAll,lightQueue,loadedAll,renderDistance}` (player/camera/world/chunks are null outside a world), `foreman{link, connected, url, attempt, lastError, phaseForMs, everSynced, snapshots, messages, lastMessageAgoMs, stale, backend, auth, message, version, counts{agents, activeAgents, tasks, openTasks, decisions, openDecisions, repos, memory, goals, feed}, goal?, oldestOpenDecision}`, `agents{count, moving, pathFailures, plates, plateOverlaps, plateLayoutUs}` (plates = nameplates laid out last frame, plateOverlaps = pairs of drawn plates overlapping on screen last frame, 0 when settled; plateLayoutUs = mean cost of the declutter pass) |
+| `dev.camera` | `anchor?` (fills x/y/z/yaw/pitch from the published layout, see `dev.anchors`; `cam_*` anchors are eye positions, other anchors feet positions; explicit fields win), `x,y,z` + (`yaw,pitch` **or** `lookAt:{x,y,z}`, lookAt wins), `fov?` (30-110, may be fractional; **default: the player's FOV option**), `mode?` = `spectator` (default) / `creative` (flying) / `keep`, `feet?` (default false: x,y,z is the **eye** position), `hideHud?`, `closePause?` (default true: closes a vanilla pause menu first) | Validates first: all numbers finite; `pitch` in [-90, 90]; `yaw` any finite value (wrapped to [-180, 180)); `y` in [-20000000, 19999999] (vanilla `/tp`'s limit); x/z inside the **world border** (±29999984); lookAt not equal to the eye. Then forces first person, stops spectating other entities, teleports on the server thread, waits until the client has the exact position, pins position and rotation with no interpolation, and **only replies ok once a rendered frame used exactly the requested eye position (±0.01), rotation (±0.05°) and FOV**; otherwise `ok:false` with wanted vs got (`mode:keep` skips that check, since walking players fall). Returns the actual `camera{x,y,z,yaw,pitch,fov}`. Yaw: 0 = +Z (south), 90 = -X (west), -90 = +X (east). Pitch: positive looks down. **FOV pin:** each call renders with exactly its `fov` (or the option), ignoring vanilla's dynamic FOV (flying widens it by 1.1x, so before this pin a "70" shot really rendered at 77). Nothing carries over between calls and `options.txt` is never touched |
 | `dev.release` | `mode?` = `creative` (default) / `keep` | Hands the view back to the player: clears the FOV pin (vanilla FOV again), shows the HUD, spectator -> creative (flying, so you don't fall) |
 | `dev.screenshot` | `name` (letters, digits, `_ - . /`; `.png` added), `hideHud?` (default true), `frames?` (3, 1-600), `waitChunks?` (true), `chunkRadius?` (whole render distance, 0-64), `chunkTimeoutMs?` (30000, 0-600000) | Hides the HUD, waits until all chunks within the render distance are loaded and meshed and the light queue is empty for 5 consecutive frames, waits N more frames, then copies the **main render target** (the framebuffer, so it doesn't depend on window focus or overlap). Writes the PNG and restores the HUD. Returns `{path, width, height, ms, chunksTimedOut, paused, stats{meanLuma,stdLuma,darkFraction}}`. Use the stats to catch black frames. Open screens are included in the capture. `width`/`height` are **not supported** (the shot is the window framebuffer size, 1920x1080). The default request timeout grows with `chunkTimeoutMs` and `frames` |
 | `dev.time` | `ticks` (integer 0..2147483647) | `/time set`. 6000 noon, 12000 golden hour (the HQ default), 18000 night, 23300 sunrise |
@@ -146,6 +148,13 @@ treated the same, other binary frames get an `ok:false` reply).
 | `dev.wait` | `frames?` (0-36000), `ms?` (0-600000) | Waits for rendered frames and/or wall time; the default request timeout grows with both |
 | `dev.quit` | `forceAfterMs?` (15000, 1000-600000) | Replies `{quitting, alreadyQuitting, renderThreadStalled, forceAfterMs}`, then calls `mc.stop()` 250 ms later: the world saves and the JVM exits (about 1-2 s). **Watchdog:** if the render thread is hung and has not run the stop after `forceAfterMs`, it logs the render thread's stack, stops the integrated server (which saves the world), then halts the JVM with **exit code 3** (`runClient` then ends with BUILD FAILED). If a normal shutdown is still running after 90 s it does the same with exit code 4 |
 | `dev.test.stall` | `ms` (1-600000) | **Test only** (`AGENTCRAFT_DEV_TEST=1`): blocks the render thread to simulate a hang |
+| `dev.foreman` | `reconnect?` (false) | The Foreman link + model summary (same as `dev.state.foreman`); `reconnect:true` drops the connection and connects again now |
+| `dev.foreman.send` | `message:{type, ...}` | Sends a client message (docs/protocol.md "Mod -> Foreman") through the mod's own link and replies `{ack:{re, ok, error?, result?}}`. Example: `{message:{type:"goal.submit", text:"Add #tags"}}`, `{message:{type:"decision.answer", decisionId:"d3", option:"Merge"}}` |
+| `dev.agents` | `settle?` (false) | Every agent NPC: `id, entityId, x,y,z, yaw, station, anchor, target{x,y,z,yaw}, walking, path[[x,y,z]...], state, activity, stale, model, skin`, and `plate{mode full\|compact, lift, target, rank, nudge, scale, depth, weight, focused, capped, rect[x0,y0,x1,y1] in screen px}` when its nameplate was laid out last frame; top level also has `plates, plateOverlaps`. `settle:true` snaps walking agents to their targets and the nameplates to their final layout on the next frame (no one mid-walk, no plate mid-slide in a shot) |
+| `dev.anchors` | `prefix?` | The published layout: `{layout, revision, bounds, anchors:{name:{x,y,z,yaw,pitch}}, count}` |
+| `dev.test.foremanMessage` | `message:{type, ...}` | **Test only** (`AGENTCRAFT_DEV_TEST=1`): applies a Foreman message to the state model as if received (e.g. `foreman.status` with `auth:"failed"` to see the auth banner) |
+
+Registered screens (`dev.screen {open}`): `creative_agentcraft` (creative inventory on the AgentCraft tab). Phase 3 features add theirs (see mod/FEATURES.md).
 
 ### Extending it from other mod code (client side)
 
@@ -167,6 +176,168 @@ Register in `onInitializeClient`. Built-ins are registered when the bridge start
 (sent back verbatim); any other exception becomes `internal error: ...` and is logged.
 `Fields` (`num`, `num(min,max)`, `optNum`, `integer`, `optInt`, `optLong`, `bool`, `optBool`, `str`,
 `nonBlank`, `optStr`, `obj`, `optObj`) refuses NaN/Infinity, wrong JSON types and out-of-range values.
+
+## Phase 2: the mod as a live view of the Foreman
+
+Feature map and APIs for Phase 3: **mod/FEATURES.md**. This section records how it works and why.
+
+```
+common (src/main)                          client (src/client)
+  AgentCraft          registries + init      AgentCraftClient -> ClientFeatures (one init() per feature)
+  block/              16 blocks, BEs, items  foreman/   link (java.net.http WS), Protocol records, ForemanState, Foreman facade
+  entity/             agent entity type      agents/    AgentManager, AgentMotion, GridPathfinder, AgentRenderer, Nameplate, hooks
+  layout/             Anchors + names        hud/       ConnectionBanner        ui/  UiStyle, Kit, Panels, WorldUi, TextUtil
+  hq/                 /agentcraft hq builder world/     StationRenderer base, ServerTasks, StationInteractions, dev helpers
+  command/            /agentcraft root       monitor/ taskwall/ decisions/ console/ diff/ library/ permissions/ hq/  (Phase 3)
+```
+
+### Foreman link
+`client.foreman.ForemanLink`: `java.net.http` WebSocket to `ws://127.0.0.1:${AGENTCRAFT_PORT:-7878}`
+(no Origin header; the Foreman refuses any). On open it sends `hello`; the `snapshot` reply makes the
+link `synced`. Frames are reassembled and parsed on the link's own daemon threads and applied to
+`ForemanState` on the client thread with `Minecraft.execute`, in order, so the render and server
+threads never block on the network. Requests (`Foreman.send` / `submitGoal` / `answer` / ...)
+get an id, are chained (java.net.http allows one outstanding send) and complete with the matching
+`ack` (20 s timeout; failed immediately when not synced or when the connection drops). `diff`
+replies are matched by `requestId`. Reconnect forever with backoff 0.25, 0.5, 1, 2, 3, 5 s; a watchdog
+pings every 15 s and drops a connection that is silent for 45 s or that sends no snapshot within 15 s.
+A killed Foreman is noticed at once (connection reset) and its restart is picked up within the
+backoff (about 3 s in the Phase 2 test). The model keeps the last known state while disconnected
+(`isStale()`): agents stay in place with a dimmed "Foreman offline" plate and the HUD says
+"Reconnecting to the Foreman".
+
+### Agents: client-side entities (architecture A), decided by measurement
+Two options were prototyped in the Phase 2 test room on the same six anchor-to-anchor routes
+(a temporary `dev.proto.ab` command, removed after the measurement; raw data in
+`artifacts/logs/proto-ab-final.json`):
+
+- **A**: client-only entities in the client level, moved by `AgentMotion` along a `GridPathfinder`
+  route (A* over the client's blocks, string-pulled). No physics, no server AI.
+- **B**: a server-side `PathfinderMob` walking with vanilla `GroundPathNavigation` (`moveTo`, re-path
+  every 10 ticks like vanilla move-to goals), synced to the client by vanilla entity tracking.
+
+| route | A arrive (ticks) | A final error | A speed CV | B result | B final error | B speed CV | B stalled ticks |
+|---|---|---|---|---|---|---|---|
+| desk_marlow -> library | 42 | 0 | 0.038 | stopped short | 1.183 | 0.302 | 369 |
+| desk_kit -> testbench | 108 | 0 | 0.061 | stopped short | 1.227 | 0.212 | 369 |
+| lounge -> mergestation | 122 | 0 | 0.021 | stopped short | 1.566 | 0.192 | 369 |
+| user -> desk_tove | 102 | 0 | 0 | timed out | 1.177 | 0.308 | 385 |
+| library_2 -> terminal | 147 | 0 | 0.014 | stopped short | 1.199 | 0.168 | 369 |
+| testbench_2 -> lounge_2 | 75 | 0 | 0.016 | stopped short | 1.531 | 0.226 | 369 |
+
+(Final error = horizontal distance to the anchor in blocks. Speed CV = std/mean of the per-tick
+speed while moving. A also ends on the anchor's exact yaw; its route planning took 0.1-2.3 ms.)
+
+B never reached a spot. Vanilla navigation considers itself done about a block early (its goal is a
+block, not a point), its first `moveTo` right after spawning fails (the mob is not on the ground
+yet), and it stop-starts, with 3-15x the speed jitter of A. Exact desk and podium spots with the
+right facing would need a custom move control on top anyway. B also needs the Foreman state on the
+server (client-to-server sync), puts Foreman agents into the world save (stale NPCs after a crash),
+lets players push them, and the vanilla `AvatarRenderer` (both skin layers, slim arms) requires an
+`Avatar`, which a `PathfinderMob` is not. A is exact and deterministic (same state, same picture,
+which screenshot QA needs), cheap, needs no networking, and keeps "the game is only a view".
+**Chosen: A.**
+
+How A works: `AgentManager` (END_CLIENT_TICK) keeps one `ClientAgentEntity` (extends `Avatar`,
+negative entity id, `noSave`/`noSummon` type; a server-side instance discards itself) per Foreman
+agent in `mc.level`. Targets come from `StationAssigner` (desk -> `desk_<id>`, shared stations ->
+sticky slots, off shift -> lounge). New agents appear on their spot. Station changes walk at
+2.9 blocks/s (the vanilla walk cycle is driven by the real distance moved), turning at most
+24 deg/tick and turning in place before walking backwards. No route (or more than 96 blocks)
+teleports. Rendering: `EntityRenderDispatcherMixin` routes agents to `AgentRenderer` (an
+`AvatarRenderer`, slim or wide by skin), because vanilla sends every `AvatarRenderState` to the
+player renderer at submit time. Clicks on agents are consumed client-side (never sent to the server,
+which does not know them).
+
+### Nameplates: declutter and occlusion (fix round)
+The verifier found plates unreadable whenever agents shared a station (the lounge at every session
+start): a full plate is up to 126 GUI px (3.15 blocks) wide, lounge slots are 1.4 blocks apart, all
+plate backgrounds were translucent and drawn after all (opaque) text, so side-by-side plates
+interleaved their text and a nearer plate let farther text ghost through. Fixed at both levels:
+
+- **Occlusion** (`client.ui.WorldUi`): plates are opaque on `Layer.SOLID` (see gotchas) and get a
+  depth nudge by rank, so whenever two plates do overlap, one hides the other completely. Checked
+  with Improved Transparency (OIT) on as well (`artifacts/shots/fix2_oit_*.png`).
+- **Declutter** (`client.agents.PlateLayout`, once per frame at END_EXTRACTION): projects every
+  visible plate to a screen rect, collapses low-value plates (idle/done/off shift/offline, weight
+  <= 2) to a name-only pill when the full plate would overlap another, then places plates in priority
+  order (crosshair/focused, waiting, error, working/thinking, then the low-value tier; nearest first
+  within a tier, sticky) at the lowest lift that clears the plates placed before. Lifts slide (fast
+  up, calm down, feed-forward for drifting targets), jump on camera cuts and when a slide would carry
+  a plate across another one, and a lifted plate draws a hairline in the agent's colour down to its
+  head. The plate under the crosshair always shows in full (hover a compact plate to read it).
+  Plates behind walls take no space (line-of-sight test per tick; a camera inside a wall block is
+  handled), plates nearer than 1.3 blocks are hidden, a crowd taller than 8 plates hides its
+  low-value plates.
+- **Mid-distance legibility**: plates keep their world size up to 12 blocks, then grow with
+  distance up to 1.6x (constant screen size), so desk plates read from `cam_room`.
+
+Measured (fix round, `artifacts/logs/phase2_fix_live.json`): 0 overlapping plates in every settled
+view (lounge front/back/side/focused/stale, showcase, room, reconnect); live sim at speed 4 (up to
+six agents walking at once): some plate pair overlapped in 13 of 319 samples (4 %, 200 ms apart),
+no run longer than ~0.25 s (mid re-arrangement), always drawn cleanly in rank order. Layout pass:
+1-16 microseconds per frame. Fps with vsync off: ~1440 with six agents and plates in view vs ~1850
+looking away (the verifier measured 1400-1500 before this change).
+
+### Anchors and the test room
+`layout.Anchors` holds the published layout (an immutable snapshot, readable from any thread) and
+saves it as `agentcraft-anchors.json` in the world folder; it is loaded again whenever the HQ world
+starts. `/agentcraft hq [builder]` runs an `hq.HqBuilder`, publishes its anchors and moves the world
+spawn to `spawn`. The Phase 2 builder `test` (`hq.TestRoomBuilder`) is a temporary 25x25 walled
+room: a desk island with six monitors (north), library shelves and the task wall (west), terminals
+and merge stations (east), a meeting table and the goal atrium (centre), the podium with user spots,
+a per-agent status lamp test bench and the lounge (south, everyone facing north so `cam_agents` sees
+their faces), plus a sample row of all 16 blocks between vanilla reference blocks north of the room
+(`cam_blockrow`). `/agentcraft anchors` and `dev.anchors` list the anchors; `dev.camera {anchor}`
+uses them.
+
+### Blocks
+All 16 blocks of the assets-src block contract are registered (`block.ModBlocks`) with block items
+and the "AgentCraft Studio" creative tab (`block.ModItems`, translation key `itemGroup.agentcraft`).
+Facing blocks face the placer (vanilla lectern rule), luminance follows the contract, thin or
+shaped blocks are non-occluding with real shapes, and connectable panels compute up/down/left/right
+from same-facing neighbours. Block entities (with a saved and synced binding string) exist on
+monitor, task_board, decision_podium, merge_station, status_lamp, console_terminal and
+memory_archive. Their BERs are empty Phase 3 hooks, except the monitor's placeholder (the agent's
+name on the screen).
+
+### Phase 2 gotchas
+- **Render layers need no registration in 26.x**: every baked quad picks solid, cutout or
+  translucent from its sprite's transparency (`ChunkSectionLayer.byTransparency`). There is no
+  BlockRenderLayerMap any more.
+- Resource paths must be lower case. An art build briefly shipped `monitor_corner_bl_L.json`, which the
+  game refuses ("Non [a-z0-9/._-] character"), so monitors and task boards rendered purple/black. Fixed
+  in assets-src (`_outer`); re-run `sync.py`, which removes files it put there before.
+- Removing a registered entry (block, entity type) from an existing world triggers Fabric's "Missing
+  content detected!" screen, which blocked unattended runs. `AutoWorld` now answers it for the HQ
+  world only (Fabric makes a backup, then the world loads) and logs a warning.
+- The entity dispatcher picks renderers per type, but at submit time it sends every
+  `AvatarRenderState` to the player renderer: custom avatars need the mixin, or they lose their own
+  nameplate and layers.
+- World-space UI: a nine-slice plate and the sprites on top of it z-fight at the same depth, so
+  overlays/text use the polygon-offset variant (`WorldUi.Layer.OVERLAY`, `WorldUi.submitText`).
+- **Fully opaque world text is drawn in the solid pass**, before every translucent quad
+  (`SubmitNodeCollection.canRenderAsSolid`: text alpha 255, no background). Submit order does not
+  change that. A translucent plate (`RenderTypes.text(GUI atlas)`, the kit nameplate has alpha 220)
+  is therefore drawn over every opaque text that's already in the depth buffer: a nearer plate lets
+  the farther plate's text ghost through. With "Improved Transparency" all translucent quads go
+  through OIT and ordering is lost entirely. Fix used for billboards: `WorldUi.Layer.SOLID`, a custom
+  pipeline (world text shader, no blending, colour-only writes, cutout below 0.1 alpha) that draws
+  plates opaque in the solid pass, so depth alone decides what is in front.
+- Two billboards at the same camera distance are coplanar, and the polygon offset of text then lets
+  plate A's text win over plate B even where B should cover it (text from two plates interleaves).
+  `WorldUi.billboard(..., scale, nudge, ox, oy, oz)` pulls a billboard a fraction of its distance
+  towards the camera and shrinks it by the same factor (a homothety about the eye: identical on
+  screen, nearer in depth). `PlateLayout` gives every plate a rank nudge of 0.15 % per rank.
+- `LevelExtractionEvents.END_EXTRACTION` (Fabric) runs after every entity render state was extracted
+  and before anything is submitted: the place for a pass that needs all of them at once (the
+  nameplate declutter). `CameraRenderState` already has `projectionMatrix` and `viewRotationMatrix`
+  then (camera space looks down -Z).
+- JSpecify `@Nullable` on a qualified nested type goes after the dot: `Anchors.@Nullable Bounds`.
+- Git Bash rewrites a leading slash in an argument into a Windows path (the command `/agentcraft hq`
+  arrived as `C:/Program Files/Git/agentcraft hq`). Use `devcli cmd "agentcraft hq"`; the slash is optional.
+- A Foreman profile can only run once at a time. Parallel specialists must use their own `--profile`
+  (and port).
 
 ## Tools (repo `tools/`, Node 22, local `ws` dependency: run `npm install` in tools/ once)
 
@@ -203,6 +374,8 @@ previous shot's FOV.
 GRADLE_USER_HOME=C:/Projects/agentcraft/.gradle-home ./gradlew mcSources   # genSources + unpack into mod/build/mcsrc
 grep -rn "class LevelRenderer" mod/build/mcsrc/net/minecraft
 ```
+`gradlew clean` deletes `mod/build/mcsrc` with the rest of `build/`; run `mcSources` again after a
+clean (about a minute).
 Fabric API module sources are in the official maven, for example
 `https://maven.fabricmc.net/net/fabricmc/fabric-api/<module>/<version>/<module>-<version>-sources.jar`.
 The module versions are listed under `.gradle-home/caches/modules-2/files-2.1/net.fabricmc.fabric-api/`.

@@ -3,8 +3,10 @@
 	"package": "dev.agentcraft.client.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"client": [
+		"BackupConfirmScreenAccessor",
 		"CameraMixin",
 		"ClientLevelAccessor",
+		"EntityRenderDispatcherMixin",
 		"MinecraftMixin",
 		"RenderSystemMixin"
 	],

@@ -9,11 +9,12 @@ import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.sounds.SoundSource;
 
-/** Client entrypoint: auto-world, mute policy, DevBridge. */
+/** Client entrypoint: auto-world, mute policy, DevBridge, and every client feature (ClientFeatures). */
 public class AgentCraftClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		AutoWorld.init();
+		ClientFeatures.init();
 		ClientLifecycleEvents.CLIENT_STARTED.register(AgentCraftClient::onStarted);
 		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> DevBridge.stopBridge());
 		ScreenEvents.BEFORE_INIT.register((client, screen, w, h) -> {

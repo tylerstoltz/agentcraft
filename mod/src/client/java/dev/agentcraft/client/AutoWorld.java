@@ -4,9 +4,12 @@ import dev.agentcraft.AgentCraft;
 import dev.agentcraft.world.HqWorld;
 import java.util.List;
 import java.util.Optional;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.Minecraft;
+import dev.agentcraft.client.mixin.BackupConfirmScreenAccessor;
 import net.minecraft.client.gui.screens.AccessibilityOnboardingScreen;
+import net.minecraft.client.gui.screens.BackupConfirmScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
@@ -33,6 +36,8 @@ import net.minecraft.world.level.levelgen.presets.WorldPresets;
  */
 public final class AutoWorld {
 	private static boolean attempted;
+	/** True while AutoWorld itself is opening the HQ world (so its confirm screens may be auto-answered). */
+	private static boolean openingHq;
 
 	private AutoWorld() {
 	}
@@ -42,7 +47,18 @@ public final class AutoWorld {
 			AgentCraft.LOGGER.info("AutoWorld disabled (AGENTCRAFT_AUTOWORLD=0)");
 			return;
 		}
+		ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> openingHq = false);
 		ScreenEvents.AFTER_INIT.register((client, screen, w, h) -> {
+			if (openingHq && screen instanceof BackupConfirmScreen backup) {
+				// Registry content changed since the HQ world was saved (a block/entity was renamed or removed
+				// while developing). The HQ world is generated, so take Fabric's backup and load it instead of
+				// waiting forever on "Missing content detected!" in an unattended run.
+				openingHq = false;
+				AgentCraft.LOGGER.warn("AutoWorld: '{}' needs confirmation ({}); making a backup and loading it",
+					HqWorld.LEVEL_NAME, screen.getTitle().getString());
+				client.execute(() -> ((BackupConfirmScreenAccessor) backup).agentcraft$onProceed().proceed(true, false));
+				return;
+			}
 			if (attempted) {
 				return;
 			}
@@ -58,6 +74,7 @@ public final class AutoWorld {
 		try {
 			if (mc.getLevelSource().levelExists(HqWorld.LEVEL_NAME)) {
 				AgentCraft.LOGGER.info("AutoWorld: loading existing world '{}'", HqWorld.LEVEL_NAME);
+				openingHq = true;
 				mc.createWorldOpenFlows().openWorld(HqWorld.LEVEL_NAME, () -> mc.gui.setScreen(new TitleScreen()));
 			} else {
 				AgentCraft.LOGGER.info("AutoWorld: creating world '{}'", HqWorld.LEVEL_NAME);

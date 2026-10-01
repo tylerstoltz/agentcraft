@@ -85,8 +85,9 @@ final class DevCommands {
 		DevBridge.register("dev.state", 10_000, "{} -> {inWorld, ready, paused, player, camera, screen, fps, window, fov, ...}",
 			(req, mc) -> DevBridge.onClient(mc, () -> state(mc)));
 		DevBridge.register("dev.camera", 20_000,
-			"{x,y,z, yaw,pitch | lookAt:{x,y,z}, fov?:30-110 (default: the player's FOV option), mode?:spectator|creative|keep,"
-				+ " feet?:false, hideHud?, closePause?:true} - put the camera (eye) exactly there; fails if it can't",
+			"{x,y,z, yaw,pitch | lookAt:{x,y,z} | anchor:name, fov?:30-110 (default: the player's FOV option), mode?:spectator|creative|keep,"
+				+ " feet?:false, hideHud?, closePause?:true} - put the camera (eye) exactly there; fails if it can't."
+				+ " anchor fills x/y/z/yaw/pitch from dev.anchors (cam_* = eye, others = feet)",
 			DevCommands::camera);
 		DevBridge.register("dev.release", 10_000,
 			"{mode?:creative|keep} - give the view back to the player: clears the FOV pin, shows the HUD, spectator -> creative (flying)",
@@ -298,7 +299,7 @@ final class DevCommands {
 			o.add("world", JsonNull.INSTANCE);
 			o.add("chunks", JsonNull.INSTANCE);
 		}
-		// Placeholder until the integration phase adds a contributor that replaces it.
+		// Replaced by the Foreman feature's contributor (dev.agentcraft.client.foreman.ForemanFeature).
 		o.add("foreman", JsonNull.INSTANCE);
 		for (var contributor : DevBridge.stateContributors()) {
 			try {
@@ -386,7 +387,49 @@ final class DevCommands {
 		Boolean hideHud, boolean closePause) {
 	}
 
-	static CameraRequest parseCamera(JsonObject json) {
+	/**
+	 * {@code anchor:"name"} fills x/y/z/yaw/pitch from the published layout (fields given explicitly
+	 * still win). {@code cam_*} anchors are eye positions; other anchors are feet positions, so the
+	 * camera stands there ({@code feet:true}) unless {@code feet} is given.
+	 */
+	static JsonObject resolveAnchor(JsonObject json) {
+		Fields f = Fields.of(json);
+		if (!f.has("anchor")) {
+			return json;
+		}
+		String name = f.nonBlank("anchor");
+		dev.agentcraft.layout.Anchor a = dev.agentcraft.layout.Anchors.get(name);
+		if (a == null) {
+			throw new DevException("unknown anchor '" + name + "' (layout '" + dev.agentcraft.layout.Anchors.current().name()
+				+ "' has " + dev.agentcraft.layout.Anchors.current().anchors().size() + " anchors; see dev.anchors; build one with /agentcraft hq)");
+		}
+		JsonObject out = json.deepCopy();
+		out.remove("anchor");
+		if (!out.has("x")) {
+			out.addProperty("x", a.x());
+		}
+		if (!out.has("y")) {
+			out.addProperty("y", a.y());
+		}
+		if (!out.has("z")) {
+			out.addProperty("z", a.z());
+		}
+		if (!out.has("lookAt")) {
+			if (!out.has("yaw")) {
+				out.addProperty("yaw", a.yaw());
+			}
+			if (!out.has("pitch")) {
+				out.addProperty("pitch", a.pitch());
+			}
+		}
+		if (!out.has("feet") && !name.startsWith(dev.agentcraft.layout.AnchorNames.CAM_PREFIX)) {
+			out.addProperty("feet", true);
+		}
+		return out;
+	}
+
+	static CameraRequest parseCamera(JsonObject rawJson) {
+		JsonObject json = resolveAnchor(rawJson);
 		Fields f = Fields.of(json);
 		double x = f.num("x");
 		// Same vertical limits as vanilla /tp (Level.isInSpawnableBounds). x/z are checked against the
