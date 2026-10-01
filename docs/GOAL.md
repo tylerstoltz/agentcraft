@@ -13,7 +13,7 @@ queue. The mod renders it all physically: HQ building, agent NPCs with skins wal
 stations, monitors streaming logs, a Task Wall, a Decision Podium, a diff review/merge station,
 a memory library, and a command console. Blendi wants to use this **for actual work**, so
 practicality matters as much as looks: console-first fast input, readable diffs, durable state,
-Windows toasts when he's needed, a permissions flow, and one-command launch.
+Windows toasts when Blendi is needed, a permissions flow, and one-command launch.
 
 ## This is a direction, not a rigid plan
 The spec, phases, protocol, art direction and feature list are a strong starting point, **not
