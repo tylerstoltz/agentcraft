@@ -224,6 +224,13 @@ public final class DisplayDraw {
 		}
 	}
 
+	private static final Map<String, Identifier> DOTS = new HashMap<>();
+
+	/** {@code Kit.dot(family, halo)}, cached: renderers ask for it every frame. */
+	public static Identifier dot(String family, boolean halo) {
+		return DOTS.computeIfAbsent(halo ? family + "+" : family, k -> dev.agentcraft.client.ui.Kit.dot(family, halo));
+	}
+
 	public static int mulAlpha(int argb, int alpha) {
 		int a = ((argb >>> 24) * alpha) / 255;
 		return (a << 24) | (argb & 0xFFFFFF);

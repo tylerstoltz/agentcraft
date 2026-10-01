@@ -263,53 +263,83 @@ paper banner at the top centre when claude auth failed). Phase 3: goal boss bar,
 
 **Monitors** (`MonitorFeature`, `MonitorRenderer`, layout in `MonitorScreen` + `LogRows`): every
 connected monitor panel streams its agent's `agent.log` from the origin block: header (state dot,
-name in `text_on_dark`, activity, task id), log rows newest at the bottom (prose wraps to 4 lines,
-tool lines = kit icon + tool name + argument, results/errors their first lines, diffs = path +
-tinted +/- rows, dedented), the top row fading, new rows sliding in (260 ms) under the header band,
-a blinking caret while the agent works or thinks, a pulsing "Waiting for you" when it waits.
-States: off shift (centred "Off shift"), unknown agent, no Foreman yet ("Connecting to the
-Foreman" / "Foreman not running"), link lost (last known log dimmed + "Foreman offline" badge),
-`lit=false` (smoked glass from the model + a quiet "off shift"/"screen off" label in room light).
+name in `text_on_dark`, activity, task id), log rows newest at the bottom (prose wraps to 4 lines
+without markdown markup, tool lines = kit icon + tool name + argument, results/errors their first
+lines, diffs = path + tinted +/- rows, dedented, blank lines left out), the top row fading, new rows
+sliding in (260 ms) under the header band, a blinking caret while the agent works or thinks, a
+pulsing "Waiting for you" ("Needs you" on narrow screens) when it waits.
+States: off shift (centred "Off shift"), unknown agent, no Foreman yet (the agent's name stays in
+the header, centre "Foreman not running", the HUD pill's wording, `DisplayText`), link lost (last
+known log dimmed + "Foreman offline" badge, "Offline" on 1-block screens), `lit=false` (smoked glass
+from the model + a quiet "off shift"/"screen off" label in room light).
 - **Look: warm charcoal glass**, chosen over the paper take by a side-by-side test in game
   (`dev.displays {look:"split"}` alternates them): lit paper screens read as framed notes at mid
   distance, the glass reads as a screen. Tokens `monitor_dark.*` in ui-style.json; the block
   texture `monitor_screen_on` matches (the BER draws the same glass plus a soft top glow).
 - **Binding**: agent id; empty = the agent whose `monitor_<id>` anchor lies on the panel, else
   `feed` (team activity feed with the goal + progress; also selectable explicitly).
-- **Size**: 128 px/block on 1-block-high (or wide) panels (about 15 characters x 7 rows on a 1x1),
-  96 px/block from 2x2 up. **HQ builders: prefer 2x1 or larger desk monitors**, and keep the
-  monitor clear of the standing agent's head and nameplate from the desk camera (in the test room
-  the agent stands right in front of its 1x1 monitor, so `cam_desk_<id>` sees mostly the agent).
+- **Size**: 128 px/block on 1-block-high (or wide) panels (about 12 characters x 7 rows on a 1x1),
+  96 px/block from 2x2 up (a 3x2 desk monitor holds ~40 characters x 17 rows). Side padding is
+  0.09 block (12 / 9 px): the brass lip stands 1/16 block in front of the glass, and closer text
+  hides behind it at oblique views. Long snake_case tool names shorten on narrow screens
+  (`request_merge` -> `merge`) so the argument still shows. **HQ builders: prefer 2x1 or larger desk
+  monitors** (3x2 checked in the display bay, see below), clear of the standing agent's head and
+  nameplate from the desk camera (in the test room the agent stands in front of its 1x1 monitor).
 - `lit` is driven by the HQ client feature (see `HqClientFeature`); the renderer handles both.
 
 **Task Wall** (`TaskWallFeature`, `TaskBoardRenderer`, model in `TaskBoard`, `TaskScreen`): a
 kanban of `Foreman.state().tasks()` on every connected task_board panel: Todo / Doing / Review /
 Done with counts (red dot when a column holds blocked cards), blocked tasks as red `card_blocked`
 cards at the top of the column where they stalled (Doing with a worktree, else Todo), cancelled
-hidden. Cards: title (2 lines), the assignee's face + name, the assignee's live state dot
-(waiting pulses), one footer hint (blocked reason / CI failing / `after t2` / CI running / P2 /
-the id). Overflow: the column switches to one-line compact cards, then "+N more". Boards narrower
-than 4 x 72 px show one list (most urgent first). Status changes glide the card to its new slot
-(lifted, with a shadow) and glow it briefly where it lands; new cards pop in. The board surface is
-a walnut pinboard (`task_board_surface`, replaced the cream linen after a side-by-side test: cream
-cards on linen had no contrast from across the room). 64 px/block up to 3 blocks high, then the
-board keeps ~192 px of height. Cards take the room light with a block-light floor of 12.
-- **Clicks**: right-click a card -> `TaskScreen` (title, status, assignee + live activity,
-  description, deps with their status, CI, priority, branch, blocked reason, summary; Retry /
-  Prioritize / Reassign (worker chips) / Cancel (confirm) via `Foreman.taskAction`, the Foreman's
-  answer shown in place; left/right browse). The "+N more" chip opens the first hidden task. With
-  the HUD on, the card under the crosshair gets a brass outline.
+hidden.
+- **Layout** (`TaskBoard`, re-planned only when tasks or the panel size change; agent changes only
+  refresh card contents): column widths follow the content (an empty column is a slim lane with its
+  header; a crowded column borrows width from one with slack, a small hill-climb over a card
+  score); cards are sized to their title: **full** (title 1-3 lines, face + name, one footer hint),
+  **brief** (title, 2 lines) and **compact** (1 line). A column steps down through them (top cards
+  keep the most room) before the tail goes behind "+N more"; wide columns put 2 cards per row when
+  that shows more. Brief/compact cards keep the face only in Doing/Review/blocked.
+- **Cards**: the assignee's live state dot only while that agent works on this very card
+  (`agent.taskId == task.id`, so a busy agent's queued Todo card shows no dot); footer hint =
+  blocked reason / CI failing / `after t2, t3` / CI running / P2 / the id; when the name and the hint
+  do not both fit, the name goes first (the face still says who).
+- **Motion**: a status change flies the card (lifted, shadow) to its new slot and glows it in the
+  new column's colour (lifted towards cream) for 1.4 s once it lands; neighbours and columns glide
+  to their new places; new cards pop in. While a card's size animates it keeps drawing the content
+  that fits (the new one as soon as it is no wider than the card; title lines that would meet the
+  footer drop out), so no frame shows overlapping text.
+- **Density**: 64 px/block up to 3 blocks high, 72 on a 4-high wall (chosen side by side on a 7x4
+  wall from the HQ camera distance: 64 drops names, 80 leaves the board half empty), then ~320 px
+  of board height. Cards take the room light with a block-light floor of 10 (12 looked backlit at
+  night). The board surface is a walnut pinboard (`task_board_surface`).
+- **Clicks**: right-click a card -> `TaskScreen` (title one step larger, status, assignee + live
+  activity, description, deps with their status, CI, priority, branch, blocked reason, summary;
+  Retry / Prioritize / Reassign (worker chips) / Cancel via `Foreman.taskAction`, the Foreman's
+  answer shown in place; one clay button at a time (Cancel turns into the only primary Confirm,
+  with a prompt, and lapses after 5 s); the panel's top stays put when chips or the feedback line
+  appear; left/right browse the wall's tasks). The "+N more" chip opens the first hidden task.
+  With the HUD on, the card under the crosshair gets a brass outline and vanilla's black block box
+  is suppressed on it (`LevelRenderEvents.BEFORE_BLOCK_OUTLINE`).
+- Empty board: "No tasks yet / Press [key] and type a goal", the key read from the console's
+  KeyMapping (`key.agentcraft.console*`, backtick when none is registered yet).
 - Dev: `dev.screen {open:"task"}` (last opened task, else the first doing one),
-  `dev.taskwall {open?: id, press?: button, aim?: id}` (boards + cards; press a screen button:
-  prev next retry prioritize reassign cancel `to:<agent>`; `aim` = world point of a card for a
-  real `key.use` click test), `dev.displays {look?, reset?}` (screens + CPU cost per frame).
-- Shots: `tools/scenes/displays.json` (`node tools/shoot.mjs tools/scenes/displays.json ...`).
+  `dev.taskwall {open?: id, press?: button, aim?: id, lightFloor?, ppb?, relayout?}` (boards with
+  column widths and cards with size/lines/dot; press a screen button: prev next retry prioritize
+  reassign cancel `to:<agent>`; `aim` = world point of a card for a real `key.use` click test;
+  `lightFloor`/`ppb` override for A/B tests, 0 = auto), `dev.displays {look?, reset?}` (screens +
+  CPU cost per frame).
+- Shots: `tools/scenes/displays.json` (test room: wall, monitors incl. an oblique view, task
+  screens incl. the cancel confirmation, crosshair hover, night) and `tools/scenes/displays_bay.json`
+  (builds a bay south of the test room with the HQ's sizes, a 7x4 east-facing wall and three 3x2
+  monitors, and frames them like the HQ cameras), `node tools/shoot.mjs <scene> --port <dev> --foreman <port>`.
 
 Drawing helpers shared by both (`client.monitor.DisplayDraw`): opaque flat rects/gradients in one
 custom-geometry node per screen (a 4x4 white `DynamicTexture` on a no-blend copy of the world text
 pipeline), z-aware nine-slice with the kit card's translucent shadow row trimmed, opaque portrait
-quads. Measured on the test room (9 monitor panels + 3 boards in view, live sim at speed 4):
-~35 us/frame for all monitors and ~29 us/frame for all boards, extract + submit, rebuilds included.
+quads, cached dot sprite ids. Measured in the live sim at speed 4 with the test room (9 monitor
+panels, 3 boards) and the display bay (3 monitors, 1 board) loaded: ~42 us/frame for all monitors
+and ~42 us/frame for all boards, extract + submit, rebuilds included; a full board re-plan costs
+0.1-0.35 ms (warm).
 
 ## Making things shootable (QA)
 

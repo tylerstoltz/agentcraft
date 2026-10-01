@@ -38,7 +38,13 @@ public class TaskScreen extends Screen {
 	private @Nullable String feedback;
 	private boolean feedbackError;
 	private boolean confirmCancel;
+	/** The cancel confirmation lapses after this (System.nanoTime), so a stray click later never cancels. */
+	private long confirmUntil;
 	private boolean reassignOpen;
+	static final long CONFIRM_NANOS = 5_000_000_000L;
+	/** Extra height the reassign chips and the feedback line can add; the panel's top stays put when they appear. */
+	private static final int CHIPS_H = 24;
+	private static final int FEEDBACK_H = 14;
 	private final List<Btn> buttons = new ArrayList<>();
 	private int px, py, ph;
 
@@ -67,7 +73,7 @@ public class TaskScreen extends Screen {
 		return s == null ? null : s.task(taskId);
 	}
 
-	/** Tasks in wall order (Todo, Doing, Review, Done; cancelled last). */
+	/** Tasks in wall order (Todo, Doing, Review, Done); cancelled tasks are not on the wall and not included. */
 	static List<Task> wallOrder() {
 		ForemanState s = Foreman.state();
 		List<Task> out = new ArrayList<>();
@@ -93,16 +99,21 @@ public class TaskScreen extends Screen {
 			});
 			out.addAll(col);
 		}
-		for (Task t : s.tasks().values()) {
-			if (!TaskBoard.shown(t)) {
-				out.add(t);
-			}
-		}
 		return out;
 	}
 
-	private void browse(int dir) {
+	/** What left/right browse: the wall's tasks, plus this one at the end when it is not on the wall (cancelled). */
+	private List<Task> browseOrder() {
 		List<Task> all = wallOrder();
+		Task t = task();
+		if (t != null && !TaskBoard.shown(t)) {
+			all.add(t);
+		}
+		return all;
+	}
+
+	private void browse(int dir) {
+		List<Task> all = browseOrder();
 		if (all.isEmpty()) {
 			return;
 		}
@@ -135,10 +146,16 @@ public class TaskScreen extends Screen {
 		Kit.Padding pad = Kit.padding("panel_paper");
 		int inner = W - pad.left() - pad.right();
 		// ---- measure first, so the panel hugs its content
-		List<FormattedCharSequence> title = t == null ? List.of() : clip(TextUtil.wrap(font, t.title().replace("`", ""), inner), 2);
+		// the title one step larger than the body: (scale+1)/scale keeps whole physical pixels per font pixel
+		int gs = Math.max(1, minecraft.getWindow().getGuiScale());
+		float ts = (gs + 1f) / gs;
+		int titleLine = (int) Math.ceil(10 * ts);
+		List<FormattedCharSequence> title = t == null ? List.of()
+			: clip(font.split(Component.literal(t.title().replace("`", "").strip()), (int) (inner / ts)), 2);
 		List<FormattedCharSequence> desc = t == null || t.description() == null || t.description().isBlank() ? List.of()
 			: clip(TextUtil.wrap(font, t.description().replace("`", ""), inner), 4);
-		int h = pad.top() + 14 + 6 + title.size() * 10 + 6 + 22 + 4 + (desc.isEmpty() ? 0 : desc.size() * 10 + 6);
+		boolean assigned = t != null && t.assignee() != null && !t.assignee().isBlank();
+		int h = pad.top() + 14 + 6 + title.size() * titleLine + 5 + (assigned ? 22 : 12) + 4 + (desc.isEmpty() ? 0 : desc.size() * 10 + 6);
 		int depRows = t == null ? 0 : Math.min(3, t.deps().size());
 		h += depRows > 0 ? 12 + depRows * 11 + 4 : 0;
 		h += 12; // CI + branch line
@@ -149,9 +166,17 @@ public class TaskScreen extends Screen {
 		List<FormattedCharSequence> summary = t != null && t.summary() != null && !t.summary().isBlank() && t.status() == TaskStatus.DONE
 			? clip(TextUtil.wrap(font, t.summary(), inner), 2) : List.of();
 		h += summary.isEmpty() ? 0 : summary.size() * 10 + 4;
-		h += 3 + 6 + 20 + (reassignOpen ? 26 : 0) + 14 + 12 + pad.bottom();
+		if (confirmCancel && System.nanoTime() > confirmUntil) {
+			confirmCancel = false;
+		}
+		boolean live = Foreman.connected();
+		String note = feedbackLine(t, live);
+		h += 3 + 6 + 20 + 8 + 12 + pad.bottom();
+		int extra = (reassignOpen ? CHIPS_H : 0) + (note != null ? FEEDBACK_H : 0);
+		// centre as if the chips and the feedback line were showing, so opening them grows the panel downwards
 		px = (width - W) / 2;
-		py = Math.max(4, (height - h) / 2);
+		py = Math.max(4, (height - h - CHIPS_H - FEEDBACK_H) / 2);
+		h += extra;
 		ph = h;
 		Panels.panel(g, px, py, W, h);
 		int x = px + pad.left();
@@ -162,7 +187,7 @@ public class TaskScreen extends Screen {
 			return;
 		}
 		// ---- header: id + status pill, browse arrows
-		List<Task> all = wallOrder();
+		List<Task> all = browseOrder();
 		int idx = 0;
 		for (int k = 0; k < all.size(); k++) {
 			if (all.get(k).id().equals(taskId)) {
@@ -182,14 +207,18 @@ public class TaskScreen extends Screen {
 		button(g, "next", ">", posX + 15 + font.width(pos), y + 1, 12, 12, false, true, null, mouseX, mouseY, true);
 		y += 14 + 6;
 		for (FormattedCharSequence l : title) {
-			g.text(font, l, x, y, ink, false);
-			y += 10;
+			g.pose().pushMatrix();
+			g.pose().translate(x, y);
+			g.pose().scale(ts, ts);
+			g.text(font, l, 0, 0, ink, false);
+			g.pose().popMatrix();
+			y += titleLine;
 		}
-		y += 6;
+		y += 5;
 		// ---- assignee
 		ForemanState s = Foreman.state();
 		Agent a = t.assignee() == null || s == null ? null : s.agent(t.assignee());
-		if (t.assignee() != null) {
+		if (assigned) {
 			Identifier framed = AgentCraft.id("textures/gui/portrait/" + t.assignee() + "_framed.png");
 			g.blit(RenderPipelines.GUI_TEXTURED, framed, x, y, 0, 0, 20, 20, 20, 20);
 			String n = a != null ? a.name() : t.assignee();
@@ -199,13 +228,14 @@ public class TaskScreen extends Screen {
 			if (a != null) {
 				String fam = a.isActive() ? a.state().family() : "idle";
 				Panels.dot(g, fam, x + 25, y + 12, false);
-				String act = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.activity().isBlank() ? a.state().wire().replace('_', ' ') : a.activity();
+				String act = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.activity().isBlank() ? a.state().wire().replace('_', ' ') : a.activity().replace("`", "");
 				Panels.text(g, font, TextUtil.ellipsize(font, act, inner - 40), x + 35, y + 12, muted);
 			}
 		} else {
-			Panels.text(g, font, "Unassigned", x, y + 6, muted);
+			Panels.dot(g, "idle", x, y + 1, false);
+			Panels.text(g, font, "Unassigned", x + 10, y, muted);
 		}
-		y += 22 + 4;
+		y += (assigned ? 22 : 12) + 4;
 		for (FormattedCharSequence l : desc) {
 			g.text(font, l, x, y, muted, false);
 			y += 10;
@@ -273,10 +303,10 @@ public class TaskScreen extends Screen {
 		// ---- actions
 		Panels.divider(g, x, y, inner);
 		y += 3 + 6;
-		boolean live = Foreman.connected();
 		boolean cancelled = t.status() == TaskStatus.CANCELLED;
 		boolean done = t.status() == TaskStatus.DONE;
-		String primary = blocked || t.ci() == CiStatus.FAIL ? "retry" : t.status() == TaskStatus.TODO ? "prioritize" : "";
+		// one clay button per dialog: while Cancel waits for its confirmation, it is the only primary
+		String primary = confirmCancel ? "cancel" : blocked || t.ci() == CiStatus.FAIL ? "retry" : t.status() == TaskStatus.TODO ? "prioritize" : "";
 		int gap = 4;
 		int bw = (inner - gap * 3) / 4;
 		button(g, "retry", "Retry", x, y, bw, 20, primary.equals("retry"), live && !cancelled && t.status() != TaskStatus.TODO, null, mouseX, mouseY,
@@ -285,11 +315,11 @@ public class TaskScreen extends Screen {
 			mouseY, false);
 		button(g, "reassign", "Reassign", x + 2 * (bw + gap), y, bw, 20, false, live && !cancelled && !done, null,
 			mouseX, mouseY, false);
-		button(g, "cancel", confirmCancel ? "Confirm" : "Cancel", x + 3 * (bw + gap), y, inner - 3 * (bw + gap), 20, confirmCancel,
+		button(g, "cancel", confirmCancel ? "Confirm" : "Cancel", x + 3 * (bw + gap), y, inner - 3 * (bw + gap), 20, primary.equals("cancel"),
 			live && !cancelled && !done, null, mouseX, mouseY, false);
 		y += 20;
 		if (reassignOpen && s != null) {
-			y += 4;
+			y += 5;
 			int cx = x;
 			for (Agent w : s.agents().values()) {
 				if (w.role() == AgentRole.LEAD || w.id().equals(t.assignee())) {
@@ -302,19 +332,33 @@ public class TaskScreen extends Screen {
 				button(g, "to:" + w.id(), w.name(), cx, y, cw, 18, false, live, w.id(), mouseX, mouseY, false);
 				cx += cw + 3;
 			}
-			y += 22;
+			y += CHIPS_H - 5;
 		}
-		y += 4;
-		if (feedback != null) {
-			Panels.text(g, font, TextUtil.ellipsize(font, feedback, inner), x, y, feedbackError ? error : muted);
-		} else if (!live) {
-			Panels.text(g, font, "Foreman offline: actions are disabled", x, y, muted);
+		if (note != null) {
+			y += 6;
+			boolean err = feedbackError && feedback != null && !confirmCancel;
+			Panels.text(g, font, TextUtil.ellipsize(font, note, inner), x, y, err ? error : confirmCancel ? ink : muted);
+			y += FEEDBACK_H - 6;
 		}
-		y += 14;
+		y += 10;
 		// ---- key hints
 		int kx = x;
 		kx = keycap(g, "Esc", "close", kx, y);
 		keycap(g, "<  >", "browse", kx + 10, y);
+	}
+
+	/** The line under the buttons: the confirmation prompt, the Foreman's answer, or why actions are off; null = none. */
+	private @Nullable String feedbackLine(@Nullable Task t, boolean live) {
+		if (t == null) {
+			return null;
+		}
+		if (confirmCancel) {
+			return "Cancel " + t.id() + "? Press Confirm (it stops the work on it)";
+		}
+		if (feedback != null) {
+			return feedback;
+		}
+		return live ? null : "Foreman offline: actions are disabled";
 	}
 
 	private int keycap(GuiGraphicsExtractor g, String key, String verb, int x, int y) {
@@ -391,17 +435,28 @@ public class TaskScreen extends Screen {
 		switch (b.id()) {
 			case "prev" -> browse(-1);
 			case "next" -> browse(1);
-			case "reassign" -> reassignOpen = !reassignOpen;
+			case "reassign" -> {
+				reassignOpen = !reassignOpen;
+				confirmCancel = false;
+			}
 			case "cancel" -> {
-				if (!confirmCancel) {
+				if (!confirmCancel || System.nanoTime() > confirmUntil) {
 					confirmCancel = true;
+					confirmUntil = System.nanoTime() + CONFIRM_NANOS;
+					feedback = null;
 				} else {
-					send("cancel", null);
 					confirmCancel = false;
+					send("cancel", null);
 				}
 			}
-			case "retry" -> send("retry", null);
-			case "prioritize" -> send("prioritize", null);
+			case "retry" -> {
+				confirmCancel = false;
+				send("retry", null);
+			}
+			case "prioritize" -> {
+				confirmCancel = false;
+				send("prioritize", null);
+			}
 			default -> {
 				if (b.agent() != null) {
 					send("reassign", b.agent());

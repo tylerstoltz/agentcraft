@@ -50,7 +50,7 @@ public final class LogRows {
 			case RESULT -> lines(font, out, text, width, st.result(), st, MAX_RESULT_LINES);
 			case ERROR -> lines(font, out, text, width, st.error(), st, MAX_RESULT_LINES);
 			case DIFF -> diff(font, out, text, width, st);
-			default -> prose(font, out, text, width, st.text());
+			default -> prose(font, out, plainProse(text), width, st.text());
 		}
 		return out;
 	}
@@ -105,14 +105,21 @@ public final class LogRows {
 		if (indent == Integer.MAX_VALUE) {
 			indent = 0;
 		}
-		int rows = 0;
-		int total = ls.length - i;
+		// whitespace-only lines (an added blank line) say nothing in a small screen's tail: leave them out
+		List<String> lines = new ArrayList<>(ls.length - i);
 		for (; i < ls.length; i++) {
+			if (ls[i].startsWith("@@") || !body(ls[i]).isBlank()) {
+				lines.add(ls[i]);
+			}
+		}
+		int rows = 0;
+		int total = lines.size();
+		for (String raw : lines) {
 			if (rows == MAX_DIFF_LINES - 1 && total > MAX_DIFF_LINES) {
 				out.add(plain("+" + (total - rows) + " more lines", st.muted()));
 				return;
 			}
-			String l = dedent(ls[i], indent);
+			String l = dedent(raw, indent);
 			if (l.startsWith("@@")) {
 				out.add(plain(TextUtil.ellipsize(font, l, width), st.hunk()));
 			} else if (l.startsWith("+")) {
@@ -161,13 +168,58 @@ public final class LogRows {
 			icon = Kit.icon(iconFor(name));
 		}
 		int avail = width - ICON - 3;
-		MutableComponent c = Component.literal(name).withColor(st.tool() & 0xFFFFFF);
-		int nw = font.width(name);
+		// MCP tool names are long (request_merge, create_task): shorten the name before it eats the argument
+		String shown = name.contains("_") && !arg.isEmpty() && font.width(name) > avail / 2 ? shortName(name) : name;
+		if (font.width(shown) > avail) {
+			shown = TextUtil.ellipsize(font, shown, avail);
+		}
+		MutableComponent c = Component.literal(shown).withColor(st.tool() & 0xFFFFFF);
+		int nw = font.width(shown);
 		if (!arg.isEmpty() && avail - nw > 12) {
 			String a = TextUtil.ellipsize(font, arg, avail - nw - font.width(" "));
 			c.append(Component.literal(" " + a).withColor(st.toolArg() & 0xFFFFFF));
 		}
 		return new Row(TOOL_LINE, c.getVisualOrderText(), st.tool(), ICON + 3, icon, 0);
+	}
+
+	/**
+	 * A short label for a long snake_case tool name, used on narrow screens where the full name
+	 * would leave no room for the argument (the icon already says what kind of tool it is):
+	 * request_merge -> merge, create_task -> new task, write_memory -> write, ...
+	 */
+	static String shortName(String tool) {
+		return switch (tool) {
+			case "request_merge" -> "merge";
+			case "create_task" -> "new task";
+			case "update_task" -> "task";
+			case "send_message" -> "message";
+			case "read_memory" -> "read";
+			case "write_memory" -> "write";
+			case "report_status" -> "status";
+			case "ask_user" -> "ask";
+			default -> tool.replace('_', ' ');
+		};
+	}
+
+	/** Prose as an agent writes it, without markdown markup the screen cannot show (`code`, **bold**, # headings). */
+	static String plainProse(String s) {
+		String t = s.replace("`", "").replace("**", "").replace("__", "");
+		StringBuilder out = new StringBuilder(t.length());
+		for (String line : t.split("\n", -1)) {
+			String l = line;
+			int h = 0;
+			while (h < l.length() && l.charAt(h) == '#') {
+				h++;
+			}
+			if (h > 0 && h < l.length() && l.charAt(h) == ' ') {
+				l = l.substring(h + 1);
+			}
+			if (out.length() > 0) {
+				out.append('\n');
+			}
+			out.append(l);
+		}
+		return out.toString();
 	}
 
 	/** Kit icon name for a tool (bash decision edit git memory merge message read test). */

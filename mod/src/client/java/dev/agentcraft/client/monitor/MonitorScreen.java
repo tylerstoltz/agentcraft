@@ -1,7 +1,7 @@
 package dev.agentcraft.client.monitor;
 
+import dev.agentcraft.Cast;
 import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.LinkStatus;
 import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.foreman.Protocol.FeedItem;
 import dev.agentcraft.client.foreman.Protocol.Goal;
@@ -30,7 +30,12 @@ final class MonitorScreen {
 		LIVE, FEED, OFF_SHIFT, NO_AGENT, CONNECTING
 	}
 
-	static final int PAD_X = 6;
+	/**
+	 * Side padding in blocks. The brass lip stands 1/16 block in front of the glass, so at an
+	 * oblique view it hides a strip of the screen next to the bezel: 0.09 block keeps text clear of
+	 * it up to about 55 degrees off-axis (a desk camera looking at the neighbouring monitors).
+	 */
+	static final float PAD_X_BLOCKS = 0.09f;
 	static final int PAD_TOP = 4;
 	static final int PAD_BOTTOM = 3;
 	/** Rows newer than the previous layout slide in from below over this many ms. */
@@ -56,6 +61,9 @@ final class MonitorScreen {
 	float cx0, cy0, cx1, cy1;     // log rows
 	float headerBottom;
 	boolean narrow;
+	/** Side padding in face px for the current density ({@link #PAD_X_BLOCKS}). */
+	int padX = 6;
+	float padTop = PAD_TOP;
 
 	// --- header
 	@Nullable FormattedCharSequence name;
@@ -153,15 +161,7 @@ final class MonitorScreen {
 	}
 
 	private static String connectText(@Nullable ForemanState s) {
-		if (s == null) {
-			return "Foreman link off";
-		}
-		LinkStatus l = s.link();
-		return switch (l.phase()) {
-			case DISABLED -> "Foreman link off";
-			case WAITING_RETRY -> "Foreman not running";
-			default -> "Connecting to the Foreman";
-		};
+		return DisplayText.noData(s);
 	}
 
 	private void geometry(Font font) {
@@ -170,8 +170,10 @@ final class MonitorScreen {
 		by0 = b;
 		bx1 = panelW * ppb - b;
 		by1 = panelH * ppb - b;
-		cx0 = bx0 + PAD_X;
-		cx1 = bx1 - PAD_X + 1;
+		padX = Math.max(6, Math.round(ppb * PAD_X_BLOCKS));
+		padTop = Math.max(PAD_TOP, Math.round(ppb * 0.04f));
+		cx0 = bx0 + padX;
+		cx1 = bx1 - padX + 1;
 		narrow = (cx1 - cx0) < 150;
 	}
 
@@ -185,7 +187,7 @@ final class MonitorScreen {
 		centre.clear();
 		centreColors.clear();
 		centreX.clear();
-		float y = by0 + PAD_TOP;
+		float y = by0 + padTop;
 		int w = (int) (cx1 - cx0);
 		switch (mode) {
 			case LIVE, OFF_SHIFT, NO_AGENT -> {
@@ -219,7 +221,7 @@ final class MonitorScreen {
 					String fam = a.state().family();
 					caret = fam.equals("working") || fam.equals("thinking");
 					if (fam.equals("waiting")) {
-						footer = LogRows.seq(TextUtil.ellipsize(font, "Waiting for you", w));
+						footer = LogRows.seq(TextUtil.ellipsize(font, font.width("Waiting for you") <= w ? "Waiting for you" : "Needs you", w));
 						footerColor = st.attention();
 					} else if (a.isPaused()) {
 						footer = LogRows.seq("Paused");
@@ -252,10 +254,25 @@ final class MonitorScreen {
 				headerBottom = y + LogRows.LINE + 10;
 			}
 			case CONNECTING -> {
-				nameColor = st.text();
+				// keep whose screen this is (from the cast, no Foreman needed), then why it is empty
 				dotFamily = "idle";
-				headerBottom = by0 + PAD_TOP;
-				addCentre(font, TextUtil.ellipsize(font, connectText, w), st.muted());
+				nameColor = st.text();
+				if ("feed".equals(agentId)) {
+					name = LogRows.seq(TextUtil.ellipsize(font, "Team activity", w - 10));
+				} else if (!agentId.isEmpty()) {
+					Cast.Member cm = Cast.get(agentId);
+					nameColor = st.name(agentId);
+					name = LogRows.seq(TextUtil.ellipsize(font, cm != null ? cm.name() : agentId, w - 10));
+				}
+				headerBottom = name != null ? y + 10 : by0 + padTop;
+				List<String> lines = TextUtil.wrapPlain(font, connectText, w);
+				for (int i = 0; i < Math.min(2, lines.size()); i++) {
+					String l = lines.get(i);
+					if (i == 1 && lines.size() > 2) {
+						l = l + " " + String.join(" ", lines.subList(2, lines.size()));
+					}
+					addCentre(font, TextUtil.ellipsize(font, l, w), st.muted());
+				}
 			}
 		}
 		cy0 = headerBottom + 3;
@@ -273,7 +290,7 @@ final class MonitorScreen {
 		if (a == null) {
 			return "";
 		}
-		String act = a.activity().isBlank() ? a.state().wire().replace('_', ' ') : a.activity();
+		String act = a.activity().isBlank() ? a.state().wire().replace('_', ' ') : LogRows.plainProse(a.activity());
 		return a.isPaused() ? "paused: " + act : act;
 	}
 
@@ -354,7 +371,7 @@ final class MonitorScreen {
 			case DECISION -> st.attention();
 			default -> st.text();
 		};
-		String text = f.text().strip();
+		String text = LogRows.plainProse(f.text()).strip();
 		// feed texts often start with the actor's name ("Marlow needs you..."): colour it instead of repeating it
 		String lead = who;
 		if (!who.isEmpty() && (text.startsWith(who + " ") || text.startsWith(who + ":"))) {
@@ -400,7 +417,8 @@ final class MonitorScreen {
 		float y0 = by0 - 0.5f;
 		float y1 = by1 + 0.5f;
 		bg.add(x0, y0, x1, y1, z0, st.bgTop(), st.bgBottom(), light);
-		float bandBottom = mode == Mode.CONNECTING ? y0 : headerBottom + 2;
+		boolean band = mode != Mode.CONNECTING || name != null;
+		float bandBottom = band ? headerBottom + 2 : y0;
 		for (float y = 0; y < panelH * ppb; y += 2 * texel) {
 			float sy0 = Math.max(y + texel, y0);
 			float sy1 = Math.min(y + 2 * texel, y1);
@@ -415,9 +433,9 @@ final class MonitorScreen {
 				bg.add(x0, hy0, x1, hy1, zBand + DisplayDraw.Z_STEP * 0.5f, st.scanline(), light);
 			}
 		}
-		if (mode != Mode.CONNECTING) {
+		if (band) {
 			bg.add(x0, y0, x1, bandBottom, zBand, st.headerBg(), light);
-			if (mode == Mode.LIVE || mode == Mode.FEED) {
+			if (mode == Mode.LIVE || mode == Mode.FEED || mode == Mode.CONNECTING) {
 				bg.add(cx0, headerBottom, cx1, headerBottom + 1, zBand + DisplayDraw.Z_STEP * 0.7f, st.rule(), light);
 			}
 		}

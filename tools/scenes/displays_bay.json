@@ -1,0 +1,181 @@
+{
+  "description": "In-world displays at the real HQ's sizes (7x4 Task Wall, 3x2 desk monitors), built by commands in a bay south of the test room (z 17..37) so they can be judged before the HQ lands. The sizes and camera distances mirror the HQ builder in progress (StudioHqBuilder: 7x4 board facing east seen from 5.8 blocks, 3x2 monitors seen from the desk camera). Run: node tools/shoot.mjs tools/scenes/displays_bay.json --port <devPort> --foreman <foremanPort> --prefix displays/",
+  "foreman": {
+    "connect": true
+  },
+  "defaults": {
+    "time": 6000,
+    "weather": "clear",
+    "hideHud": true,
+    "mode": "spectator",
+    "fov": 70
+  },
+  "waitFor": [
+    {
+      "path": "foreman.connected",
+      "equals": true,
+      "timeoutMs": 30000,
+      "unreportedMs": 5000
+    }
+  ],
+  "setup": [
+    "fill -12 65 17 14 72 37 air",
+    "fill -12 64 17 14 64 37 minecraft:stripped_birch_wood[axis=x]",
+    "fill -10 65 18 -10 70 28 minecraft:calcite",
+    "fill -2 65 28 12 70 28 minecraft:calcite",
+    "fill -10 71 18 -10 71 28 minecraft:dark_oak_planks",
+    "fill -2 71 28 12 71 28 minecraft:dark_oak_planks",
+    "fill -9 66 21 -9 66 21 agentcraft:task_board[facing=east,up=true,down=false,left=true,right=false]",
+    "fill -9 67 21 -9 68 21 agentcraft:task_board[facing=east,up=true,down=true,left=true,right=false]",
+    "fill -9 69 21 -9 69 21 agentcraft:task_board[facing=east,up=false,down=true,left=true,right=false]",
+    "fill -9 66 22 -9 66 26 agentcraft:task_board[facing=east,up=true,down=false,left=true,right=true]",
+    "fill -9 67 22 -9 68 26 agentcraft:task_board[facing=east,up=true,down=true,left=true,right=true]",
+    "fill -9 69 22 -9 69 26 agentcraft:task_board[facing=east,up=false,down=true,left=true,right=true]",
+    "fill -9 66 27 -9 66 27 agentcraft:task_board[facing=east,up=true,down=false,left=false,right=true]",
+    "fill -9 67 27 -9 68 27 agentcraft:task_board[facing=east,up=true,down=true,left=false,right=true]",
+    "fill -9 69 27 -9 69 27 agentcraft:task_board[facing=east,up=false,down=true,left=false,right=true]",
+    "fill -9 65 20 -9 65 28 agentcraft:walnut_trim",
+    "fill -9 70 20 -9 70 28 minecraft:dark_oak_planks",
+    "setblock -7 69 21 minecraft:light[level=13]",
+    "setblock -7 69 24 minecraft:light[level=13]",
+    "setblock -7 69 27 minecraft:light[level=13]",
+    "fill -1 65 29 11 65 29 minecraft:dark_oak_slab[type=top]",
+    "fill 0 66 29 0 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=false,right=true]",
+    "fill 0 67 29 0 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=false,right=true]",
+    "fill 1 66 29 1 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=true,right=true]",
+    "fill 1 67 29 1 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=true,right=true]",
+    "fill 2 66 29 2 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=true,right=false]",
+    "fill 2 67 29 2 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=true,right=false]",
+    "data merge block 0 66 29 {binding:\"juniper\"}",
+    "setblock 1 68 32 minecraft:light[level=12]",
+    "fill 4 66 29 4 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=false,right=true]",
+    "fill 4 67 29 4 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=false,right=true]",
+    "fill 5 66 29 5 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=true,right=true]",
+    "fill 5 67 29 5 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=true,right=true]",
+    "fill 6 66 29 6 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=true,right=false]",
+    "fill 6 67 29 6 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=true,right=false]",
+    "data merge block 4 66 29 {binding:\"kit\"}",
+    "setblock 5 68 32 minecraft:light[level=12]",
+    "fill 8 66 29 8 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=false,right=true]",
+    "fill 8 67 29 8 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=false,right=true]",
+    "fill 9 66 29 9 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=true,right=true]",
+    "fill 9 67 29 9 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=true,right=true]",
+    "fill 10 66 29 10 66 29 agentcraft:monitor[facing=south,lit=true,up=true,down=false,left=true,right=false]",
+    "fill 10 67 29 10 67 29 agentcraft:monitor[facing=south,lit=true,up=false,down=true,left=true,right=false]",
+    "data merge block 8 66 29 {binding:\"marlow\"}",
+    "setblock 9 68 32 minecraft:light[level=12]",
+    "setblock 3 66 29 minecraft:potted_fern",
+    "setblock 7 66 29 minecraft:potted_fern",
+    "setblock -1 66 29 minecraft:potted_azalea_bush",
+    "setblock 11 66 29 minecraft:potted_azalea_bush"
+  ],
+  "shots": [
+    {
+      "name": "bay_task_wall",
+      "title": "HQ-sized Task Wall (7x4, 80 px/block) from the HQ's cam_task_wall distance",
+      "camera": {
+        "x": -3.2,
+        "y": 67.9,
+        "z": 24.5,
+        "lookAt": {
+          "x": -8.9,
+          "y": 67.9,
+          "z": 24.5
+        }
+      },
+      "waitMs": 900
+    },
+    {
+      "name": "bay_desk_juniper",
+      "title": "juniper's 3x2 monitor from the HQ desk camera (4.6 blocks, off to the side)",
+      "camera": {
+        "x": 3.0,
+        "y": 67.3,
+        "z": 33.8,
+        "lookAt": {
+          "x": 1.9,
+          "y": 66.95,
+          "z": 29.25
+        }
+      },
+      "waitMs": 700
+    },
+    {
+      "name": "bay_desk_kit",
+      "title": "kit's 3x2 monitor from the HQ desk camera (4.6 blocks, off to the side)",
+      "camera": {
+        "x": 7.0,
+        "y": 67.3,
+        "z": 33.8,
+        "lookAt": {
+          "x": 5.9,
+          "y": 66.95,
+          "z": 29.25
+        }
+      },
+      "waitMs": 700
+    },
+    {
+      "name": "bay_desk_marlow",
+      "title": "marlow's 3x2 monitor from the HQ desk camera (4.6 blocks, off to the side)",
+      "camera": {
+        "x": 11.0,
+        "y": 67.3,
+        "z": 33.8,
+        "lookAt": {
+          "x": 9.9,
+          "y": 66.95,
+          "z": 29.25
+        }
+      },
+      "waitMs": 700
+    },
+    {
+      "name": "bay_desks_row",
+      "title": "the three 3x2 monitors from 7 blocks behind",
+      "camera": {
+        "x": 5.0,
+        "y": 67.6,
+        "z": 37.5,
+        "lookAt": {
+          "x": 5.0,
+          "y": 66.6,
+          "z": 29
+        }
+      },
+      "waitMs": 700
+    },
+    {
+      "name": "bay_task_wall_night",
+      "title": "HQ-sized Task Wall at night (lit by light blocks like the HQ's glow strip)",
+      "camera": {
+        "x": -3.2,
+        "y": 67.9,
+        "z": 24.5,
+        "lookAt": {
+          "x": -8.9,
+          "y": 67.9,
+          "z": 24.5
+        }
+      },
+      "time": 18000,
+      "waitMs": 700
+    },
+    {
+      "name": "bay_desks_night",
+      "title": "monitors at night",
+      "time": 18000,
+      "camera": {
+        "x": 5.0,
+        "y": 67.6,
+        "z": 37.5,
+        "lookAt": {
+          "x": 5.0,
+          "y": 66.6,
+          "z": 29
+        }
+      },
+      "waitMs": 700
+    }
+  ]
+}

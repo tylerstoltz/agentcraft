@@ -5,7 +5,6 @@ import dev.agentcraft.block.MonitorBlock;
 import dev.agentcraft.block.entity.MonitorBlockEntity;
 import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
@@ -188,14 +187,14 @@ public class MonitorRenderer extends StationRenderer<MonitorBlockEntity, Monitor
 		// ---- header
 		ps.pushPose();
 		ps.translate(0, 0, Z_HEADER_TEXT);
-		float hy = m.by0 + MonitorScreen.PAD_TOP;
+		float hy = m.by0 + m.padTop;
 		if (m.name != null) {
 			boolean waiting = m.dotFamily.equals("waiting");
 			if (waiting) {
 				int a = (int) (40 + 150 * s.pulse);
-				WorldUi.submitSprite(ps, c, WorldUi.Layer.OVERLAY, Kit.dot("waiting", true), m.cx0 - 2, hy - 1.5f, 11, 11, 0f, (a << 24) | 0xFFFFFF, light);
+				WorldUi.submitSprite(ps, c, WorldUi.Layer.OVERLAY, DisplayDraw.dot("waiting", true), m.cx0 - 2, hy - 1.5f, 11, 11, 0f, (a << 24) | 0xFFFFFF, light);
 			}
-			WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, Kit.dot(m.dotFamily, false), m.cx0, hy + 0.5f, 7, 7, DisplayDraw.Z_STEP * 0.5f, 0xFFFFFFFF,
+			WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, DisplayDraw.dot(m.dotFamily, false), m.cx0, hy + 0.5f, 7, 7, DisplayDraw.Z_STEP * 0.5f, 0xFFFFFFFF,
 				light);
 			WorldUi.submitText(ps, c, m.name, m.cx0 + 10, hy, m.nameColor, light);
 		}
@@ -228,7 +227,8 @@ public class MonitorRenderer extends StationRenderer<MonitorBlockEntity, Monitor
 		ps.pushPose();
 		ps.translate(0, 0, 0);
 		c.order(0).submitCustomGeometry(ps, DisplayDraw.fillTranslucent(), (pose, vc) -> m.veil.emit(pose, vc, 255, -1));
-		String label = "Foreman offline";
+		// the badge keeps clear of the bezel lip: narrow screens say just "Offline" next to the red dot
+		String label = font.width(DisplayText.OFFLINE) + 18 <= (m.cx1 - m.cx0) ? DisplayText.OFFLINE : "Offline";
 		int tw = font.width(label);
 		float w = tw + 18;
 		float h = 14;
@@ -238,7 +238,7 @@ public class MonitorRenderer extends StationRenderer<MonitorBlockEntity, Monitor
 		badge.add(x, y, x + w, y + h, Z_BADGE, st.badgeBg(), light);
 		badge.submit(ps, c);
 		ps.translate(0, 0, Z_BADGE_TEXT);
-		WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, Kit.dot("error", false), x + 4, y + 3.5f, 7, 7, 0f, 0xFFFFFFFF, light);
+		WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, DisplayDraw.dot("error", false), x + 4, y + 3.5f, 7, 7, 0f, 0xFFFFFFFF, light);
 		WorldUi.submitText(ps, c, label, x + 14, y + 3, st.badgeText(), light);
 		ps.popPose();
 	}

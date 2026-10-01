@@ -20,6 +20,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.core.BlockPos;
@@ -44,9 +46,14 @@ import org.jspecify.annotations.Nullable;
  * {@code dev.key {mapping:"key.use"}} clicks it through the real crosshair path).
  */
 public final class TaskWallFeature {
-	private static long seq;
+	/** Bumps on snapshots and task changes: boards re-plan their layout. */
+	private static long taskSeq;
+	/** Bumps on agent changes the cards show (names, live state dots): boards refresh card contents. */
+	private static long agentSeq;
 	private static final Map<BlockPos, TaskBoard> BOARDS = new HashMap<>();
 	private static @Nullable String selected;
+	private static String startHint = "";
+	private static long startHintAt;
 
 	private TaskWallFeature() {
 	}
@@ -56,19 +63,20 @@ public final class TaskWallFeature {
 		Foreman.addListener(new ForemanListener() {
 			@Override
 			public void onSnapshot(ForemanState st) {
-				seq++;
+				taskSeq++;
 			}
 
 			@Override
 			public void onTask(@Nullable Task previous, Task task) {
-				seq++;
+				taskSeq++;
 			}
 
 			@Override
 			public void onAgent(@Nullable Agent previous, Agent agent) {
 				// names and live state dots on the cards
-				if (previous == null || previous.state() != agent.state() || previous.isActive() != agent.isActive() || !previous.name().equals(agent.name())) {
-					seq++;
+				if (previous == null || previous.state() != agent.state() || previous.isActive() != agent.isActive() || !previous.name().equals(agent.name())
+					|| !java.util.Objects.equals(previous.taskId(), agent.taskId())) {
+					agentSeq++;
 				}
 			}
 		});
@@ -84,6 +92,8 @@ public final class TaskWallFeature {
 				}
 			}
 		});
+		// the brass card outline replaces vanilla's black block box while a card is under the crosshair
+		LevelRenderEvents.BEFORE_BLOCK_OUTLINE.register((ctx, outline) -> !cardUnderCrosshair(outline.pos()));
 		StationInteractions.onUse(ModBlocks.TASK_BOARD, (player, pos, state, be) -> {
 			Minecraft mc = Minecraft.getInstance();
 			HitResult hr = mc.hitResult;
@@ -94,15 +104,29 @@ public final class TaskWallFeature {
 			}
 		});
 		DevBridge.registerScreen("task", mc -> new TaskScreen(defaultTask()));
-		DevBridge.register("dev.taskwall", 10_000, "{open?: taskId, press?: button, aim?: taskId, board?: \"x y z\" origin} -> task wall boards/cards; opens/presses/aims",
+		DevBridge.register("dev.taskwall", 10_000, "{open?: taskId, press?: button, aim?: taskId, board?: \"x y z\" origin, lightFloor?: 0-15, ppb?: 0-256, relayout?} "
+				+ "-> task wall boards/cards; opens/presses/aims; lightFloor/ppb override the light floor / density (0 = auto); relayout re-plans",
 			(req, mc) -> {
 				Fields f = Fields.of(req);
 				String open = f.optStr("open", null);
 				String press = f.optStr("press", null);
 				String aim = f.optStr("aim", null);
 				String onBoard = f.optStr("board", null);
+				int floor = f.optInt("lightFloor", -1, -1, 15);
+				int ppb = f.optInt("ppb", -1, -1, 256);
+				boolean relayout = f.optBool("relayout", false);
 				return DevBridge.onClient(mc, () -> {
 					JsonObject o = new JsonObject();
+					if (floor >= 0) {
+						TaskBoardRenderer.lightFloor = floor;
+					}
+					o.addProperty("lightFloor", TaskBoardRenderer.lightFloor);
+					if (ppb >= 0) {
+						TaskBoard.densityOverride = ppb;
+					}
+					if (relayout) {
+						taskSeq++;
+					}
 					if (open != null) {
 						ForemanState s = Foreman.state();
 						if (s == null || s.task(open) == null) {
@@ -127,8 +151,54 @@ public final class TaskWallFeature {
 			});
 	}
 
-	static long seq() {
-		return seq;
+	static long taskSeq() {
+		return taskSeq;
+	}
+
+	static long agentSeq() {
+		return agentSeq;
+	}
+
+	/**
+	 * The console's key as bound in Controls, for the empty board's "Press [key] and type a goal"
+	 * (the console feature registers the mapping; the SPEC default is the backtick); "" when the
+	 * mapping exists but is unbound. Refreshed every second.
+	 */
+	static String startKey() {
+		long now = System.nanoTime();
+		if (startHintAt == 0 || now - startHintAt > 1_000_000_000L) {
+			startHintAt = now;
+			String key = "`";
+			for (KeyMapping km : Minecraft.getInstance().options.keyMappings) {
+				String n = km.getName().toLowerCase(java.util.Locale.ROOT);
+				if (n.contains("agentcraft") && n.contains("console")) {
+					key = km.isUnbound() ? "" : km.getTranslatedKeyMessage().getString();
+					break;
+				}
+			}
+			startHint = key;
+		}
+		return startHint;
+	}
+
+	/** True when the crosshair is on a card of the task board at {@code pos} (no screen open). */
+	private static boolean cardUnderCrosshair(BlockPos pos) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.level == null || mc.gui.screen() != null || !(mc.hitResult instanceof BlockHitResult bh) || bh.getType() != HitResult.Type.BLOCK
+			|| !bh.getBlockPos().equals(pos)) {
+			return false;
+		}
+		BlockState st = mc.level.getBlockState(pos);
+		if (!st.is(ModBlocks.TASK_BOARD)) {
+			return false;
+		}
+		BlockPos origin = PanelBlock.origin(mc.level, pos, st);
+		TaskBoard b = BOARDS.get(origin);
+		if (b == null || b.ppb == 0) {
+			return false;
+		}
+		float[] p = toBoard(origin, st.getValue(PanelBlock.FACING), b.panelH, b.ppb, bh.getLocation());
+		return b.cardAt(p[0], p[1]) != null;
 	}
 
 	static TaskBoard board(BlockPos origin) {
@@ -237,13 +307,17 @@ public final class TaskWallFeature {
 			j.addProperty("origin", b.origin.getX() + " " + b.origin.getY() + " " + b.origin.getZ());
 			j.addProperty("size", b.panelW + "x" + b.panelH);
 			j.addProperty("ppb", b.ppb);
-			j.addProperty("capacity", b.capacity);
+			j.addProperty("listMode", b.listMode);
+			j.addProperty("layoutUs", b.layoutNanos / 1000);
 			j.addProperty("ageMs", (System.nanoTime() - b.lastUsedNanos) / 1_000_000L);
 			JsonObject cols = new JsonObject();
 			for (TaskBoard.Column c : b.columns) {
 				JsonObject cj = new JsonObject();
 				cj.addProperty("count", c.count);
 				cj.addProperty("blocked", c.blocked);
+				cj.addProperty("x", Math.round(c.x * 10) / 10.0);
+				cj.addProperty("width", Math.round(c.w * 10) / 10.0);
+				cj.addProperty("perRow", c.perRow);
 				JsonArray hidden = new JsonArray();
 				c.hidden.forEach(hidden::add);
 				cj.add("hidden", hidden);
@@ -258,8 +332,25 @@ public final class TaskWallFeature {
 				cj.addProperty("status", c.task.status().wire());
 				cj.addProperty("x", Math.round(c.x * 10) / 10.0);
 				cj.addProperty("y", Math.round(c.y * 10) / 10.0);
+				cj.addProperty("w", Math.round(c.tw * 10) / 10.0);
+				cj.addProperty("h", Math.round(c.th * 10) / 10.0);
+				cj.addProperty("size", c.size.name().toLowerCase(java.util.Locale.ROOT));
 				cj.addProperty("visible", c.visible);
-				cj.addProperty("moving", c.moving);
+				cj.addProperty("moving", c.flying);
+				cj.addProperty("glowing", c.arrivedAt != 0);
+				cj.addProperty("dot", c.cur == null || c.cur.dot == null ? "" : c.cur.dot);
+				JsonArray lines = new JsonArray();
+				if (c.cur != null) {
+					for (net.minecraft.util.FormattedCharSequence l : c.cur.lines) {
+						StringBuilder sb = new StringBuilder();
+						l.accept((i, style, cp) -> {
+							sb.appendCodePoint(cp);
+							return true;
+						});
+						lines.add(sb.toString());
+					}
+				}
+				cj.add("lines", lines);
 				cards.add(cj);
 			}
 			j.add("cards", cards);

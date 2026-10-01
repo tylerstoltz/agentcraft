@@ -164,7 +164,9 @@ def build():
                           "min_text_on_light": cast_doc["checks"]["min_contrast_text_on_light"]},
         "metrics": {
             "monitor_font_px_per_block": {"desk": 96, "desk_one_high": 128, "wall": 64},
-            "monitor_line_height": 10, "monitor_pad_left": 6, "monitor_pad_top": 5,
+            "monitor_line_height": 10, "monitor_pad_side_blocks": 0.09, "monitor_pad_top": 5,
+            "board_px_per_block": {"up_to_3_high": 64, "4_high": 72, "taller_board_px": 320},
+            "board_light_floor": 10,
             "gui_panel_padding": 8, "gui_gap": 4, "button_height": 20, "field_height": 18,
             "card_min": [60, 40], "pulse_ms": 1200, "caret_blink_ms": 500,
         },
@@ -241,7 +243,9 @@ Three surfaces, never mixed on one panel:
 **Font and scale.** Vanilla font, unshadowed. One font pixel = 1/{d['metrics']['monitor_font_px_per_block']['desk']} block on
 desk monitors at least 2 blocks high and wide, 1/{d['metrics']['monitor_font_px_per_block']['desk_one_high']} on 1-block-high (or wide) ones (so a tail
 of 7 rows fits), and 1/{d['metrics']['monitor_font_px_per_block']['wall']} block on wall screens read from across a room. Line height
-{d['metrics']['monitor_line_height']} font px (tool lines 13, for the 12 px icon), left padding {d['metrics']['monitor_pad_left']}, top padding {d['metrics']['monitor_pad_top']}.
+{d['metrics']['monitor_line_height']} font px (tool lines 13, for the 12 px icon), top padding {d['metrics']['monitor_pad_top']}, side padding
+{d['metrics']['monitor_pad_side_blocks']} block (12 px at 128 px/block, 9 at 96): the brass lip stands 1/16 block in front of the
+glass, so text closer to the bezel disappears behind it at oblique views (a desk camera looking at the neighbours).
 The 2 px walnut bezel and brass lip come from the block model, so do not draw a border in the renderer.
 
 **Header line.** The state dot (`kit/dot_<state>`, 7 px; waiting pulses its halo), the agent name in the
@@ -266,23 +270,29 @@ Rules:
 - Draw the text full-bright like the screen face (`LightCoordsUtil.FULL_BRIGHT`, 15728880) and with
   `Font.DisplayMode.POLYGON_OFFSET`, unshadowed, so it never dims at night and never z-fights the screen face.
 - Newest line at the bottom, auto-scroll; when the log is longer than the screen, fade the top line to 50 % alpha.
-- Truncate long lines with `...`; never wrap a tool line, do wrap prose.
+- Truncate long lines with `...`; never wrap a tool line, do wrap prose. On narrow screens long snake_case
+  tool names shorten (`request_merge` -> `merge`, `create_task` -> `new task`) so the argument still shows.
+- Prose drops markdown markup the screen cannot show (`` `code` ``, `**bold**`, `# heading`).
 - Diff rows: tint the full row background (`diff_add_bg` / `diff_del_bg`) and keep the `+`/`-` sigil in the text colour,
   so the diff reads at a distance even when individual characters do not.
 - Never pure white, pure black, or vanilla `§` formatting colours. Identity colours only for agent names.
 - The idle screen (no agent) uses `monitor_screen_off` (lit=false); a screen that is "on" but empty shows only the header.
 - States: a blinking `caret` block at the bottom while the agent works or thinks; `attention` "Waiting for you"
-  when it waits on the user; "Off shift" centred when the agent is off shift; when the Foreman link is lost
-  the last known log stays, dimmed, under a paper "Foreman offline" badge (`badge_bg` / `badge_text`).
+  when it waits on the user ("Needs you" on narrow screens); "Off shift" centred when the agent is off shift;
+  before the Foreman was ever reached, the agent's name stays in the header and the centre says
+  "Foreman not running" (the HUD pill's wording); when the link is lost the last known log stays, dimmed,
+  under a paper "Foreman offline" badge (`badge_bg` / `badge_text`; "Offline" on 1-block screens).
 
-**Task Wall** (`board.*`, cards on the walnut pinboard `task_board_surface`, 64 px per block up to 3 blocks
-high, then ~192 px of board height whatever the size): columns Todo / Doing / Review / Done split by 1 px
+**Task Wall** (`board.*`, cards on the walnut pinboard `task_board_surface`; 64 px per block up to 3 blocks
+high, 72 on a 4-high wall, then ~{d['metrics']['board_px_per_block']['taller_board_px']} px of board height): columns Todo / Doing / Review / Done split by 1 px
 `{d['board']['rule']}` brass rules, a paper label per column (`{d['board']['label']}`) with a 2 px underline in the column's
-status colour and the count (a red dot when the column holds blocked cards); kit `card_<status>` cards
-(blocked = `card_blocked`, at the top of the column where the task stalled, the reason in the footer); overflow
-collapses into a `{d['board']['chip']}` "+N more" chip. The board was cream linen in the first take; cream cards on
-it had too little contrast from across the room (side-by-side test in game). Cards take the room's light with a
-block-light floor of 12.
+status colour and the count (a red dot when the column holds blocked cards). Column widths follow the content:
+an empty column is a slim lane, a crowded one borrows width. Kit `card_<status>` cards (blocked = `card_blocked`,
+at the top of the column where the task stalled, the reason in the footer) come in three sizes: full (title 1-3
+lines, face + name, one hint), brief (title, 2 lines) and compact (1 line); a column steps down through them
+before the tail collapses into a `{d['board']['chip']}` "+N more" chip. The board was cream linen in the first take;
+cream cards on it had too little contrast from across the room (side-by-side test in game). Cards take the
+room's light with a block-light floor of {d['metrics']['board_light_floor']} (12 made the wall look backlit at night).
 
 ## 2. Paper GUI text
 

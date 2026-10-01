@@ -2,12 +2,14 @@ package dev.agentcraft.client.taskwall;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.block.PanelBlock;
 import dev.agentcraft.block.entity.TaskBoardBlockEntity;
 import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.block.PanelBlock;
+import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.monitor.DisplayDraw;
 import dev.agentcraft.client.monitor.DisplayStats;
+import dev.agentcraft.client.monitor.DisplayText;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
@@ -16,6 +18,7 @@ import dev.agentcraft.client.world.StationRenderer;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -23,6 +26,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.data.AtlasIds;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.LightCoordsUtil;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
@@ -31,20 +35,26 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Task Wall BER: a kanban of the Foreman's tasks on the connected task_board panel, drawn once from
- * its origin block on the linen plane. Columns Todo / Doing / Review / Done with counts; kit cards
- * per status (blocked = red card at the top of its column, with the reason); title, assignee face +
- * name, the assignee's live state dot, and one footer hint (CI failing, blocked, waiting on deps,
- * priority, else the id). Cards glide between columns when their status changes and glow briefly
+ * its origin block on the board plane. Columns Todo / Doing / Review / Done with counts (widths
+ * follow the content, see {@link TaskBoard}); kit cards per status (blocked = red card at the top
+ * of its column, with the reason); title, assignee face + name, the assignee's live state dot while
+ * they work on that card, and one footer hint (blocked reason, CI failing, waiting on deps,
+ * priority, else the id). Cards fly between columns when their status changes and glow briefly
  * where they land; overflow collapses into "+N more". Cards are paper pinned to the wall, so they
  * take the room's light (with a floor so they stay readable).
  */
 public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, TaskBoardRenderer.State> {
-	/** Linen plane of the north-facing model (assets-src block contract: cards on z = 14/16), minus a hair. */
+	/** Board plane of the north-facing model (assets-src block contract: cards on z = 14/16), minus a hair. */
 	public static final float LINEN_DEPTH = 14f / 16f - 0.002f;
 	static final float Z = DisplayDraw.Z_STEP;
-	static final float LIFT = 5 * DisplayDraw.Z_STEP; // moving cards sit above the others
+	static final float LIFT = 5 * DisplayDraw.Z_STEP; // flying cards sit above the others
 	/** The board's surface sprite (block atlas), tiled under the cards. */
 	static final Identifier SURFACE = AgentCraft.id("block/task_board_surface");
+	/**
+	 * Block-light floor for the board: paper in a dark room still reads, without the wall looking
+	 * backlit at night (12 did); the HQ lights its wall anyway. {@code dev.taskwall {lightFloor}}.
+	 */
+	static int lightFloor = 10;
 
 	public static class State extends StationRenderState {
 		@Nullable TaskBoard board;
@@ -53,10 +63,11 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		@Nullable String hovered;
 		boolean stale;
 		boolean noData;
+		String noDataText = "";
 	}
 
 	private static final List<TaskBoard.Card> STATIC = new ArrayList<>();
-	private static final List<TaskBoard.Card> MOVING = new ArrayList<>();
+	private static final List<TaskBoard.Card> FLYING = new ArrayList<>();
 
 	@Override
 	public State createRenderState() {
@@ -82,7 +93,7 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		ForemanState fs = Foreman.state();
 		TaskBoard b = TaskWallFeature.board(be.getBlockPos());
 		b.lastUsedNanos = now;
-		if (b.sync(fs != null && fs.hasData() ? fs : null, s.panelWidth, s.panelHeight, TaskWallFeature.seq(), now)) {
+		if (b.sync(fs != null && fs.hasData() ? fs : null, s.panelWidth, s.panelHeight, TaskWallFeature.taskSeq(), TaskWallFeature.agentSeq(), now)) {
 			DisplayStats.rebuilt(DisplayStats.Kind.BOARD);
 		}
 		b.step(now);
@@ -92,6 +103,7 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		s.hovered = hovered(be, b, s.facing);
 		s.stale = fs != null && fs.hasData() && fs.isStale();
 		s.noData = fs == null || !fs.hasData();
+		s.noDataText = s.noData ? DisplayText.noData(fs) : "";
 		DisplayStats.add(DisplayStats.Kind.BOARD, System.nanoTime() - now);
 	}
 
@@ -125,8 +137,8 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 			block = Math.max(block, LightCoordsUtil.block(l));
 			sky = Math.max(sky, LightCoordsUtil.sky(l));
 		}
-		// floor 12: legible at night, and palette colours stay true under a sunset sky (sky light alone tints them pink)
-		return LightCoordsUtil.pack(Math.max(block, 12), sky);
+		// the floor also keeps palette colours true under a sunset sky (sky light alone tints them pink)
+		return LightCoordsUtil.pack(Math.max(block, lightFloor), sky);
 	}
 
 	@Override
@@ -147,16 +159,19 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		// ---- column rules + headers (one rect batch)
 		DisplayDraw.Rects r = b.lanes.clear();
 		int rule = UiStyle.color("board.rule", 0xFFC9A227);
-		for (TaskBoard.Column col : b.columns) {
-			if (col.col != TaskBoard.Col.TODO) {
-				r.add(col.x - TaskBoard.GAP / 2f - 0.5f, b.iy0 + 2, col.x - TaskBoard.GAP / 2f + 0.5f, b.iy1 - 2, Z, rule, light);
+		for (int i = 0; i < b.columns.size(); i++) {
+			TaskBoard.Column col = b.columns.get(i);
+			if (i > 0) {
+				float rx = col.ax - TaskBoard.GAP / 2f;
+				r.add(rx - 0.5f, b.iy0 + 2, rx + 0.5f, b.iy1 - 2, Z, rule, light);
 			}
 			// header strip: paper label with a status-coloured underline
-			r.add(col.x, b.iy0 + 1, col.x + col.w, b.iy0 + TaskBoard.HEADER_H - 1, 2 * Z, UiStyle.color("board.label", 0xFFF4EFE6), light);
-			r.add(col.x, b.iy0 + TaskBoard.HEADER_H - 2, col.x + col.w, b.iy0 + TaskBoard.HEADER_H, 2.5f * Z, UiStyle.status(col.family), light);
+			r.add(col.ax, b.iy0 + 1, col.ax + col.aw, b.iy0 + TaskBoard.HEADER_H - 1, 2 * Z, UiStyle.color("board.label", 0xFFF4EFE6), light);
+			r.add(col.ax, b.iy0 + TaskBoard.HEADER_H - 2, col.ax + col.aw, b.iy0 + TaskBoard.HEADER_H, 2.5f * Z, UiStyle.status(col.family), light);
 			if (col.chip != null) {
-				r.add(col.chipX, col.chipY, col.chipX + col.chipW, col.chipY + TaskBoard.CHIP_H, 2 * Z, UiStyle.color("board.chip", 0xFFE9E1D3), light);
-				r.add(col.chipX, col.chipY + TaskBoard.CHIP_H - 1, col.chipX + col.chipW, col.chipY + TaskBoard.CHIP_H, 2.5f * Z,
+				float cx = col.chipX();
+				r.add(cx, col.chipY, cx + col.chipW, col.chipY + TaskBoard.CHIP_H, 2 * Z, UiStyle.color("board.chip", 0xFFE9E1D3), light);
+				r.add(cx, col.chipY + TaskBoard.CHIP_H - 1, cx + col.chipW, col.chipY + TaskBoard.CHIP_H, 2.5f * Z,
 					UiStyle.color("palette.ui.edge", 0xFFC9BBA3), light);
 			}
 		}
@@ -164,38 +179,39 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		ps.pushPose();
 		ps.translate(0, 0, 3 * Z);
 		for (TaskBoard.Column col : b.columns) {
-			WorldUi.submitText(ps, c, col.label, col.x + 4, b.iy0 + 3, headInk, light);
-			WorldUi.submitText(ps, c, col.countSeq, col.countX, b.iy0 + 3, muted, light);
+			WorldUi.submitText(ps, c, col.label, col.ax + 4, b.iy0 + 3, headInk, light);
+			WorldUi.submitText(ps, c, col.countSeq, col.countX(), b.iy0 + 3, muted, light);
 			if (col.blocked > 0) {
-				float bx = col.countX - 10;
-				WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, Kit.dot("error", false), bx, b.iy0 + 3, 7, 7, 0f, 0xFFFFFFFF, light);
+				float bx = col.countX() - 10;
+				WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, DisplayDraw.dot("error", false), bx, b.iy0 + 3, 7, 7, 0f, 0xFFFFFFFF, light);
 			}
 			if (col.chip != null) {
-				WorldUi.submitText(ps, c, col.chip, col.chipX + 5, col.chipY + 2, muted, light);
+				WorldUi.submitText(ps, c, col.chip, col.chipX() + 5, col.chipY + 2, muted, light);
 			}
 		}
 		ps.popPose();
 		// ---- cards: settled ones first, then the ones in flight (lifted, with a shadow)
 		STATIC.clear();
-		MOVING.clear();
+		FLYING.clear();
 		for (TaskBoard.Card card : b.cards.values()) {
-			if (!card.visible && !card.moving && !card.removing) {
-				continue;
+			boolean gliding = Math.abs(card.x - card.tx) > 1 || Math.abs(card.y - card.ty) > 1;
+			if (!card.visible && !card.removing && !gliding) {
+				continue; // parked behind "+N more"
 			}
-			(card.moving ? MOVING : STATIC).add(card);
+			(card.flying ? FLYING : STATIC).add(card);
 		}
 		long now = System.nanoTime();
 		for (TaskBoard.Card card : STATIC) {
 			drawCard(ps, c, b, card, 0, light, now, card.id.equals(s.hovered));
 		}
-		if (!MOVING.isEmpty()) {
+		if (!FLYING.isEmpty()) {
 			DisplayDraw.Rects shadow = b.shadows.clear();
 			int sh = UiStyle.withAlpha(UiStyle.color("palette.ui.shadow", 0xFF1F1E1D), 46);
-			for (TaskBoard.Card card : MOVING) {
+			for (TaskBoard.Card card : FLYING) {
 				shadow.add(card.x + 2, card.y + 3, card.x + card.w + 2, card.y + card.h + 2, LIFT - Z, sh, light);
 			}
 			c.order(0).submitCustomGeometry(ps, DisplayDraw.fillTranslucent(), (pose, vc) -> shadow.emit(pose, vc, 255, -1));
-			for (TaskBoard.Card card : MOVING) {
+			for (TaskBoard.Card card : FLYING) {
 				drawCard(ps, c, b, card, LIFT, light, now, false);
 			}
 		}
@@ -203,32 +219,49 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 			drawEmpty(ps, c, b, light);
 		}
 		if (s.stale || s.noData) {
-			drawOffline(ps, c, b, light, s.noData ? "Waiting for the Foreman" : "Foreman offline");
+			drawOffline(ps, c, b, light, s.noData ? s.noDataText : DisplayText.OFFLINE, s.noData);
 		}
 		ps.popPose();
 		DisplayStats.add(DisplayStats.Kind.BOARD, System.nanoTime() - t0);
 	}
 
-	/** No tasks yet: a paper note pinned in the middle that says how to start. */
+	/** No tasks yet: a paper note pinned in the middle that says how to start, with the console key as a keycap. */
 	private static void drawEmpty(PoseStack ps, SubmitNodeCollector c, TaskBoard b, int light) {
-		net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
+		Font font = Minecraft.getInstance().font;
 		String l1 = "No tasks yet";
-		String l2 = "Press ` and type a goal";
-		float w = Math.max(font.width(l1), font.width(l2)) + 16, h = 30;
+		String key = TaskWallFeature.startKey();
+		String pre = key.isEmpty() ? "Open the console, type a goal" : "Press ";
+		String post = key.isEmpty() ? "" : " and type a goal";
+		float kw = key.isEmpty() ? 0 : font.width(key) + 8;
+		float w2 = font.width(pre) + kw + font.width(post);
+		float w = Math.max(font.width(l1), w2) + 18, h = 33;
 		float x = (b.pw - w) / 2f, y = (b.iy0 + TaskBoard.HEADER_H + b.iy1 - h) / 2f;
 		TextureAtlasSprite sprite = WorldUi.sprite(Kit.card("todo"));
-		c.order(0).submitCustomGeometry(ps, WorldUi.guiAtlasSolid(), (pose, vc) -> DisplayDraw.nineSlice(pose, vc, sprite, x, y, w, h - 1, 2 * Z,
-			0xFFFFFFFF, light, 1));
+		TextureAtlasSprite cap = WorldUi.sprite(Kit.KEYCAP);
+		float kx = x + 9 + font.width(pre);
+		float ky = y + 16;
+		c.order(0).submitCustomGeometry(ps, WorldUi.guiAtlasSolid(), (pose, vc) -> {
+			DisplayDraw.nineSlice(pose, vc, sprite, x, y, w, h - 1, 2 * Z, 0xFFFFFFFF, light, 1);
+			if (kw > 0) {
+				DisplayDraw.nineSlice(pose, vc, cap, kx, ky - 1, kw, 12, 2.5f * Z, 0xFFFFFFFF, light);
+			}
+		});
 		ps.pushPose();
 		ps.translate(0, 0, 3 * Z);
-		WorldUi.submitText(ps, c, l1, x + 9, y + 5, UiStyle.color("paper.text", 0xFF1F1E1D), light);
-		WorldUi.submitText(ps, c, l2, x + 9, y + 16, UiStyle.color("paper.muted", 0xFF655E55), light);
+		int ink = UiStyle.color("paper.text", 0xFF1F1E1D);
+		int muted = UiStyle.color("paper.muted", 0xFF655E55);
+		WorldUi.submitText(ps, c, l1, x + 9, y + 5, ink, light);
+		WorldUi.submitText(ps, c, pre, x + 9, ky + 1, muted, light);
+		if (kw > 0) {
+			WorldUi.submitText(ps, c, key, kx + 4, ky + 1, ink, light);
+			WorldUi.submitText(ps, c, post, kx + kw, ky + 1, muted, light);
+		}
 		ps.popPose();
 	}
 
-	/** Link lost: the last known board stays, dimmed under a walnut veil, with a paper badge on top. */
-	private static void drawOffline(PoseStack ps, SubmitNodeCollector c, TaskBoard b, int light, String label) {
-		net.minecraft.client.gui.Font font = Minecraft.getInstance().font;
+	/** Link lost (or never up): the last known board stays, dimmed under a walnut veil, with a paper badge on top. */
+	private static void drawOffline(PoseStack ps, SubmitNodeCollector c, TaskBoard b, int light, String label, boolean never) {
+		Font font = Minecraft.getInstance().font;
 		DisplayDraw.Rects v = b.veil.clear();
 		float trim = b.ppb * TaskBoard.TRIM / 16f;
 		v.add(trim, trim, b.pw - trim, b.ph - trim, LIFT + 4 * Z, UiStyle.withAlpha(UiStyle.color("palette.colors.walnut", 0xFF3B2A20), 150), light);
@@ -242,8 +275,7 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		badge.submit(ps, c);
 		ps.pushPose();
 		ps.translate(0, 0, LIFT + 6 * Z);
-		WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, Kit.dot(label.startsWith("Waiting") ? "idle" : "error", false), x + 5, y + 4, 7, 7, 0f,
-			0xFFFFFFFF, light);
+		WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, DisplayDraw.dot(never ? "idle" : "error", false), x + 5, y + 4, 7, 7, 0f, 0xFFFFFFFF, light);
 		WorldUi.submitText(ps, c, label, x + 15, y + 4, UiStyle.color("paper.text", 0xFF1F1E1D), light);
 		ps.popPose();
 	}
@@ -281,6 +313,10 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 
 	private static void drawCard(PoseStack ps, SubmitNodeCollector c, TaskBoard b, TaskBoard.Card card, float lift, int light, long now,
 		boolean hovered) {
+		TaskBoard.Content ct = card.drawable();
+		if (ct == null) {
+			return;
+		}
 		float w = card.w;
 		float h = card.h;
 		ps.pushPose();
@@ -293,18 +329,19 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		}
 		float x = card.x;
 		float y = card.y;
-		// arrival glow: a status-coloured outline that fades over 1.4 s
+		// arrival glow: a light outline in the new column's colour that fades over 1.4 s once the card has landed
 		if (card.arrivedAt != 0) {
 			float t = (now - card.arrivedAt) / 1e9f / 1.4f;
 			if (t < 1) {
-				int a = (int) (200 * (1 - t) * (1 - t));
-				int col = UiStyle.withAlpha(UiStyle.status(card.task.status() == dev.agentcraft.client.foreman.Protocol.TaskStatus.BLOCKED ? "error"
-					: family(card.col)), a);
+				float k = (1 - t) * (1 - t);
+				int base = UiStyle.status(card.task.status() == TaskStatus.BLOCKED ? "error" : family(card.col));
+				// lifted towards cream so even Todo's grey reads against the walnut
+				int tint = DisplayDraw.mix(base, UiStyle.color("palette.colors.cream", 0xFFF4EFE6), 0.35f);
+				int inner = UiStyle.withAlpha(tint, (int) (235 * k));
+				int outer = UiStyle.withAlpha(tint, (int) (110 * k));
 				DisplayDraw.Rects g = card.glow.clear();
-				g.add(x - 2, y - 2, x + w + 2, y, lift + Z, col, light);
-				g.add(x - 2, y + h - 1, x + w + 2, y + h + 1, lift + Z, col, light);
-				g.add(x - 2, y, x, y + h - 1, lift + Z, col, light);
-				g.add(x + w, y, x + w + 2, y + h - 1, lift + Z, col, light);
+				ring(g, x, y, w, h, 2, lift + Z, inner, light);
+				ring(g, x - 2, y - 2, w + 4, h + 4, 1, lift + Z, outer, light);
 				c.order(0).submitCustomGeometry(ps, DisplayDraw.fillTranslucent(), (pose, vc) -> g.emit(pose, vc, 255, -1));
 			} else {
 				card.arrivedAt = 0;
@@ -322,44 +359,70 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		soft.add(x + 2, y + h, x + w - 1, y + h + 1, zc, UiStyle.withAlpha(shadowInk, 24), light);
 		if (hovered) {
 			// crosshair on the card: a brass outline says "right-click opens it"
-			int brass = UiStyle.color("palette.colors.brass", 0xFFC9A227);
-			soft.add(x - 1.5f, y - 1.5f, x + w + 1.5f, y - 0.5f, zc, brass, light);
-			soft.add(x - 1.5f, y + h + 0.5f, x + w + 1.5f, y + h + 1.5f, zc, brass, light);
-			soft.add(x - 1.5f, y - 0.5f, x - 0.5f, y + h + 0.5f, zc, brass, light);
-			soft.add(x + w + 0.5f, y - 0.5f, x + w + 1.5f, y + h + 0.5f, zc, brass, light);
+			ring(soft, x - 0.5f, y - 0.5f, w + 1, h + 1, 1, zc, UiStyle.color("palette.colors.brass", 0xFFC9A227), light);
 		}
 		c.order(0).submitCustomGeometry(ps, DisplayDraw.fillTranslucent(), (pose, vc) -> soft.emit(pose, vc, 255, -1));
 		Kit.Padding p = Kit.padding("card_todo");
 		float cx0 = x + p.left();
 		float cx1 = x + w - p.right();
-		float ty = y + p.top();
 		ps.pushPose();
 		ps.translate(0, 0, lift + 3 * Z);
-		WorldUi.submitText(ps, c, card.line1, cx0, ty, card.titleColor, light);
-		if (card.line2 != null) {
-			WorldUi.submitText(ps, c, card.line2, cx0, ty + 10, card.line2Color, light);
-		}
-		if (card.dot != null) {
-			boolean waiting = card.dot.equals("waiting");
-			if (waiting) {
-				int pulse = UiStyle.metric("metrics.pulse_ms", 1200);
-				double ph = ((now / 1_000_000L) % pulse) / (double) pulse;
-				int a = (int) (40 + 150 * (0.5 - 0.5 * Math.cos(ph * Math.PI * 2)));
-				WorldUi.submitSprite(ps, c, WorldUi.Layer.OVERLAY, Kit.dot("waiting", true), cx1 - 9, ty - 2, 11, 11, 0f, (a << 24) | 0xFFFFFF, light);
+		// Content was laid out for the card's target size; while the size animates, lines that would not
+		// fit the current height drop out (from the bottom), so a resizing card never overlaps itself.
+		boolean full = ct.size == TaskBoard.Size.FULL && h >= TaskBoard.fullH(1) - 0.5f;
+		if (!full) {
+			// title only (1 or 2 lines), centred in whatever height the card has right now
+			int n = Math.max(1, Math.min(ct.lines.size(), (int) ((h - 5) / TaskBoard.LINE)));
+			float ty = y + (h - 1 - (n * TaskBoard.LINE - 2)) / 2f;
+			for (int i = 0; i < n; i++) {
+				WorldUi.submitText(ps, c, ct.lines.get(i), cx0, ty + i * TaskBoard.LINE, ct.titleColor, light);
 			}
-			WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, Kit.dot(card.dot, false), cx1 - 7, ty, 7, 7, Z * 0.5f, 0xFFFFFFFF, light);
-		}
-		float fy = y + h - p.bottom() - 9;
-		if (card.face != null && card.compact) {
-			DisplayDraw.submitTexture(ps, c, card.face, cx1 - 8, ty, 8, 8, 0f, 0xFFFFFFFF, light);
-		} else if (card.face != null) {
-			DisplayDraw.submitTexture(ps, c, card.face, cx0, fy, 8, 8, 0f, 0xFFFFFFFF, light);
-			WorldUi.submitText(ps, c, card.name, cx0 + 10, fy, card.nameColor, light);
-		}
-		if (card.hint != null) {
-			WorldUi.submitText(ps, c, card.hint, cx1 - card.hintW, fy, card.hintColor, light);
+			if (ct.face != null && (ct.size != TaskBoard.Size.FULL || ct.dot == null)) {
+				DisplayDraw.submitTexture(ps, c, ct.face, cx1 - 8, ty, 8, 8, 0f, 0xFFFFFFFF, light);
+			}
+		} else {
+			float ty = y + p.top();
+			float fy = y + h - TaskBoard.FOOT;
+			for (int i = 0; i < ct.lines.size(); i++) {
+				float ly = ty + i * TaskBoard.LINE;
+				if (i > 0 && ly + 8 > fy - 2) {
+					break; // the footer has risen into this line: the next content takes over once it fits
+				}
+				WorldUi.submitText(ps, c, ct.lines.get(i), cx0, ly, ct.titleColor, light);
+			}
+			if (ct.dot != null) {
+				if (ct.dot.equals("waiting")) {
+					int pulse = UiStyle.metric("metrics.pulse_ms", 1200);
+					double ph = ((now / 1_000_000L) % pulse) / (double) pulse;
+					int a = (int) (40 + 150 * (0.5 - 0.5 * Math.cos(ph * Math.PI * 2)));
+					WorldUi.submitSprite(ps, c, WorldUi.Layer.OVERLAY, DisplayDraw.dot("waiting", true), cx1 - 9, ty - 2, 11, 11, 0f, (a << 24) | 0xFFFFFF,
+						light);
+				}
+				WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, DisplayDraw.dot(ct.dot, false), cx1 - 7, ty, 7, 7, Z * 0.5f, 0xFFFFFFFF, light);
+			}
+			// footer on the card's bottom edge, so it rides along while the height animates
+			float fx = cx0;
+			if (ct.face != null) {
+				DisplayDraw.submitTexture(ps, c, ct.face, fx, fy, 8, 8, 0f, 0xFFFFFFFF, light);
+				fx += 10;
+			}
+			FormattedCharSequence name = ct.name;
+			if (name != null) {
+				WorldUi.submitText(ps, c, name, fx, fy, ct.nameColor, light);
+			}
+			if (ct.hint != null) {
+				WorldUi.submitText(ps, c, ct.hint, ct.hintLeft ? fx : cx1 - ct.hintW, fy, ct.hintColor, light);
+			}
 		}
 		ps.popPose();
 		ps.popPose();
+	}
+
+	/** A rectangular outline {@code t} px thick just outside (x, y, w, h). */
+	private static void ring(DisplayDraw.Rects r, float x, float y, float w, float h, float t, float z, int argb, int light) {
+		r.add(x - t, y - t, x + w + t, y, z, argb, light);
+		r.add(x - t, y + h, x + w + t, y + h + t, z, argb, light);
+		r.add(x - t, y, x, y + h, z, argb, light);
+		r.add(x + w, y, x + w + t, y + h, z, argb, light);
 	}
 }

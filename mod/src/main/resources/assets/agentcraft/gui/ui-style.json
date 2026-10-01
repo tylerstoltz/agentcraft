@@ -197,8 +197,14 @@
       "wall": 64
     },
     "monitor_line_height": 10,
-    "monitor_pad_left": 6,
+    "monitor_pad_side_blocks": 0.09,
     "monitor_pad_top": 5,
+    "board_px_per_block": {
+      "up_to_3_high": 64,
+      "4_high": 72,
+      "taller_board_px": 320
+    },
+    "board_light_floor": 10,
     "gui_panel_padding": 8,
     "gui_gap": 4,
     "button_height": 20,
