@@ -29,6 +29,15 @@ public final class AgentView {
 	public boolean stale;
 	public AgentPose pose = AgentPose.STAND;
 	public @Nullable String taskId;
+	/**
+	 * An open decision is waiting on Blendi for this agent's work (a merge of its task, a question it
+	 * asked, a permission prompt), even when the Foreman shows the agent as idle meanwhile.
+	 */
+	public boolean awaitingUser;
+	/** The decision behind {@link #awaitingUser} (for the agent card), or null. */
+	public @Nullable String awaitingDecision;
+	public String role = "";
+	public @Nullable String title;
 	/** Laid-out nameplates, rebuilt by {@link Nameplate#of} / {@link Nameplate#compactOf} only when their text changes. */
 	Nameplate.@Nullable Data plateCache;
 	Nameplate.@Nullable Data compactCache;
@@ -38,17 +47,35 @@ public final class AgentView {
 		this.name = id;
 	}
 
-	void update(Agent a, boolean staleLink) {
+	void update(Agent a, boolean staleLink, @Nullable String awaitingDecisionId) {
 		name = a.name();
 		color = 0xFF000000 | dev.agentcraft.Cast.parseColor(a.color(), 0x9C9488);
 		nameColor = UiStyle.agentOnDark(a.id());
 		state = a.state();
-		family = a.state().family();
+		awaitingDecision = awaitingDecisionId;
+		awaitingUser = awaitingDecisionId != null;
+		family = statusFamily(a.state(), awaitingUser);
+		role = a.role().wire();
+		title = a.title();
 		activity = a.activity();
 		active = a.isActive();
 		paused = a.isPaused();
 		stale = staleLink;
 		taskId = a.taskId();
+	}
+
+	/**
+	 * The status family shown for an agent (dot, lamp colour, "!" marker). The Foreman reports a
+	 * worker whose finished task waits for Blendi's merge as {@code idle} ("t4 awaiting your merge");
+	 * that is the user's turn, so it shows as {@code waiting} (clay), like {@code waiting_user}.
+	 * Errors and real work keep their own family.
+	 */
+	public static String statusFamily(AgentState state, boolean awaitingUser) {
+		String f = state.family();
+		if (awaitingUser && (f.equals("idle") || f.equals("done"))) {
+			return "waiting";
+		}
+		return f;
 	}
 
 	/** One line for the nameplate under the name. */

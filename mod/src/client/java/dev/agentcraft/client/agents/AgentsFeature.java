@@ -7,6 +7,9 @@ import dev.agentcraft.client.dev.Fields;
 import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanListener;
 import dev.agentcraft.client.foreman.ForemanState;
+import dev.agentcraft.client.foreman.Protocol;
+import net.minecraft.client.Minecraft;
+import org.jspecify.annotations.Nullable;
 import dev.agentcraft.entity.ModEntities;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -16,6 +19,7 @@ import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.client.renderer.entity.EntityRenderers;
 import net.minecraft.client.renderer.entity.NoopRenderer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
@@ -57,14 +61,125 @@ public final class AgentsFeature {
 			public void onSnapshot(ForemanState state) {
 				AgentManager.get().onSnapshot();
 			}
+
+			@Override
+			public void onSay(Protocol.AgentSay say) {
+				AgentManager m = AgentManager.get();
+				ClientAgentEntity speaker = m.entity(say.agentId());
+				if (speaker == null) {
+					return;
+				}
+				speaker.life().onSay(say, speaker.life().age());
+				String to = say.to();
+				ClientAgentEntity listener = to == null ? null : m.entity(to);
+				if (listener != null && listener != speaker) {
+					listener.life().listen(say.agentId(), 60 + Math.min(120, say.text().length()));
+				}
+			}
+
+			@Override
+			public void onTask(Protocol.@Nullable Task prev, Protocol.Task now) {
+				if (now.status() == Protocol.TaskStatus.DONE && (prev == null || prev.status() != Protocol.TaskStatus.DONE) && now.assignee() != null) {
+					ClientAgentEntity e = AgentManager.get().entity(now.assignee());
+					if (e != null) {
+						e.life().onTaskDone();
+					}
+				}
+			}
 		});
 		UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
 			if (level.isClientSide() && entity instanceof ClientAgentEntity agent) {
-				CLICK_HANDLERS.forEach(h -> h.clicked(player, agent));
+				if (hand == InteractionHand.MAIN_HAND) {
+					CLICK_HANDLERS.forEach(h -> h.clicked(player, agent));
+				}
 				return InteractionResult.FAIL;
 			}
 			return InteractionResult.PASS;
 		});
+		// right-click an agent: its card (name, state, task, log tail, message/pause/stop)
+		onClick((player, agent) -> Minecraft.getInstance().gui.setScreen(new AgentCardScreen(agent.agentId())));
+		DevBridge.registerScreen("agent", mc -> {
+			String id = AgentCardScreen.defaultAgent();
+			if (id == null) {
+				throw new DevBridge.DevException("no agents (is the Foreman connected?)");
+			}
+			return new AgentCardScreen(id);
+		});
+		DevBridge.register("dev.agents.card", 10_000, "{agent} -> open the agent card for one agent (like right-clicking it)", (req, mc) -> {
+			String id = Fields.of(req).nonBlank("agent");
+			return DevBridge.onClient(mc, () -> {
+				if (Foreman.state() == null || Foreman.state().agent(id) == null) {
+					throw new DevBridge.DevException("no agent '" + id + "'");
+				}
+				mc.gui.setScreen(new AgentCardScreen(id));
+				JsonObject o = new JsonObject();
+				o.addProperty("screen", AgentCardScreen.class.getSimpleName());
+				o.addProperty("agent", id);
+				return o;
+			});
+		});
+		DevBridge.register("dev.agents.fx", 10_000,
+			"{agent, fx: confetti|puff|sparkle|say, text?, to?} -> play an agent effect now (QA preview; 'say' shows a local speech bubble)",
+			(req, mc) -> {
+				Fields f = Fields.of(req);
+				String id = f.nonBlank("agent");
+				String fx = f.nonBlank("fx");
+				String text = f.optStr("text", "Pushed the fix - tests are green again.");
+				String to = f.optStr("to", null);
+				return DevBridge.onClient(mc, () -> {
+					ClientAgentEntity e = AgentManager.get().entity(id);
+					if (e == null) {
+						throw new DevBridge.DevException("no agent '" + id + "' in the world");
+					}
+					if (!e.life().preview(fx, text, to)) {
+						throw new DevBridge.DevException("unknown fx '" + fx + "' (confetti|puff|sparkle|say)");
+					}
+					JsonObject o = new JsonObject();
+					o.addProperty("agent", id);
+					o.addProperty("fx", fx);
+					return o;
+				});
+			});
+		DevBridge.register("dev.agents.look", 10_000,
+			"{agent?} -> each agent's life: posture, seat, sit, head yaw/pitch, bubble, exclaim, particles, family (QA)",
+			(req, mc) -> {
+				String only = Fields.of(req).optStr("agent", null);
+				return DevBridge.onClient(mc, () -> {
+					JsonObject o = new JsonObject();
+					JsonArray list = new JsonArray();
+					for (ClientAgentEntity e : AgentManager.get().entities().values()) {
+						if (only != null && !only.equals(e.agentId())) {
+							continue;
+						}
+						AgentLife l = e.life();
+						JsonObject j = new JsonObject();
+						j.addProperty("id", e.agentId());
+						j.addProperty("family", e.view().family);
+						j.addProperty("awaitingUser", e.view().awaitingUser);
+						j.addProperty("posture", l.posture().name());
+						j.addProperty("seated", l.seated());
+						j.addProperty("sit", round(l.sitAmount()));
+						Seats.Seat st = l.seat();
+						if (st != null) {
+							JsonObject sj = new JsonObject();
+							sj.addProperty("x", round(st.sit().x));
+							sj.addProperty("z", round(st.sit().z));
+							sj.addProperty("top", round(st.seatTop()));
+							sj.addProperty("drop", round(st.drop()));
+							sj.addProperty("deskTop", Double.isNaN(st.deskTop()) ? null : round(st.deskTop()));
+							j.add("seat", sj);
+						}
+						j.addProperty("bodyYaw", round(e.yBodyRot));
+						j.addProperty("headYaw", round(e.getYHeadRot()));
+						j.addProperty("headPitch", round(e.getXRot()));
+						j.addProperty("bubble", l.bubble.visible() ? l.bubble.current().text() : null);
+						j.addProperty("particles", l.particles.live());
+						list.add(j);
+					}
+					o.add("agents", list);
+					return o;
+				});
+			});
 		AttackEntityCallback.EVENT.register((player, level, hand, entity, hit) ->
 			entity instanceof ClientAgentEntity ? InteractionResult.FAIL : InteractionResult.PASS);
 
