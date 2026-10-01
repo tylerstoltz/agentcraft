@@ -121,6 +121,7 @@ More anchors (`cam_testbench`, `cam_lounge`, ...) are welcome; scenes can use an
 | `{"open": "console"}` | the command console with the input focused; `dev.type "@ju"` must show the agent autocomplete (Juniper) |
 | `{"open": "diff", "decisionId": "d3", "repoId": "sim-demo-showcase", "worktree": "wren-t4"}` | the diff review screen for that worktree (the mod sends `diff.request` itself) |
 | `{"open": "library"}` | the memory library / memory screen (optionally `"memoryId"`) |
+| `{"open": "task"}` | the task detail screen (Task Wall card click); pick the task first with `dev.taskwall {open: "t3"}`, else the first doing task |
 
 `registerScreen` factories currently receive only `mc`, not the request. Either give them the
 request JSON (preferred: an overload `(mc, req) -> Screen`), or make the `diff` screen default to

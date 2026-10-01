@@ -2,7 +2,7 @@
   "parent": "minecraft:block/block",
   "textures": {
     "particle": "agentcraft:block/task_board_back",
-    "screen": "agentcraft:block/task_board_linen",
+    "screen": "agentcraft:block/task_board_surface",
     "back": "agentcraft:block/task_board_back",
     "side": "agentcraft:block/task_board_back"
   },

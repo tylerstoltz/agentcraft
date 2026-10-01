@@ -41,6 +41,7 @@
     "glow":       { "base": 1, "tones": ["#FFFAEA", "#FFEDC2", "#F8D892", "#E9BC64"] },
     "screen_off": { "base": 2, "tones": ["#33312D", "#292826", "#1F1E1C", "#181716"] },
     "screen_on":  { "base": 1, "tones": ["#F8F3EA", "#EDE5D7", "#E7DECE", "#CFC2AC"] },
+    "screen_glow": { "base": 2, "tones": ["#4A423B", "#2E2925", "#26221F", "#221E1B"] },
     "graphite":   { "base": 1, "tones": ["#6A655F", "#514C47", "#3D3935", "#2B2825"] },
     "stone":      { "base": 1, "tones": ["#D8D2C8", "#BFB8AC", "#A39B8E", "#857D71"] },
     "leather":    { "base": 1, "tones": ["#A57A50", "#8A633F", "#6E4C30", "#523822"] },

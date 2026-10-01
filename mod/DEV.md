@@ -153,8 +153,10 @@ treated the same, other binary frames get an `ok:false` reply).
 | `dev.agents` | `settle?` (false) | Every agent NPC: `id, entityId, x,y,z, yaw, station, anchor, target{x,y,z,yaw}, walking, path[[x,y,z]...], state, activity, stale, model, skin`, and `plate{mode full\|compact, lift, target, rank, nudge, scale, depth, weight, focused, capped, rect[x0,y0,x1,y1] in screen px}` when its nameplate was laid out last frame; top level also has `plates, plateOverlaps`. `settle:true` snaps walking agents to their targets and the nameplates to their final layout on the next frame (no one mid-walk, no plate mid-slide in a shot) |
 | `dev.anchors` | `prefix?` | The published layout: `{layout, revision, bounds, anchors:{name:{x,y,z,yaw,pitch}}, count}` |
 | `dev.test.foremanMessage` | `message:{type, ...}` | **Test only** (`AGENTCRAFT_DEV_TEST=1`): applies a Foreman message to the state model as if received (e.g. `foreman.status` with `auth:"failed"` to see the auth banner) |
+| `dev.displays` | `look?` = `paper` / `dark` / `split`, `reset?` | Monitor look (default dark; split alternates per monitor for comparisons), every laid-out monitor screen `{pos, agent, mode, style, size, ppb, rows, ageMs}`, and `stats` = display CPU cost per frame since the last reset (`monitor`/`board`: `usPerFrame`, `callsPerFrame`, `rebuilds`) |
+| `dev.taskwall` | `open?` (task id), `press?` (button id), `aim?` (task id) | Task Wall boards and their cards (column counts, hidden ids, card positions). `open` opens that task's screen, `press` presses a button in the open task screen (`prev next retry prioritize reassign cancel to:<agent>`), `aim` returns the world point of a card and an eye 2.5 blocks in front (then `dev.camera` + `dev.key {mapping:"key.use"}` clicks it the real way; use `mode:"creative"`, spectators cannot click) |
 
-Registered screens (`dev.screen {open}`): `creative_agentcraft` (creative inventory on the AgentCraft tab). Phase 3 features add theirs (see mod/FEATURES.md).
+Registered screens (`dev.screen {open}`): `creative_agentcraft` (creative inventory on the AgentCraft tab), `task` (task detail: the last task opened, else the first doing one). Phase 3 features add theirs (see mod/FEATURES.md).
 
 ### Extending it from other mod code (client side)
 

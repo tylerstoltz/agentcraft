@@ -1,7 +1,7 @@
 """AgentCraft block textures (16x16, vanilla-compatible style, Warm Studio palette).
 
 Light comes from the top-left. Each material uses 4-6 tones from palette.json ramps.
-Tileable textures (plaster, walnut, linen, parquet, tile, screens) tile seamlessly in both
+Tileable textures (plaster, walnut, parquet, tile, screens) tile seamlessly in both
 directions so multi-block walls/screens read as one surface.
 
 python gen/blocks.py   -> out/assets/agentcraft/textures/block/*.png
@@ -19,7 +19,6 @@ W = tones("walnut")      # 0 lightest .. 5 darkest
 O = tones("oak")         # 0 light .. 4 dark
 B = tones("brass")       # 0 lightest .. 4 deepest
 P = tones("plaster")
-LN = tones("linen")
 TC = tones("terracotta")
 GL = tones("glow")
 GS = tones("glass")
@@ -30,6 +29,7 @@ SG = tones("sage")
 INK = tones("ink")
 GR = tones("graphite")
 SON = tones("screen_on")
+SGW = tones("screen_glow")
 WHITE = pc("colors.white")
 
 TEX = {}
@@ -181,22 +181,6 @@ def terracotta_tile():
     return reg("terracotta_tile", img)
 
 
-# ------------------------------------------------------------------ linen (task board)
-def linen():
-    img = new()
-    weave_a, weave_b = LN[1], mix(LN[1], LN[2], 0.28)
-    for y in range(16):
-        for x in range(16):
-            img.putpixel((x, y), weave_a if (x + y) % 2 == 0 else weave_b)
-    slub_hi = mix(LN[1], LN[0], 0.7)
-    slub_lo = mix(LN[1], LN[2], 0.75)
-    for (x0, y, n, c) in ((2, 1, 3, slub_hi), (9, 4, 4, slub_hi), (5, 7, 2, slub_lo), (12, 9, 3, slub_hi),
-                          (1, 12, 4, slub_hi), (8, 14, 2, slub_lo), (13, 2, 2, slub_lo)):
-        for i in range(n):
-            img.putpixel(((x0 + i) % 16, y), c)
-    return reg("task_board_linen", img)
-
-
 # ------------------------------------------------------------------ frames (monitor bezel / board trim)
 def frame_texture(name, outer, inner, side_rows):
     """Regions: rows 0-1 = horizontal strip (row0 outer, row1 inner);
@@ -240,13 +224,17 @@ def monitor_textures():
             elif d == 11 and 4 <= x <= 7 and y <= 7:
                 glint.putpixel((x, y), so[0])
     reg("monitor_screen_off_glint", glint)
-    # screen on: soft warm paper (palette screen_on, an e-ink look) with faint 1-texel scanlines,
-    # rendered full-bright (light_emission 15) so it reads as lit next to plaster by day and glows
-    # at night. Log text is drawn on top in ink tones (ui-style.json monitor.*).
+    # screen on: warm charcoal glass (palette screen_glow) with faint 1-texel scanlines, rendered
+    # full-bright (light_emission 15). Chosen over the first take (warm e-ink paper, screen_on) by a
+    # side-by-side test in game: lit paper screens read as framed notes / plaster at mid distance,
+    # the dark glass with glowing cream text reads as a screen. The monitor BER draws the same
+    # background (plus a soft top glow) and the log in ui-style.json monitor_dark.* colours; this
+    # texture is what shows beyond the BER's view distance and on the item. The console terminal
+    # keeps the paper screen (console_screen).
     on = new()
     for y in range(16):
         for x in range(16):
-            on.putpixel((x, y), SON[1] if y % 2 == 0 else SON[2])
+            on.putpixel((x, y), SGW[2] if y % 2 == 0 else SGW[3])
     reg("monitor_screen_on", on)
     # back: walnut with vent slots and a small brass maker plate
     back = from_grid(WALNUT_ROWS, WL)
@@ -267,8 +255,18 @@ def monitor_textures():
     reg("monitor_side", side)
 
 
+def pinboard():
+    """Task Wall surface: the walnut boards one tone deeper than the wainscot (walnut_panel), so the
+    cream task cards stand off it and the board does not read as wall. Replaced the first take
+    (cream linen, task_board_linen) after a side-by-side test in game: cream cards on linen had too
+    little contrast to read the board's structure from across the room. The Task Wall BER tiles
+    this same sprite under its cards, so near and far views match."""
+    deep = {"a": W[2], "b": W[3], "c": W[4], "d": W[5], "e": W[1]}
+    return reg("task_board_surface", from_grid(WALNUT_ROWS, deep))
+
+
 def task_board_textures():
-    linen()
+    pinboard()
     frame_texture("task_board_frame", (B[1], B[2]), (W[3], W[4]), WALNUT_ROWS)
     reg("task_board_back", from_grid(WALNUT_ROWS, WL))
 

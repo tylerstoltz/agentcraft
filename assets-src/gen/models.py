@@ -317,7 +317,7 @@ def monitor():
 def task_board():
     names, edges, corners, spec = panel_models(
         "task_board", 14, 2,
-        {"default": ("task_board_linen", False)},
+        {"default": ("task_board_surface", False)},
         "task_board_frame", "task_board_back", "task_board_back")
     connectable_blockstate("task_board", names, edges, corners, spec)
     inv = inventory_model("task_board_inventory",

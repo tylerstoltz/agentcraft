@@ -24,8 +24,8 @@ BLOCK_CONTRACT = OrderedDict([
                  "the 2 px bezel); draw text there in the BER, inside the bezel (2 px inset on unconnected sides)."))
     ,
     ("task_board", ("facing, up|down|left|right=bool", "solid", "0", "thin panel (back 2 px), nonOpaque",
-                    "Task Wall surface; same connection rules as monitor. Cards are drawn by the BER on the plane "
-                    "z = 14/16 (just proud of the linen)."))
+                    "Task Wall surface (walnut pinboard); same connection rules as monitor. Cards are drawn by the BER "
+                    "on the plane z = 14/16 (just proud of the board)."))
     ,
     ("decision_podium", ("facing, open=bool", "solid + cutout (auto)", "open ? 9 : 0", "lectern-like, nonOpaque",
                          "Front (emblem) faces the player who placed it (vanilla lectern rule). open=true lights the "
@@ -94,7 +94,7 @@ DESCRIBE = [
     ("models/block/monitor_corner_*.json", "monitor bezel corner (outer = both edges open, h/v = that edge continues)"),
     ("models/block/task_board_corner_*.json", "task board trim corner (outer/h/v as monitor)"),
     ("models/block/*_edge_*.json", "connectable bezel/trim edge (omitted when connected on that side)"),
-    ("models/block/*_panel_*.json", "connectable panel body (screen/linen + back + sides)"),
+    ("models/block/*_panel_*.json", "connectable panel body (screen/board surface + back + sides)"),
     ("models/block/*_inventory.json", "merged model for the item (panel + all bezels)"),
     ("models/block/status_lamp_*.json", "status lamp model for one status"),
     ("models/block/*.json", "block model"),
