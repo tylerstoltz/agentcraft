@@ -2,6 +2,7 @@ package dev.agentcraft.client.agents;
 
 import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
+import dev.agentcraft.layout.Anchors;
 import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
@@ -42,7 +43,7 @@ public final class Seats {
 	public record Seat(Anchor anchor, Vec3 sit, double seatTop, double drop, @Nullable Vec3 approach, double deskTop) {
 		/** The target the agent walks to: the sit point with the anchor's facing. */
 		public Anchor target() {
-			return new Anchor(anchor.name(), sit.x, anchor.y(), sit.z, anchor.yaw(), anchor.pitch());
+			return new Anchor(anchor.name(), sit.x, sit.y, sit.z, anchor.yaw(), anchor.pitch());
 		}
 	}
 
@@ -65,8 +66,25 @@ public final class Seats {
 			return c.seat;
 		}
 		Seat s = detect(level, a, pathfinder);
+		if (s == null && a.name().startsWith(AnchorNames.DESK_PREFIX)) {
+			s = deskChair(level, a, pathfinder);
+		}
 		cache.put(a.name(), new Cached(s, a.x(), a.y(), a.z(), a.yaw(), tick));
 		return s;
+	}
+
+	/**
+	 * A desk whose spot has no seat block can publish its chair as {@code seat_<agentId>} (feet or
+	 * seat-top position + facing). It is used only when the desk is right in front of the chair
+	 * (otherwise a seated agent would type in the air; it stands at {@code desk_<id>} instead).
+	 */
+	private static @Nullable Seat deskChair(BlockGetter level, Anchor desk, @Nullable GridPathfinder pathfinder) {
+		Anchor chair = Anchors.get("seat_" + desk.name().substring(AnchorNames.DESK_PREFIX.length()));
+		if (chair == null) {
+			return null;
+		}
+		Seat s = detect(level, new Anchor(desk.name(), chair.x(), chair.y(), chair.z(), chair.yaw(), chair.pitch()), pathfinder);
+		return s != null && !Double.isNaN(s.deskTop()) ? s : null;
 	}
 
 	/** Spots where agents never sit (the user spot: waiting agents stand and face you). */
@@ -102,11 +120,13 @@ public final class Seats {
 		double fz = Math.cos(rad);
 		// sit in front of a stairs back: the torso (0.23 deep) rests against the back's front face
 		double pull = hasBack ? 0.13 : 0.0;
-		Vec3 sit = new Vec3(p.getX() + 0.5 + fx * pull, a.y(), p.getZ() + 0.5 + fz * pull);
+		// feet on the floor of the seat block (an anchor may give the floor or the seat top)
+		double feet = p.getY();
+		Vec3 sit = new Vec3(p.getX() + 0.5 + fx * pull, feet, p.getZ() + 0.5 + fz * pull);
 		double seatTop = p.getY() + top;
-		double drop = seatTop - THIGH - a.y();
+		double drop = seatTop - THIGH - feet;
 		Vec3 approach = pathfinder == null ? null : approach(pathfinder, p, fx, fz);
-		double deskTop = surfaceTop(level, BlockPos.containing(sit.x + fx * 0.9, a.y() + 0.01, sit.z + fz * 0.9));
+		double deskTop = surfaceTop(level, BlockPos.containing(sit.x + fx * 0.9, feet + 0.01, sit.z + fz * 0.9));
 		return new Seat(a, sit, seatTop, drop, approach, deskTop);
 	}
 

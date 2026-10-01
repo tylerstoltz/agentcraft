@@ -12,7 +12,10 @@ import net.minecraft.client.Minecraft;
 import org.jspecify.annotations.Nullable;
 import dev.agentcraft.entity.ModEntities;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import net.minecraft.client.gui.screens.Screen;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelExtractionEvents;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
@@ -37,13 +40,35 @@ public final class AgentsFeature {
 		void clicked(Player player, ClientAgentEntity agent);
 	}
 
+	/** Builds the review/answer screen for one open decision (null = cannot open it). */
+	@FunctionalInterface
+	public interface DecisionScreenFactory {
+		@Nullable Screen create(Minecraft mc, Protocol.Decision decision);
+	}
+
 	private static final List<ClickHandler> CLICK_HANDLERS = new CopyOnWriteArrayList<>();
+	private static final Map<Protocol.DecisionKind, DecisionScreenFactory> DECISION_SCREENS = new ConcurrentHashMap<>();
 
 	private AgentsFeature() {
 	}
 
 	public static void onClick(ClickHandler h) {
 		CLICK_HANDLERS.add(h);
+	}
+
+	/**
+	 * The decisions / diff / permissions features register the screen that reviews or answers one
+	 * specific decision of a kind; the agent card's "Review" / "Answer" / "Decide" button opens it.
+	 * Without one, the card falls back to the DevBridge screen ("diff", "permission", "decision")
+	 * when the decision is the oldest open one of its kind (those factories take no arguments), and
+	 * otherwise answers inline (the decision's own options as rows).
+	 */
+	public static void registerDecisionScreen(Protocol.DecisionKind kind, DecisionScreenFactory factory) {
+		DECISION_SCREENS.put(kind, factory);
+	}
+
+	static @Nullable DecisionScreenFactory decisionScreen(Protocol.DecisionKind kind) {
+		return DECISION_SCREENS.get(kind);
 	}
 
 	public static void init() {
@@ -156,6 +181,9 @@ public final class AgentsFeature {
 						j.addProperty("id", e.agentId());
 						j.addProperty("family", e.view().family);
 						j.addProperty("awaitingUser", e.view().awaitingUser);
+						j.addProperty("awaitingDecision", e.view().awaitingDecision);
+						j.addProperty("needsYou", e.view().needsYou());
+						j.addProperty("paused", e.view().showsPaused());
 						j.addProperty("posture", l.posture().name());
 						j.addProperty("seated", l.seated());
 						j.addProperty("sit", round(l.sitAmount()));
@@ -177,9 +205,65 @@ public final class AgentsFeature {
 						list.add(j);
 					}
 					o.add("agents", list);
+					o.addProperty("exclaims", exclaims());
+					if (mc.gui.screen() instanceof AgentCardScreen card) {
+						JsonObject cj = new JsonObject();
+						cj.addProperty("agent", card.agentId());
+						cj.addProperty("input", card.inputText());
+						o.add("card", cj);
+					}
+					// SDL delivers typed characters only while text input is started (26.x)
+					o.addProperty("textInputActive", org.lwjgl.sdl.SDLKeyboard.SDL_TextInputActive(mc.getWindow().handle()));
 					return o;
 				});
 			});
+		if (dev.agentcraft.client.ClientEnv.flag("AGENTCRAFT_DEV_TEST", false)) {
+			DevBridge.register("dev.agents.keys", 30_000,
+				"{keys: 'm,hello world,return'} - TEST ONLY: press keys as SDL reports a keyboard (SDL events queued for the game window,"
+					+ " through Minecraft's SDL event loop; printable keys also type text only while SDL text input is on), one every 3 frames;"
+					+ " a token that is not a key name (space return escape back tab left right) is typed letter by letter (a-z 0-9 space)",
+				(req, mc) -> {
+					String keys = Fields.of(req).nonBlank("keys");
+					List<Integer> codes = new java.util.ArrayList<>();
+					for (String token : keys.split(",")) {
+						int sc = token.trim().length() > 1 ? SdlKeys.scancode(token.trim()) : -1;
+						if (sc >= 0) {
+							codes.add(sc);
+							continue;
+						}
+						for (char c : token.toCharArray()) {
+							int v = SdlKeys.scancode(String.valueOf(c));
+							if (v < 0) {
+								throw new DevBridge.DevException("cannot type '" + c + "' (lowercase letters, digits, space)");
+							}
+							codes.add(v);
+						}
+					}
+					List<java.nio.ByteBuffer> keep = new java.util.ArrayList<>();
+					int[] texts = {0};
+					java.util.concurrent.CompletableFuture<Void> chain = java.util.concurrent.CompletableFuture.completedFuture(null);
+					for (int sc : codes) {
+						chain = chain.thenCompose(v -> DevBridge.onClient(mc, () -> {
+							if (SdlKeys.press(mc.getWindow(), sc, keep)) {
+								texts[0]++;
+							}
+							return null;
+						})).thenCompose(v -> dev.agentcraft.client.dev.FrameScheduler.afterFrames(3));
+					}
+					return chain.thenCompose(v -> DevBridge.onClient(mc, () -> {
+						SdlKeys.free(keep);
+						JsonObject o = new JsonObject();
+						o.addProperty("pressed", codes.size());
+						o.addProperty("textEvents", texts[0]);
+						o.addProperty("screen", mc.gui.screen() == null ? null : mc.gui.screen().getClass().getSimpleName());
+						if (mc.gui.screen() instanceof AgentCardScreen card) {
+							o.addProperty("input", card.inputText());
+						}
+						o.addProperty("textInputActive", org.lwjgl.sdl.SDLKeyboard.SDL_TextInputActive(mc.getWindow().handle()));
+						return o;
+					}));
+				});
+		}
 		AttackEntityCallback.EVENT.register((player, level, hand, entity, hit) ->
 			entity instanceof ClientAgentEntity ? InteractionResult.FAIL : InteractionResult.PASS);
 
@@ -191,7 +275,9 @@ public final class AgentsFeature {
 			a.addProperty("pathFailures", m.pathFailures());
 			a.addProperty("plates", PlateLayout.laidOut());
 			a.addProperty("plateOverlaps", PlateLayout.overlaps());
+			a.addProperty("plateOverlapPairs", PlateLayout.overlapPairs());
 			a.addProperty("plateLayoutUs", Math.round(PlateLayout.layoutMicros() * 10) / 10.0);
+			a.addProperty("exclaims", exclaims());
 			o.add("agents", a);
 		});
 		DevBridge.register("dev.agents", 10_000,
@@ -254,6 +340,7 @@ public final class AgentsFeature {
 							pj.addProperty("depth", round(pt.depth));
 							pj.addProperty("weight", pt.weight);
 							pj.addProperty("capped", pt.capped);
+							pj.addProperty("leaderGaps", pt.gapCount);
 							pj.addProperty("rank", pt.rank);
 							pj.addProperty("nudge", Math.round(pt.nudge * 1e5) / 1e5);
 							pj.addProperty("scale", round(pt.scale));
@@ -278,5 +365,16 @@ public final class AgentsFeature {
 
 	private static double round(double v) {
 		return Math.round(v * 100.0) / 100.0;
+	}
+
+	/** Agents showing the "needs you" marker right now (QA: should match the open decisions + waiting_user agents). */
+	private static int exclaims() {
+		int n = 0;
+		for (ClientAgentEntity e : AgentManager.get().entities().values()) {
+			if (e.view().needsYou()) {
+				n++;
+			}
+		}
+		return n;
 	}
 }

@@ -37,6 +37,8 @@ public final class AgentLife {
 
 	/** Eye height of the agent model (player eye 1.62 x model scale 0.9375). */
 	static final double EYE = 1.52;
+	/** Ear height (blocks above the feet): where the error "steam" puffs out. */
+	static final double EAR = 1.47;
 	/** Ticks to sit down / stand up. */
 	private static final float SIT_STEP = 1f / 8f;
 	/** Pose smoothing per tick (fraction of the remaining distance). */
@@ -92,6 +94,8 @@ public final class AgentLife {
 	// state reactions
 	final AgentParticles particles = new AgentParticles();
 	private String lastFamily = "";
+	/** Ticks the agent has been live (on shift, Foreman online) without a break. */
+	private int liveFor;
 	private int lastConfetti = -1000;
 	private int lastPuff = -1000;
 	private int nextAmbientPuff;
@@ -185,7 +189,7 @@ public final class AgentLife {
 	void onFamily(String from, String to) {
 		if (to.equals("error") && !from.equals("error")) {
 			if (age - lastPuff > 20) {
-				particles.puff(e, EYE + 0.12 + sitOffset(), 9, this);
+				particles.puff(e, EAR + sitOffset(), 10, this);
 				lastPuff = age;
 			}
 		}
@@ -198,7 +202,7 @@ public final class AgentLife {
 	boolean preview(String fx, String text, @Nullable String to) {
 		switch (fx) {
 			case "confetti" -> particles.confetti(e, EYE - 0.15 + sitOffset(), this);
-			case "puff" -> particles.puff(e, EYE + 0.12 + sitOffset(), 9, this);
+			case "puff" -> particles.puff(e, EAR + sitOffset(), 10, this);
 			case "sparkle" -> {
 				for (int i = 0; i < 4; i++) {
 					particles.sparkle(e, EYE + 0.15 + sitOffset(), this);
@@ -243,12 +247,20 @@ public final class AgentLife {
 		float sitTarget = seatedTarget && !m.leaving() ? 1f : 0f;
 		sit = snap ? sitTarget : approach(sit, sitTarget, SIT_STEP);
 		boolean alive = !v.stale;
-		String fam = v.dotFamily();
-		if (!fam.equals(lastFamily)) {
-			if (!lastFamily.isEmpty() && alive) {
-				onFamily(lastFamily, fam);
+		String fam = v.family;
+		if (alive && v.active) {
+			// state reactions only for transitions seen live: coming back from "Foreman offline" or
+			// off shift must not replay a puff or a confetti burst for a state that is old news
+			if (!v.liveFamily.equals(lastFamily)) {
+				if (!lastFamily.isEmpty() && liveFor > 0) {
+					onFamily(lastFamily, v.liveFamily);
+				}
+				lastFamily = v.liveFamily;
 			}
-			lastFamily = fam;
+			liveFor++;
+		} else {
+			liveFor = 0;
+			lastFamily = "";
 		}
 
 		posture = choose(v, walking, seatedTarget || sit > 0.5f);
@@ -270,7 +282,7 @@ public final class AgentLife {
 		typeW = snap ? typeTarget : approach(typeW, typeTarget, 0.2f);
 		float talkTarget = posture == Posture.TALK ? 1f : 0f;
 		talkW = snap ? talkTarget : approach(talkW, talkTarget, 0.12f);
-		float exTarget = alive && v.active && "waiting".equals(fam) ? 1f : 0f;
+		float exTarget = v.needsYou() ? 1f : 0f;
 		exclaim = snap ? exTarget : approach(exclaim, exTarget, 0.1f);
 		if (posture == Posture.READ && age >= nextPageFlip) {
 			pageFlipStart = age;
@@ -671,9 +683,9 @@ public final class AgentLife {
 			}
 			case "error" -> {
 				if (age >= nextAmbientPuff) {
-					nextAmbientPuff = age + 55 + rand(40);
-					if (age - lastPuff > 40) {
-						particles.puff(e, EYE + 0.2 + sitOffset(), 2, this);
+					nextAmbientPuff = age + 36 + rand(28);
+					if (age - lastPuff > 30) {
+						particles.puff(e, EAR + sitOffset(), 4, this);
 					}
 				}
 			}
@@ -742,6 +754,25 @@ public final class AgentLife {
 
 	public int age() {
 		return age;
+	}
+
+	private net.minecraft.client.model.object.book.BookModel.@Nullable State bookState;
+
+	/**
+	 * The held book's model state, reused while it does not change (the values are quantised to
+	 * 1/64, so a steadily reading agent submits the same immutable state every frame: no
+	 * allocation; a page flip or opening creates a few).
+	 */
+	net.minecraft.client.model.object.book.BookModel.State bookState(float openness, float flip1, float flip2) {
+		float o = Math.round(openness * 64f) / 64f;
+		float a = Math.round(flip1 * 64f) / 64f;
+		float b = Math.round(flip2 * 64f) / 64f;
+		var st = bookState;
+		if (st == null || st.openness() != o || st.pageFlip1() != a || st.pageFlip2() != b) {
+			st = new net.minecraft.client.model.object.book.BookModel.State(o, a, b);
+			bookState = st;
+		}
+		return st;
 	}
 
 	private static float approach(float v, float target, float step) {

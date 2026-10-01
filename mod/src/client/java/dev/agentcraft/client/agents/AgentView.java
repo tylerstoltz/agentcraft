@@ -17,8 +17,16 @@ public final class AgentView {
 	/** Name colour on dark surfaces (nameplate), ARGB. */
 	public int nameColor;
 	public AgentState state = AgentState.IDLE;
-	/** Status family for dots/lamps: idle thinking working waiting error done. */
+	/**
+	 * Status family to <b>show</b> for this agent (nameplate dot, lamps, monitors, the "!" marker):
+	 * idle thinking working waiting error done. Already accounts for everything: {@code waiting}
+	 * when a decision waits on Blendi for this agent ({@link #awaitingUser}), {@code idle} while it
+	 * is off shift or the Foreman is offline. Lamp/monitor owners: read this, not
+	 * {@code state.family()}.
+	 */
 	public String family = "idle";
+	/** The family while the agent is on shift and the link is live (no off-shift/offline override); for effects. */
+	public String liveFamily = "idle";
 	public String activity = "";
 	/** The station key the agent is at or walking to ("desk", "library", ..., "lounge"). */
 	public String station = "lounge";
@@ -34,8 +42,15 @@ public final class AgentView {
 	 * asked, a permission prompt), even when the Foreman shows the agent as idle meanwhile.
 	 */
 	public boolean awaitingUser;
-	/** The decision behind {@link #awaitingUser} (for the agent card), or null. */
+	/**
+	 * The decision behind {@link #awaitingUser} (for the agent card), or null. Every open decision
+	 * has exactly one owner agent ({@link AgentManager}): a merge belongs to the worker whose task it
+	 * merges, a question or permission prompt to the agent that asked. So the number of "!" markers
+	 * in the HQ matches the number of decisions waiting on Blendi.
+	 */
 	public @Nullable String awaitingDecision;
+	/** How many open decisions this agent owns (the card shows the first, "+n more"). */
+	public int awaitingCount;
 	public String role = "";
 	public @Nullable String title;
 	/** Laid-out nameplates, rebuilt by {@link Nameplate#of} / {@link Nameplate#compactOf} only when their text changes. */
@@ -47,14 +62,14 @@ public final class AgentView {
 		this.name = id;
 	}
 
-	void update(Agent a, boolean staleLink, @Nullable String awaitingDecisionId) {
+	void update(Agent a, boolean staleLink, @Nullable String awaitingDecisionId, int awaitingDecisions) {
 		name = a.name();
 		color = 0xFF000000 | dev.agentcraft.Cast.parseColor(a.color(), 0x9C9488);
 		nameColor = UiStyle.agentOnDark(a.id());
 		state = a.state();
 		awaitingDecision = awaitingDecisionId;
+		awaitingCount = awaitingDecisionId == null ? 0 : Math.max(1, awaitingDecisions);
 		awaitingUser = awaitingDecisionId != null;
-		family = statusFamily(a.state(), awaitingUser);
 		role = a.role().wire();
 		title = a.title();
 		activity = a.activity();
@@ -62,6 +77,8 @@ public final class AgentView {
 		paused = a.isPaused();
 		stale = staleLink;
 		taskId = a.taskId();
+		liveFamily = statusFamily(a.state(), awaitingUser);
+		family = stale || !active ? "idle" : liveFamily;
 	}
 
 	/**
@@ -92,26 +109,45 @@ public final class AgentView {
 		return activity;
 	}
 
-	/** Dot family shown on the nameplate (idle when stale or off shift). */
+	/** Dot family shown on the nameplate: the same as {@link #family} (kept for callers of the Phase 3 API). */
 	public String dotFamily() {
-		return stale || !active ? "idle" : family;
+		return family;
+	}
+
+	/** Paused by Blendi (and otherwise live): the plate shows a pause glyph instead of the dot. */
+	public boolean showsPaused() {
+		return paused && active && !stale;
 	}
 
 	/**
 	 * How much the plate matters when plates compete for screen space (higher = placed first, keeps
-	 * its activity line): waiting 6, error 5, working/thinking 4, done 2, idle 1, off shift or
-	 * Foreman offline 0. Plates at 2 or below collapse to the name when they would overlap another.
+	 * its activity line): waiting 6, error 5, working/thinking 4, paused 3 (you paused it, so it
+	 * keeps saying so), done 2, idle 1, off shift or Foreman offline 0. Plates at 2 or below collapse
+	 * to the name when they would overlap another.
 	 */
 	public int plateWeight() {
 		if (stale || !active) {
 			return 0;
 		}
-		return switch (family) {
+		int w = switch (family) {
 			case "waiting" -> 6;
 			case "error" -> 5;
 			case "working", "thinking" -> 4;
 			case "done" -> 2;
 			default -> 1;
 		};
+		if (needsYou()) {
+			w = 6;
+		}
+		return paused ? Math.max(w, 3) : w;
+	}
+
+	/**
+	 * Show the pulsing clay "!" above this agent: it owns an open decision ({@link #awaitingUser},
+	 * also while it already works on something else) or it is asking you ({@code waiting_user}).
+	 * Never while off shift or while the Foreman is offline.
+	 */
+	public boolean needsYou() {
+		return active && !stale && (awaitingUser || state == AgentState.WAITING_USER);
 	}
 }

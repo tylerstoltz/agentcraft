@@ -138,7 +138,12 @@ public class AgentRenderer extends AvatarRenderer<ClientAgentEntity> {
 		float sc = 0.85f * (0.6f + 0.4f * open);
 		poseStack.scale(sc, sc, sc);
 		float flip = s.pageFlip;
-		BookModel.State st = new BookModel.State(1.3f * open, flip > 0 ? flip : 0.12f, flip > 0 ? Math.min(1f, flip * 1.3f) : 0.88f);
+		AgentLife life = s.life;
+		if (life == null) {
+			poseStack.popPose();
+			return;
+		}
+		BookModel.State st = life.bookState(1.3f * open, flip > 0 ? flip : 0.12f, flip > 0 ? Math.min(1f, flip * 1.3f) : 0.88f);
 		collector.submitModel(book, st, poseStack, s.lightCoords, OverlayTexture.NO_OVERLAY, -1, EnchantTableRenderer.BOOK_TEXTURE, sprites, 0);
 		poseStack.popPose();
 	}

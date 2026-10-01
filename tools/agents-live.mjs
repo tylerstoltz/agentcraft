@@ -48,8 +48,8 @@ for (let i = 0; Date.now() < end; i++) {
   const agents = (look.agents || []).map(
     (a) => `${a.id}:${a.posture}${a.seated ? '(s)' : ''}/${a.family}${a.bubble ? ` "${a.bubble.slice(0, 28)}"` : ''}${a.particles ? ` p${a.particles}` : ''}`,
   );
-  log.write(JSON.stringify({ i, t: t0, fps: st.fps, agents: st.agents, look: look.agents }) + '\n');
-  console.log(i, `fps=${st.fps} moving=${st.agents?.moving} overlaps=${st.agents?.plateOverlaps} layoutUs=${st.agents?.plateLayoutUs}`, agents.join(' | '), shot.ok ? '' : shot.error);
+  log.write(JSON.stringify({ i, t: t0, fps: st.fps, agents: st.agents, openDecisions: st.foreman?.counts?.openDecisions, look: look.agents }) + '\n');
+  console.log(i, `fps=${st.fps} moving=${st.agents?.moving} overlaps=${st.agents?.plateOverlaps}${st.agents?.plateOverlapPairs ? `(${st.agents.plateOverlapPairs})` : ''} exclaims=${st.agents?.exclaims}/${st.foreman?.counts?.openDecisions} layoutUs=${st.agents?.plateLayoutUs}`, agents.join(' | '), shot.ok ? '' : shot.error);
   if (fm) {
     for (const d of fm.openDecisions()) {
       if (!seen.has(d.id)) seen.set(d.id, Date.now());

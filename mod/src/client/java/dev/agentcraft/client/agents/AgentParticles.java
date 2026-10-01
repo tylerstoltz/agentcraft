@@ -121,19 +121,30 @@ public final class AgentParticles {
 		drag[i] = 0.97f;
 	}
 
-	/** Error: a small red puff of {@code n} smoke wisps above the head. */
+	/**
+	 * Error: red "steam" puffing out of both ears ({@code n} wisps, alternating sides), the cartoon
+	 * "fuming" read. {@code height} is the ear height above the feet. The wisps start just outside
+	 * the head (half width 0.23) and drift sideways and a little up, so they read from the front,
+	 * the back and the side, and stay below the nameplate (they used to start inside the head).
+	 */
 	void puff(ClientAgentEntity e, double height, int n, AgentLife r) {
 		int red = UiStyle.status("error");
+		double yaw = Math.toRadians(e.getYHeadRot());
+		// the head's right-hand side axis (yaw 0 faces +Z, so its right is -X)
+		double sx = -Math.cos(yaw);
+		double sz = -Math.sin(yaw);
 		for (int k = 0; k < n; k++) {
-			double a = r.rand01() * Math.PI * 2;
-			float out = 0.014f + r.rand01() * 0.022f;
-			double px = e.getX() + Math.cos(a) * 0.12;
-			double pz = e.getZ() + Math.sin(a) * 0.12;
-			double py = e.getY() + height + r.randSigned() * 0.1;
-			int c = k % 3 == 0 ? mix(red, UiStyle.INK, 0.3f) : k % 3 == 1 ? red : mix(red, UiStyle.CLAY, 0.35f);
-			int i = spawn(PUFF, px, py, pz, (float) Math.cos(a) * out, 0.012f + r.rand01() * 0.016f, (float) Math.sin(a) * out, 16 + r.rand(10),
-				0.16f + r.rand01() * 0.1f, c);
-			drag[i] = 0.88f;
+			double side = (k & 1) == 0 ? 1 : -1;
+			double off = 0.28 + r.rand01() * 0.05;
+			double px = e.getX() + sx * side * off;
+			double pz = e.getZ() + sz * side * off;
+			double py = e.getY() + height + r.randSigned() * 0.05;
+			float out = 0.022f + r.rand01() * 0.02f;
+			float fwd = r.randSigned() * 0.006f;
+			int c = k % 3 == 0 ? mix(red, UiStyle.INK, 0.25f) : k % 3 == 1 ? red : mix(red, UiStyle.CLAY, 0.35f);
+			int i = spawn(PUFF, px, py, pz, (float) (sx * side * out - sz * fwd), 0.008f + r.rand01() * 0.01f, (float) (sz * side * out + sx * fwd),
+				14 + r.rand(9), 0.15f + r.rand01() * 0.08f, c);
+			drag[i] = 0.86f;
 			spin[i] = r.randSigned() * 0.08f;
 		}
 	}
@@ -211,7 +222,7 @@ public final class AgentParticles {
 			for (int i = 0; i < 8; i++) {
 				SMOKE[i] = a.getSprite(Identifier.withDefaultNamespace("generic_" + i));
 			}
-			type = RenderTypes.text(TextureAtlas.LOCATION_PARTICLES);
+			type = RenderTypes.text(a.location());
 		}
 		return glow != null;
 	}

@@ -53,6 +53,8 @@ public final class AgentManager {
 	private static final int STAND_UP_TICKS = 8;
 	/** A waiting agent re-approaches you once you moved this far from where it chose its spot (blocks). */
 	private static final double FOLLOW_SLACK = 2.6;
+	/** How far from you a waiting agent stands (blocks). */
+	static final double USER_DISTANCE = 3.2;
 
 	private final Map<String, ClientAgentEntity> entities = new LinkedHashMap<>();
 	private final Map<Integer, ClientAgentEntity> byEntityId = new HashMap<>();
@@ -60,6 +62,7 @@ public final class AgentManager {
 	private final Seats seats = new Seats();
 	private final Map<String, UserSpot> userSpots = new HashMap<>();
 	private final Map<String, String> awaiting = new HashMap<>();
+	private final Map<String, Integer> awaitingCounts = new HashMap<>();
 	private long awaitingRevision = -1;
 	private @Nullable ClientLevel level;
 	private long layoutRevision = -1;
@@ -174,7 +177,7 @@ public final class AgentManager {
 				e.setSkin(AgentSkins.get(a.id(), a.skin()));
 			}
 			AgentView v = e.view();
-			v.update(a, stale, awaiting.get(a.id()));
+			v.update(a, stale, awaiting.get(a.id()), awaitingCounts.getOrDefault(a.id(), 0));
 			v.station = StationAssigner.stationKey(a);
 			v.anchor = target.name();
 			if (playerFeet != null && !stale && followsPlayer(a)) {
@@ -208,32 +211,48 @@ public final class AgentManager {
 		return a.state() == AgentState.WAITING_USER && a.isActive() && !a.isPaused();
 	}
 
-	/** agentId -> open decision waiting on Blendi for that agent (its own, or one about its task). */
+	/**
+	 * agentId -> the first open decision that agent <b>owns</b>. Every open decision has exactly one
+	 * owner, so the HQ shows one "!" per decision waiting on Blendi:
+	 * <ul>
+	 *   <li>a merge belongs to the worker whose task it merges (the lead files it, but it is the
+	 *       worker's finished work that waits; "t4 awaiting your merge"), or to the agent that filed
+	 *       it when the task has no known assignee;</li>
+	 *   <li>a question or permission prompt belongs to the agent that asked, whatever task it is
+	 *       about (a question about Juniper's task is Marlow's question, not Juniper's).</li>
+	 * </ul>
+	 * An agent's own questions/permissions come before the merges it owns.
+	 */
 	private void updateAwaiting(ForemanState st) {
 		if (st.revision() == awaitingRevision) {
 			return;
 		}
 		awaitingRevision = st.revision();
 		awaiting.clear();
+		awaitingCounts.clear();
 		List<Protocol.Decision> open = st.openDecisions();
-		// an agent's own question / permission prompt comes first, then merges it asked for, then
-		// decisions about its task (a merge of the work it finished)
-		for (Protocol.Decision d : open) {
-			if (d.kind() != Protocol.DecisionKind.MERGE) {
-				awaiting.putIfAbsent(d.agentId(), d.id());
-			}
-		}
-		for (Protocol.Decision d : open) {
-			awaiting.putIfAbsent(d.agentId(), d.id());
-		}
-		for (Protocol.Decision d : open) {
-			if (d.taskId() != null) {
-				Protocol.Task t = st.task(d.taskId());
-				if (t != null && t.assignee() != null) {
-					awaiting.putIfAbsent(t.assignee(), d.id());
+		for (int pass = 0; pass < 2; pass++) {
+			for (Protocol.Decision d : open) {
+				boolean merge = d.kind() == Protocol.DecisionKind.MERGE;
+				if (merge != (pass == 1)) {
+					continue;
 				}
+				String owner = owner(st, d);
+				awaiting.putIfAbsent(owner, d.id());
+				awaitingCounts.merge(owner, 1, Integer::sum);
 			}
 		}
+	}
+
+	/** The agent an open decision belongs to (see {@link #updateAwaiting}). */
+	public static String owner(ForemanState st, Protocol.Decision d) {
+		if (d.kind() == Protocol.DecisionKind.MERGE && d.taskId() != null) {
+			Protocol.Task t = st.task(d.taskId());
+			if (t != null && t.assignee() != null && st.agent(t.assignee()) != null) {
+				return t.assignee();
+			}
+		}
+		return d.agentId();
 	}
 
 	/** The player's feet on the HQ floor when they are inside the HQ and not spectating, else null. */
@@ -258,8 +277,10 @@ public final class AgentManager {
 	}
 
 	/**
-	 * A free walkable spot about two blocks from the player, on the agent's side (several waiting
-	 * agents fan out), facing the player. Sticky until the player moves {@value #FOLLOW_SLACK}
+	 * A free walkable spot about three blocks from the player, on the agent's side (several waiting
+	 * agents fan out), facing the player. Three blocks is a conversation distance: the agent, its
+	 * plate and its "!" fit on screen at eye level (at two blocks the plate filled the upper middle
+	 * of the view and the "!" was cut off). Sticky until the player moves {@value #FOLLOW_SLACK}
 	 * blocks away from where they were when it was chosen.
 	 */
 	private @Nullable Anchor userSpot(String agentId, ClientAgentEntity e, Vec3 player, int index, int count, GridPathfinder pf) {
@@ -273,7 +294,7 @@ public final class AgentManager {
 		}
 		double spread = Math.toRadians(42);
 		double fan = (index - (count - 1) / 2.0) * spread;
-		double[] radii = {2.1, 2.6, 1.7};
+		double[] radii = {USER_DISTANCE, USER_DISTANCE + 0.5, USER_DISTANCE - 0.6};
 		double[] offs = {0, 0.45, -0.45, 0.9, -0.9, 1.4, -1.4, 2.0, -2.0, Math.PI};
 		for (double r : radii) {
 			for (double o : offs) {

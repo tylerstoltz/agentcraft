@@ -71,6 +71,22 @@ public final class PlateLayout {
 	/** A camera jump (blocks / degrees in one frame) counts as a cut: plates snap instead of animating. */
 	private static final double CUT_DISTANCE = 1.5;
 	private static final float CUT_DEGREES = 25f;
+	/**
+	 * Near plates stop growing on screen at this size (screen px per plate px, as a multiple of the
+	 * GUI scale): a plate is never drawn bigger than ~1.1x the GUI's own text, however close its
+	 * agent stands (at 2 blocks a full-size plate plus its "!" used to fill the upper middle of the
+	 * view and push other plates off screen). Kicks in below ~6 blocks at 1080p / FOV 70.
+	 */
+	private static final float NEAR_MAX_GUI = 1.1f;
+	/** Plates (with their stack) stay this far below the top edge of the screen (fraction of its height). */
+	private static final float TOP_MARGIN = 0.012f;
+	/**
+	 * A plate that does not fit on screen above its natural spot may come down by up to this much
+	 * (blocks, at the agent): over the head to about the shoulders, rather than being cut off.
+	 */
+	private static final float DOWN_MAX = 0.8f;
+	/** Max gaps cut into one leader line. */
+	private static final int MAX_GAPS = 4;
 
 	/** Per-agent layout memory across frames. */
 	static final class Track {
@@ -92,6 +108,9 @@ public final class PlateLayout {
 		float depth;
 		int weight;
 		boolean capped;
+		/** Leader-line gaps (plate-space y pairs) handed to the render state; reused. */
+		final float[] gaps = new float[2 * MAX_GAPS];
+		int gapCount;
 
 		/** Not laid out this frame (hidden, behind a wall): forget the lift, take no space. */
 		void clear() {
@@ -106,7 +125,7 @@ public final class PlateLayout {
 	private static final class Item {
 		AgentRenderState s;
 		Track t;
-		float sx, sy, k, depth, sortKey;
+		float sx, sy, k, f, depth, sortKey;
 		int weight;
 		boolean focused, compactable, compact, fresh, hidden;
 		float x0, y0, x1, y1;
@@ -141,6 +160,9 @@ public final class PlateLayout {
 	private static long frame;
 	private static boolean snapNext;
 	private static int overlaps;
+	/** "a/b" agent id pairs that overlapped in the last frame (QA), reused. */
+	private static final StringBuilder OVERLAP_PAIRS = new StringBuilder();
+	private static String overlapPairs = "";
 	private static int laidOut;
 	private static float layoutMicros;
 	private static @Nullable Vec3 lastCamPos;
@@ -165,6 +187,11 @@ public final class PlateLayout {
 	/** Pairs of drawn plates that overlapped on screen in the last frame (QA; 0 when settled). */
 	public static int overlaps() {
 		return overlaps;
+	}
+
+	/** Which plates overlapped in the last frame ("rowan/wren kit/tove"), "" when none (QA). */
+	public static String overlapPairs() {
+		return overlapPairs;
 	}
 
 	/** Plates that took part in the last layout (visible ones). */
@@ -200,6 +227,7 @@ public final class PlateLayout {
 		ITEMS.clear();
 		overlaps = 0;
 		laidOut = 0;
+		overlapPairs = "";
 		ClientLevel lvl = mc.level;
 		int w = mc.getWindow().getWidth();
 		int h = mc.getWindow().getHeight();
@@ -208,6 +236,7 @@ public final class PlateLayout {
 			return;
 		}
 		float f = cam.projectionMatrix.m11() * h * 0.5f;
+		float kMax = (float) mc.getWindow().getGuiScale() * NEAR_MAX_GUI;
 		if (lastCamPos == null || lastCamPos.distanceToSqr(cam.pos) > CUT_DISTANCE * CUT_DISTANCE
 			|| Math.abs(Mth.wrapDegrees(cam.yRot - lastCamYaw)) > CUT_DEGREES || Math.abs(cam.xRot - lastCamPitch) > CUT_DEGREES) {
 			snap = true; // camera cut (dev.camera, teleport): lay out from scratch, no slide from the old view
@@ -256,6 +285,12 @@ public final class PlateLayout {
 			it.sx = (V.x / V.w * 0.5f + 0.5f) * w;
 			it.sy = (0.5f - V.y / V.w * 0.5f) * h;
 			it.k = WorldUi.PX * s.plateScale * f / depth;
+			if (it.k > kMax) {
+				// near agent: shrink the plate (and its stack) so it is no bigger on screen than kMax
+				s.plateScale *= kMax / it.k;
+				it.k = kMax;
+			}
+			it.f = f;
 			boolean underCrosshair = !screenOpen && t.hasRect && w * 0.5f >= t.rx0 && w * 0.5f <= t.rx1 && h * 0.5f >= t.ry0 && h * 0.5f <= t.ry1;
 			it.focused = s.plateCrosshair || underCrosshair;
 			// low-value plates (idle, done, off shift, offline) form one tier: among them the nearest wins
@@ -299,9 +334,10 @@ public final class PlateLayout {
 			a.sortKey = a.depth - (t.grounded ? STICKY_DEPTH : 0f);
 		}
 
-		// 2. place in priority order, each at the lowest free lift
+		// 2. place in priority order, each at the lowest free lift that keeps it on screen
 		ITEMS.sort(PRIORITY);
 		int ranks = Math.min(n, MAX_RANKS);
+		float topMargin = Math.max(4f, h * TOP_MARGIN);
 		for (int i = 0; i < n; i++) {
 			Item a = ITEMS.get(i);
 			AgentRenderState s = a.s;
@@ -314,21 +350,31 @@ public final class PlateLayout {
 			a.x1 = a.sx + pw / 2f;
 			a.y1 = a.sy;
 			a.y0 = a.sy - ph;
-			float free = findLift(a, i);
-			float lift = Math.min(free, MAX_LIFT_PLATES * s.plateFull.height() * a.k);
-			t.capped = free > lift;
-			if (t.capped && a.weight == 0) {
-				// a crowd taller than the cap: the least important plates step out instead of overlapping
-				a.hidden = true;
-				s.plate = null;
-				t.clear();
-				continue;
+			// allowed lifts (screen px): up to the cap and never past the top of the screen; a plate
+			// whose head is on screen may come down (over its head) instead of being cut off
+			boolean headOnScreen = a.sy > 0 && a.sy < h;
+			float hi = Math.min(MAX_LIFT_PLATES * s.plateFull.height() * a.k, headOnScreen ? a.y0 - topMargin : Float.MAX_VALUE);
+			float lo = headOnScreen ? Math.min(0f, -DOWN_MAX * a.f / a.depth) : 0f;
+			float lift = findLift(a, i, lo, hi);
+			t.capped = Float.isNaN(lift);
+			if (t.capped) {
+				if (a.weight == 0) {
+					// no free spot on screen: the least important plates step out instead of overlapping
+					a.hidden = true;
+					s.plate = null;
+					t.clear();
+					continue;
+				}
+				// an important plate that cannot be placed free: as close to its free spot as the screen allows
+				// (it overlaps; the rank nudge keeps it cleanly in front of / behind the other one)
+				float up = findLift(a, i, 0f, Float.MAX_VALUE);
+				lift = Math.max(lo, Math.min(hi, Float.isNaN(up) ? 0f : up));
 			}
 			a.y0 -= lift;
 			a.y1 -= lift;
 			t.prevTarget = t.targetLift;
 			t.targetLift = lift / a.k;
-			t.grounded = lift < 0.5f;
+			t.grounded = Math.abs(lift) < 0.5f;
 			if (a.fresh || snap || crosses(a, i, t.lift * a.k, lift, ph)) {
 				t.lift = t.targetLift;
 			} else {
@@ -343,16 +389,27 @@ public final class PlateLayout {
 				if (Math.abs(t.targetLift - t.lift) < 0.75f) {
 					t.lift = t.targetLift;
 				}
-				t.lift = Math.max(0f, t.lift);
+				t.lift = Math.max(lo / a.k, t.lift);
+				// a slide never runs through a plate placed before it (e.g. when a bubble pops up on a
+				// neighbour): if the animated spot overlaps one while the target is free, jump
+				if (!t.capped && overlapsPlaced(a.x0, a.sy - ph - t.lift * a.k, a.x1, a.sy - t.lift * a.k, i)) {
+					t.lift = t.targetLift;
+				}
 			}
 			t.rank = i;
 			t.nudge = NUDGE_PER_RANK * Math.max(0, ranks - 1 - i);
+			if (t.lift < -0.5f) {
+				// pulled down over its own agent: sit clearly in front of the head (same look on screen)
+				t.nudge = Math.max(t.nudge, Math.min(0.45f, 0.4f / a.depth));
+			}
 			t.scale = s.plateScale;
 			t.depth = a.depth;
 			t.weight = a.weight;
 			s.plate = d;
 			s.plateLift = t.lift;
 			s.plateNudge = t.nudge;
+			s.leaderGaps = null;
+			s.leaderGapCount = 0;
 			// the rectangle as drawn this frame (current, animated lift)
 			float drawn = t.lift * a.k;
 			t.rx0 = a.x0;
@@ -362,21 +419,32 @@ public final class PlateLayout {
 			t.hasRect = true;
 		}
 		int shown = 0;
+		StringBuilder pairs = OVERLAP_PAIRS;
+		pairs.setLength(0);
 		for (int i = 0; i < n; i++) {
-			if (ITEMS.get(i).hidden) {
+			Item ai = ITEMS.get(i);
+			if (ai.hidden) {
 				continue;
 			}
 			shown++;
-			Track p = ITEMS.get(i).t;
+			Track p = ai.t;
 			for (int j = i + 1; j < n; j++) {
-				if (ITEMS.get(j).hidden) {
+				Item aj = ITEMS.get(j);
+				if (aj.hidden) {
 					continue;
 				}
-				Track q = ITEMS.get(j).t;
+				Track q = aj.t;
 				if (overlap(p.rx0, p.ry0, p.rx1, p.ry1, q.rx0, q.ry0, q.rx1, q.ry1, -0.5f)) {
 					overlaps++;
+					if (pairs.length() < 200) {
+						pairs.append(pairs.isEmpty() ? "" : " ").append(ai.s.agentId).append('/').append(aj.s.agentId);
+					}
 				}
 			}
+			leaderGaps(ai, i, n);
+		}
+		if (!pairs.isEmpty()) {
+			overlapPairs = pairs.toString();
 		}
 		laidOut = shown;
 		if ((frame & 1023) == 0) {
@@ -414,30 +482,107 @@ public final class PlateLayout {
 		return false;
 	}
 
-	/** Lowest lift (screen px, >= 0) at which item {@code i} clears the {@code i} items placed before it. */
-	private static float findLift(Item a, int placed) {
-		if (candidates.length < placed + 1) {
-			candidates = new float[placed + 8];
+	/**
+	 * The preferred free lift (screen px) in {@code [lo, hi]} at which item {@code i} clears the
+	 * {@code i} items placed before it, or NaN when there is none. Preference: the lowest lift at or
+	 * above the natural spot (0); only when nothing up there fits on screen, the smallest step down
+	 * (negative lifts, pulling the plate over its own head). Candidates are the natural spot (or the
+	 * nearest allowed lift to it), just above and just below every plate it overlaps horizontally.
+	 */
+	private static float findLift(Item a, int placed, float lo, float hi) {
+		if (hi < lo) {
+			return Float.NaN;
+		}
+		if (candidates.length < 2 * placed + 1) {
+			candidates = new float[2 * placed + 8];
 		}
 		int m = 0;
-		candidates[m++] = 0f;
+		candidates[m++] = key(Math.max(lo, Math.min(hi, 0f)));
 		for (int j = 0; j < placed; j++) {
 			Item p = ITEMS.get(j);
 			if (!p.hidden && a.x0 < p.x1 + GAP && a.x1 > p.x0 - GAP) {
-				float l = a.y1 - (p.y0 - GAP);
-				if (l > 0) {
-					candidates[m++] = l;
+				float above = a.y1 - (p.y0 - GAP);
+				float below = a.y0 - (p.y1 + GAP);
+				if (above >= lo && above <= hi) {
+					candidates[m++] = key(above);
+				}
+				if (below >= lo && below <= hi) {
+					candidates[m++] = key(below);
 				}
 			}
 		}
 		java.util.Arrays.sort(candidates, 0, m);
 		for (int c = 0; c < m; c++) {
-			float l = candidates[c];
+			float l = unkey(candidates[c]);
 			if (free(a.x0, a.y0 - l, a.x1, a.y1 - l, placed)) {
 				return l;
 			}
 		}
-		return candidates[m - 1];
+		return Float.NaN;
+	}
+
+	/** Sort key for a lift: lifts >= 0 ascending first, then negative lifts closest to 0 first. */
+	private static float key(float lift) {
+		return lift >= 0f ? lift : 1e7f - lift;
+	}
+
+	private static float unkey(float key) {
+		return key < 1e7f ? key : -(key - 1e7f);
+	}
+
+	/** Does the rectangle overlap the rectangle of a plate placed before item {@code placed}, as drawn this frame? */
+	private static boolean overlapsPlaced(float x0, float y0, float x1, float y1, int placed) {
+		for (int j = 0; j < placed; j++) {
+			Item p = ITEMS.get(j);
+			if (!p.hidden && p.t.hasRect && overlap(x0, y0, x1, y1, p.t.rx0, p.t.ry0, p.t.rx1, p.t.ry1, -0.5f)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Cut the parts of item {@code i}'s leader line that run across another plate or bubble, so the
+	 * line passes behind them instead of being drawn over their text. Plate-space y pairs (top,
+	 * bottom) go to {@link AgentRenderState#leaderGaps}.
+	 */
+	private static void leaderGaps(Item a, int i, int n) {
+		Track t = a.t;
+		t.gapCount = 0;
+		if (t.lift <= 3f) {
+			return;
+		}
+		float lineTop = a.sy - t.lift * a.k;
+		float lineBottom = a.sy - a.k;
+		float lx = a.sx;
+		int g = 0;
+		for (int j = 0; j < n && g < MAX_GAPS; j++) {
+			if (j == i) {
+				continue;
+			}
+			Item b = ITEMS.get(j);
+			Track q = b.t;
+			if (b.hidden || !q.hasRect || lx < q.rx0 - 1f || lx > q.rx1 + 1f || q.ry1 <= lineTop || q.ry0 >= lineBottom) {
+				continue;
+			}
+			float y0 = (Math.max(q.ry0, lineTop) - a.sy) / a.k - 1.5f;
+			float y1 = (Math.min(q.ry1, lineBottom) - a.sy) / a.k + 1.5f;
+			// insertion by top edge
+			int at = g;
+			while (at > 0 && t.gaps[2 * (at - 1)] > y0) {
+				t.gaps[2 * at] = t.gaps[2 * (at - 1)];
+				t.gaps[2 * at + 1] = t.gaps[2 * (at - 1) + 1];
+				at--;
+			}
+			t.gaps[2 * at] = y0;
+			t.gaps[2 * at + 1] = y1;
+			g++;
+		}
+		t.gapCount = g;
+		if (g > 0) {
+			a.s.leaderGaps = t.gaps;
+			a.s.leaderGapCount = g;
+		}
 	}
 
 	private static boolean free(float x0, float y0, float x1, float y1, int placed) {

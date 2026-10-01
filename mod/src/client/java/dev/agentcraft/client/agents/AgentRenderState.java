@@ -57,6 +57,13 @@ public class AgentRenderState extends AvatarRenderState {
 	public float exclaim;
 	/** Speech bubble visibility 0..1 (pop in/out). */
 	public float bubble;
+	/**
+	 * Parts of the leader line to leave out because another plate or bubble is in the way (pairs of
+	 * plate-space y, top then bottom, sorted top to bottom; {@link #leaderGapCount} pairs), written by
+	 * {@link PlateLayout} (the array belongs to the layout and is reused).
+	 */
+	public float @Nullable [] leaderGaps;
+	public int leaderGapCount;
 	/** Partial tick this state was extracted with. */
 	public float partialTick;
 	/** Light at the agent (for lit extras like the book). */
