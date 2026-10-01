@@ -6,3 +6,10 @@ artifacts/
 *.log
 dist/
 .env
+
+.gradle-home/
+.venv/
+__pycache__/
+sandbox/*/
+.agentcraft-home/
+mod/run/
