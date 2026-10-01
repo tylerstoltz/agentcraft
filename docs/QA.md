@@ -21,8 +21,11 @@ node tools/qa.mjs ... --stop-daemon               # also stop this checkout's Gr
 
 Defaults: `--port`/`--dev-port` come from `AGENTCRAFT_PORT`/`AGENTCRAFT_DEV_PORT` or 7878/7879.
 `--home` defaults to `<main checkout>/.agentcraft-home` (QA never uses `~/.agentcraft`), and the
-profile to `showcase` (`showcase-late` for `--showcase late`). Use your own port pair when several
-agents run QA at the same time; at most one game per checkout.
+profile to `showcase` (`showcase-late` for `--showcase late`). When several agents run QA at the
+same time, give each its own port pair **and** its own `--profile` (e.g. `--profile qa-tools`):
+the profile lives in the shared home, and a live Foreman for a profile is always reused, even on
+another agent's port. qa.json takes repo/worktree ids from the live state, so any profile name
+works. At most one game per checkout.
 
 What a run does:
 
