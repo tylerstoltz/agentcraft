@@ -142,6 +142,52 @@ QA: `dev.anchors {prefix?}` lists them; `dev.camera {anchor:"cam_agents"}` puts 
 `HqFeature.init()` with `HqBuilders.register(...)` and `HqBuilders.setDefault(id)`. `/agentcraft hq`
 then builds yours; `/agentcraft hq test` still builds the test room.
 
+## The real HQ (`hq.StudioHqBuilder`, default builder `studio`)
+
+`/agentcraft hq` builds it (`/agentcraft hq test` still builds the Phase 2 test room); a fresh HQ
+world builds it automatically on first start (`AGENTCRAFT_HQ_AUTOBUILD=0` turns that off). A long
+timber-framed studio hall (x -24..24, z -10..6, floor blocks y=65, **agents stand at y=66**) with a
+copper-domed octagonal Goal Atrium in front (centre 0,15; entrance and spawn at z=22, portico and
+path to the south), terraces, pond, cottage garden and trees.
+
+| zone | where | stations / anchors |
+|---|---|---|
+| Goal Atrium | octagon, centre (0, 66, 15) | `goal_atrium`; hologram = the `goal:atrium` status lamp's BER (goal text, progress ring, task/agent counts) |
+| Task Wall | atrium west wall, 7 x 4 `task_board` facing east, x=-8, z 12..18, y 67..70 | `task_wall` (surface centre) |
+| Decision Podium | atrium east side, podium at (6, 66, 15) facing west; alcove behind with a bell and the `decisions` lamp | `decision_podium`, `podium_user` (player's spot), `user`, `user_2`, `user_3` (waiting agents, facing the player) |
+| Desks | north wall, bays at x -15 -11 -7 7 11 15 (cast order), 3 x 2 monitor at z=-9, lamp `agent:<id>` set into the wall above | `desk_<id>` (stand), `seat_<id>` (chair seat, for a future SIT pose), `monitor_<id>`, `cam_desk_<id>` |
+| Library | west end | `library` .. `library_4`; memory archives bound `shared`, catalogs, lecterns |
+| Test bench | east wall z -6..-2, CI lamps `ci:#1..#3` in the gable wall | `testbench` .. `testbench_3` |
+| Terminals | north-east corner | `terminal`, `terminal_2` |
+| Merge station | east wall z 1..2 | `mergestation`, `mergestation_2` |
+| Lounge | fireplace, sofa (south-west) | `lounge` .. `lounge_6` (two rows facing each other, >= 1.6 apart) |
+| Meeting | table x 8..11, z 0 | `meeting` .. `meeting_6` |
+
+Cameras: every QA anchor (`cam_exterior_hero`, `cam_entrance_atrium`, `cam_task_wall`,
+`cam_agent_desk` = Juniper's desk, `cam_wide_interior`, `cam_decision_podium`, `cam_night`,
+`cam_console`, `cam_merge_station`, `cam_library`, `cam_desk_<id>`) plus `cam_hall`, `cam_lounge`,
+`cam_testbench`.
+
+Status lamp bindings (driven by `client.hq.HqWorldDriver`, applied on the integrated server only
+when a state differs, re-applied every 2 s so rebuilt or newly placed lamps catch up; nothing
+changes while the Foreman link is down): `agent:<id>` (state family; off when off shift or gone),
+`ci:<repoId>` or `ci:#<n>` (n-th repo in Foreman order; unused slots idle), `goal` and
+`goal:atrium` (planning thinking, active working, done, failed error), `decisions` (waiting while
+any decision is open). Also driven: podium `open` (any open decision), merge station `active` (an
+open merge decision), monitor `lit` (its agent is on shift). Waiting lamps breathe (BER glow) and
+shed clay motes; an open podium sheds motes too.
+
+Build contract: everything inside the site box x -46..46, y 60..100, z -36..54 is rebuilt from an
+in-memory plan and applied as a diff (only differing cells are written, no neighbour updates;
+connections of stairs/panes/fences/panels computed in a second pass; Foreman-driven properties
+kept). Nothing outside the box is touched. A rebuild of an unchanged world writes 0 cells (about
+20 ms); a fresh world about 0.5 s including chunk generation.
+
+QA hooks: `dev.state.hq` (layout, wanted lamp states, podium/merge flags, cells changed by the last
+apply) and `dev.hq.check {minLight?}`: the agents' own A* from `entrance` and `lounge` to every
+standing anchor, spots that would stand on furniture, shared slots closer than 1.6, and block light
+over every roofed walkable cell (last run: 66 routes, 0 unreachable, light min 9 / mean 11.1).
+
 ## Blocks and block entities (`dev.agentcraft.block`)
 
 All 16 blocks from the assets-src block contract (README "Block contract") are registered with
