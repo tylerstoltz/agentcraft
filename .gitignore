@@ -16,3 +16,4 @@ mod/run/
 foreman/scratch/
 mod/.gradle/
 mod/build/
+.claude/
