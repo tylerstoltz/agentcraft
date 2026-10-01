@@ -21,12 +21,31 @@ public class ClientAgentEntity extends AgentEntity implements ClientAvatarEntity
 	private final ClientAvatarState avatarState = new ClientAvatarState();
 	private final AgentView view;
 	private final AgentMotion motion = new AgentMotion();
+	private final AgentLife life;
 	private PlayerSkin skin;
+	private float headYaw;
+	private float headPitch;
+	private boolean headSet;
 
 	public ClientAgentEntity(ClientLevel level, String agentId, PlayerSkin skin) {
 		super(ModEntities.AGENT, level);
 		this.view = new AgentView(agentId);
 		this.skin = skin;
+		this.life = new AgentLife(this);
+	}
+
+	/** Posture, head look, particles and speech of this agent (client thread). */
+	public AgentLife life() {
+		return life;
+	}
+
+	/** Absolute head yaw and pitch for this tick (set by {@link AgentLife}; vanilla interpolates). */
+	void setHeadLook(float yaw, float pitch) {
+		headYaw = yaw;
+		headPitch = pitch;
+		headSet = true;
+		this.yHeadRot = yaw;
+		this.setXRot(pitch);
 	}
 
 	public String agentId() {
@@ -53,6 +72,7 @@ public class ClientAgentEntity extends AgentEntity implements ClientAvatarEntity
 		this.yBodyRotO = yaw;
 		this.yHeadRot = yaw;
 		this.yHeadRotO = yaw;
+		this.headYaw = yaw;
 		this.setDeltaMovement(Vec3.ZERO);
 	}
 
@@ -61,6 +81,7 @@ public class ClientAgentEntity extends AgentEntity implements ClientAvatarEntity
 		// commonTick() already stored the previous position/rotation and counted the tick.
 		this.yBodyRotO = this.yBodyRot;
 		this.yHeadRotO = this.yHeadRot;
+		this.xRotO = this.getXRot();
 		Vec3 before = position();
 		Vec3 after = motion.step(before);
 		if (!after.equals(before)) {
@@ -69,11 +90,15 @@ public class ClientAgentEntity extends AgentEntity implements ClientAvatarEntity
 		float yaw = motion.yaw();
 		this.setYRot(yaw);
 		this.yBodyRot = yaw;
-		this.yHeadRot = yaw;
+		this.yHeadRot = headSet ? headYaw : yaw;
 		this.setDeltaMovement(after.subtract(before));
-		view.pose = motion.walking() ? AgentPose.WALK : view.pose == AgentPose.WALK ? AgentPose.STAND : view.pose;
 		this.calculateEntityAnimation(false);
 		avatarState.tick(position(), getDeltaMovement());
+		try {
+			life.tick(net.minecraft.client.Minecraft.getInstance());
+		} catch (Throwable e) {
+			AgentCraft.LOGGER.warn("agent life failed", e);
+		}
 		for (AgentHooks.Ticker t : AgentHooks.TICKERS) {
 			try {
 				t.tick(this);

@@ -199,8 +199,8 @@ AgentHooks.onSubmit((state, poseStack, collector, camera) -> ...); // extra geom
 AgentsFeature.onClick((player, agent) -> ...);                  // right-click an agent (never sent to the server)
 ```
 
-Poses: `AgentPose.SIT` maps to the vanilla riding pose, `LEAN` to crouch (stubs; Phase 3 adds seats
-and offsets).
+Poses: `AgentView.pose` is the coarse pose (WALK, SIT, LEAN, STAND); the detailed posture lives in
+`AgentLife` (see "Agent life" below).
 
 **Nameplates** (`Nameplate` + `PlateLayout`): an opaque kit pill with status dot + name (agent
 colour) + activity, visible within 40 blocks (also with the HUD hidden), never overlapping another
@@ -228,6 +228,55 @@ plate on screen once settled:
 rank, rect, ...}`); `settle:true` snaps walkers to their targets and plates to their final layout
 before a shot. `dev.state.agents.plateOverlaps` counts overlapping plates in the last frame (0 when
 settled).
+
+### Agent life (Phase 3, `client.agents`: `AgentLife`, `AgentModel`, `AgentParticles`, `SpeechBubble`, `PlateStack`, `Seats`, `AgentCardScreen`)
+
+Every `ClientAgentEntity` has an `AgentLife` (`entity.life()`), simulated per client tick
+(deterministic per agent, seeded by its id) and interpolated per frame; nothing allocates per frame
+except the submit nodes themselves.
+- **Postures** (`AgentLife.posture()`), picked from state family + station + seat: seated typing
+  (hands reach the desk top in front of the seat), seated / standing thinking (hand at the chin),
+  reading an open vanilla book (library), standing typing (terminal, desk without a seat), leaning
+  on the bench (test bench), reviewing (merge station), waiting (hands clasped, faces you),
+  scratching its head (error/blocked), relaxing (done, in the lounge, not all at once), talking
+  (hand gestures while its bubble shows), idle with occasional stretches (lounge). Walking uses the
+  vanilla swing with eased starts and a slow last step; turning to the spot's yaw on arrival.
+  `AgentModel` (a `PlayerModel`) applies the pose channels and a hip-pivot forward lean.
+- **Seats come from the world at the anchor** (`Seats`): if the block at a station anchor's feet
+  position (`desk_<id>`, a lounge sofa, a meeting chair; never `user`) is a bottom-half stairs block
+  (its back facing away from the desk), a bottom slab, or any block whose collision top is 0.3-0.7
+  high, the agent walks to a free neighbour cell, steps onto the seat and sits facing the anchor
+  yaw (getting up first when it leaves). **HQ builders: put a seat block at each `desk_<id>`** (the
+  test room uses dark oak stairs facing away from the desks). Without a seat the agent stands and types.
+- **Head**: looks where it walks; at the monitor (`monitor_<id>`) when seated at its desk; at whoever
+  it talks to (`agent.say.to`: an agent, or you for `user`) and at an agent talking to it; at you when
+  you are within ~4 blocks (busy agents only glance up briefly, and never at a spectating camera);
+  waiting agents face you within 24 blocks; idle glances at neighbours or around every few seconds.
+- **Waiting on you**: a `waiting_user` agent walks to the `user` spot by the podium, or, when you are
+  inside the HQ bounds and not spectating, to a free spot ~2 blocks from you (several fan out) and
+  waits there facing you; it follows when you move more than ~2.6 blocks.
+- **Status family** (`AgentView.family`, `AgentView.statusFamily(state, awaitingUser)`): an idle/done
+  agent with an open decision waiting on Blendi (its own question/permission/merge request, or a
+  merge of its task) is `waiting` (clay dot, "!" marker), e.g. the showcase's "t4 awaiting your merge".
+  `AgentView.awaitingUser` / `awaitingDecision` say why. Lamps and monitors should use
+  `entity.view().family` (not `state.family()`) to agree with the nameplate.
+- **Particles** (vanilla particle sprites tinted with the status palette): thinking = brass twinkles
+  round the head, working = teal motes from the hands, error = a red puff (on entering, then a small
+  one every few seconds), done = a confetti burst on task done (stays below the plate).
+- **Plate stack** (`PlateStack`, plate space): the speech bubble (kit `bubble`, 3 lines max, "@Name"
+  addressee in that agent's paper colour, pops in, 3.5-11 s by length, fades out) and the pulsing
+  clay "!" for agents that need you. `AgentRenderState.stackHeight/stackWidth` are reserved by
+  `PlateLayout`, so neighbouring plates lift clear of a bubble; a speaking agent's plate gets weight 5.
+- **Agent card** (`AgentCardScreen`, right-click an agent): name/title/role, state, activity, task,
+  the decision it waits on, last 6 log lines, Message / Pause|Resume / Stop|Spawn. Message opens the
+  screen registered as `"console"` and types `@<id> ` into it (`AgentCardScreen.openConsole(mc,
+  prefill)`; the console must accept `charTyped` right after `setScreen`, like `dev.type`); without a
+  console it shows an inline message line. DevBridge screen `"agent"` (last clicked agent, else whoever
+  needs you) and `dev.agents.card {agent}`.
+- QA: `dev.agents.look {agent?}` (posture, seat, sit, head yaw/pitch, bubble, particles, family),
+  `dev.agents.fx {agent, fx: confetti|puff|sparkle|say, text?, to?}` (preview an effect),
+  `tools/scenes/agents.json` (busy showcase) and `tools/scenes/agents-late.json` (late showcase) in the
+  test room, `tools/agents-live.mjs` (live sim observer: shots + per-agent log, optional auto-answer).
 
 ## UI kit (`client.ui`)
 

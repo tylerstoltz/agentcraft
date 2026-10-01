@@ -111,21 +111,28 @@ public final class PlateLayout {
 		boolean focused, compactable, compact, fresh, hidden;
 		float x0, y0, x1, y1;
 
+		/** Width of the full plate or of what stacks on it (speech bubble), whichever is wider (px). */
+		float fullW() {
+			return Math.max(s.plateFull.width(), s.stackWidth);
+		}
+
 		float fullX0() {
-			return sx - s.plateFull.width() * k / 2f;
+			return sx - fullW() * k / 2f;
 		}
 
 		float fullX1() {
-			return sx + s.plateFull.width() * k / 2f;
+			return sx + fullW() * k / 2f;
 		}
 
 		float fullY0() {
-			return sy - s.plateFull.height() * k;
+			return sy - (s.plateFull.height() + s.stackHeight) * k;
 		}
 	}
 
 	private static final Map<String, Track> TRACKS = new HashMap<>();
 	private static final List<Item> ITEMS = new ArrayList<>();
+	/** Reused items (the layout runs every frame: no allocation once warmed up). */
+	private static final List<Item> POOL = new ArrayList<>();
 	private static final Comparator<Item> PRIORITY = Comparator.<Item>comparingInt(i -> -i.weight).thenComparingDouble(i -> i.sortKey)
 		.thenComparing(i -> i.s.agentId);
 	private static final Vector4f V = new Vector4f();
@@ -141,6 +148,13 @@ public final class PlateLayout {
 	private static float lastCamPitch;
 
 	private PlateLayout() {
+	}
+
+	private static Item item(int index) {
+		while (POOL.size() <= index) {
+			POOL.add(new Item());
+		}
+		return POOL.get(index);
 	}
 
 	/** Skip the lift animation and the expand delay once (QA: settle before a screenshot). */
@@ -213,7 +227,7 @@ public final class PlateLayout {
 			Track t = TRACKS.computeIfAbsent(s.agentId, id -> new Track());
 			boolean fresh = t.frame != frame - 1;
 			t.frame = frame;
-			V.set((float) (s.x - cam.pos.x), (float) (s.y + Nameplate.HEIGHT - cam.pos.y), (float) (s.z - cam.pos.z), 1f);
+			V.set((float) (s.x - cam.pos.x), (float) (s.y + s.plateBase - cam.pos.y), (float) (s.z - cam.pos.z), 1f);
 			cam.viewRotationMatrix.transform(V);
 			float depth = -V.z;
 			if (depth < HIDE_NEARER) {
@@ -231,8 +245,11 @@ public final class PlateLayout {
 			if (V.w <= 1e-6f) {
 				continue;
 			}
-			Item it = new Item();
+			Item it = item(ITEMS.size());
 			it.s = s;
+			it.compact = false;
+			it.hidden = false;
+			it.sortKey = 0;
 			it.t = t;
 			it.fresh = fresh;
 			it.depth = depth;
@@ -290,8 +307,9 @@ public final class PlateLayout {
 			AgentRenderState s = a.s;
 			Track t = a.t;
 			Nameplate.Data d = a.compact ? s.plateCompact : s.plateFull;
-			float pw = d.width() * a.k;
-			float ph = d.height() * a.k;
+			// the plate plus whatever stacks on it (speech bubble, "!" marker) is one block of space
+			float pw = Math.max(d.width(), s.stackWidth) * a.k;
+			float ph = (d.height() + s.stackHeight) * a.k;
 			a.x0 = a.sx - pw / 2f;
 			a.x1 = a.sx + pw / 2f;
 			a.y1 = a.sy;
@@ -443,7 +461,7 @@ public final class PlateLayout {
 			return t.visible;
 		}
 		t.visTick = tick;
-		t.visible = clear(level, cam, camBlock, camInSolid, new Vec3(s.x, s.y + Nameplate.HEIGHT + 0.2, s.z))
+		t.visible = clear(level, cam, camBlock, camInSolid, new Vec3(s.x, s.y + s.plateBase + 0.2, s.z))
 			|| clear(level, cam, camBlock, camInSolid, new Vec3(s.x, s.y + 1.6, s.z));
 		return t.visible;
 	}

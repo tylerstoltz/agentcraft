@@ -30,4 +30,35 @@ public class AgentRenderState extends AvatarRenderState {
 	public boolean plateCrosshair;
 	/** Seconds since the client started (for pulses), partial-tick accurate. */
 	public float timeSeconds;
+
+	// ---------------------------------------------------------------- agent life (Phase 3)
+
+	/** The agent's life state (poses, particles, speech); the model and the extras read it. */
+	public @Nullable AgentLife life;
+	/** Pose channels interpolated for this frame ({@link AgentLife#frame}, see {@link AgentLife} P_* indices). */
+	public float @Nullable [] posePose;
+	/** Seated amount 0..1 (sit-down/stand-up blend). */
+	public float sit;
+	/** Vertical model offset (blocks) applied in setupRotations: the seat drop times {@link #sit}. */
+	public float sitDrop;
+	/** Open book in the hands (0 = none, 1 = open). */
+	public float book;
+	/** Page flip progress 0..1 of the held book. */
+	public float pageFlip;
+	/** Height of the plate's natural bottom above the feet (blocks): {@link Nameplate#HEIGHT} + seat drop. */
+	public float plateBase = (float) Nameplate.HEIGHT;
+	/**
+	 * Extra plate-space pixels stacked above the plate this frame (speech bubble, "!" marker) and
+	 * their width: {@link PlateLayout} reserves them so other plates are lifted clear of them.
+	 */
+	public float stackHeight;
+	public float stackWidth;
+	/** "Needs you" marker above the plate: 0 = hidden, 1 = fully shown. */
+	public float exclaim;
+	/** Speech bubble visibility 0..1 (pop in/out). */
+	public float bubble;
+	/** Partial tick this state was extracted with. */
+	public float partialTick;
+	/** Light at the agent (for lit extras like the book). */
+	public int agentLight;
 }

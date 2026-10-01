@@ -1,9 +1,10 @@
 package dev.agentcraft.client.agents;
 
 /**
- * Body pose of an agent (Phase 2 basics; Phase 3 deepens animation). The renderer maps SIT to the
- * vanilla riding pose and LEAN to a slight crouch; everything else uses the standing model with the
- * vanilla walk cycle (driven by the real movement speed).
+ * Coarse body pose of an agent ({@link AgentView#pose}), kept by {@link AgentLife} for readers that
+ * only need the big picture: WALK while walking, SIT while seated on a seat block, LEAN while bent
+ * over work (test bench, terminal, merge station), STAND otherwise. The detailed posture (typing,
+ * reading a book, thinking, ...) is {@link AgentLife#posture()}; {@link AgentModel} draws it.
  */
 public enum AgentPose {
 	STAND, WALK, SIT, LEAN

@@ -28,7 +28,7 @@ import net.minecraft.util.FormattedCharSequence;
  * {@code poseStack.pushPose(); Nameplate.plateSpace(state, poseStack, camera); ... y < Nameplate.top(state) ...; poseStack.popPose();}
  */
 public final class Nameplate {
-	/** Bottom of the plate above the feet, in blocks (before any declutter lift). */
+	/** Bottom of the plate above the feet of a standing agent, in blocks (before any declutter lift; seated agents: {@link AgentRenderState#plateBase}). */
 	public static final double HEIGHT = 2.12;
 	public static final int MAX_ACTIVITY_PX = 116;
 	/** Plates keep their world size up to this distance, then grow with it (constant screen size) ... */
@@ -103,7 +103,7 @@ public final class Nameplate {
 	 * Includes the distance scale and the depth nudge, so anything drawn here lines up with the plate.
 	 */
 	public static void plateSpace(AgentRenderState s, PoseStack poseStack, CameraRenderState camera) {
-		WorldUi.billboard(poseStack, camera, 0, HEIGHT, 0, s.plateScale, s.plateNudge, s.x - camera.pos.x, s.y - camera.pos.y, s.z - camera.pos.z);
+		WorldUi.billboard(poseStack, camera, 0, s.plateBase, 0, s.plateScale, s.plateNudge, s.x - camera.pos.x, s.y - camera.pos.y, s.z - camera.pos.z);
 	}
 
 	/** Top edge of the drawn plate in plate space (negative = above the origin); 0 when there is no plate. */
