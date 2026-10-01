@@ -11,11 +11,14 @@ import dev.agentcraft.block.entity.MonitorBlockEntity;
 import dev.agentcraft.block.entity.StatusLampBlockEntity;
 import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
+import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.foreman.Protocol.DecisionKind;
 import dev.agentcraft.client.foreman.Protocol.Goal;
 import dev.agentcraft.client.foreman.Protocol.Repo;
 import dev.agentcraft.client.world.ServerTasks;
+import dev.agentcraft.layout.Anchor;
+import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,6 +29,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.CopperBulbBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -35,13 +39,16 @@ import org.jspecify.annotations.Nullable;
  * Drives the HQ's world blocks from the Foreman state (client thread computes, the integrated
  * server applies, see {@link ServerTasks}):
  * <ul>
- *   <li>status lamps by binding: {@code agent:<id>} (the agent's state family; off when the agent is
- *       off shift or gone), {@code ci:<repoId>} or {@code ci:#<n>} (the n-th repo in Foreman order),
- *       {@code goal} / {@code goal:atrium} (the current goal), {@code decisions} (waiting while any
- *       decision is open);</li>
+ *   <li>status lamps by binding: {@code agent:<id>} (the agent's status family, the same one its
+ *       nameplate shows: an idle/done agent with a decision waiting on you is {@code waiting}; off
+ *       when the agent is off shift or gone), {@code ci:<repoId>} or {@code ci:#<n>} (the n-th repo
+ *       in Foreman order), {@code goal} / {@code goal:atrium} (the current goal), {@code decisions}
+ *       (waiting while any decision is open), {@code merge} (waiting while a merge decision is open);</li>
  *   <li>the decision podium {@code open} while any decision is open;</li>
  *   <li>merge stations {@code active} while a merge decision is open;</li>
- *   <li>monitors {@code lit} while their agent is on shift.</li>
+ *   <li>monitors {@code lit} while their agent is on shift;</li>
+ *   <li>signal bulbs (copper bulbs within 3 blocks of the {@code decision_podium} anchor or of a
+ *       {@code mergestation} slot) lit while that station needs you.</li>
  * </ul>
  * Only blocks whose state differs are written. The set of wanted states is recomputed on every
  * Foreman change and re-applied every 2 s (so rebuilt or newly placed blocks pick it up). While the
@@ -51,6 +58,8 @@ public final class HqWorldDriver {
 	private static final int RESYNC_TICKS = 40;
 	/** Blocks around the layout bounds that still belong to the HQ (lamps set into the walls). */
 	private static final int MARGIN = 3;
+	/** Reach of a station's signal bulbs around its anchor (blocks). */
+	private static final int SIGNAL_REACH = 3;
 
 	/** What the world should show, by binding. Immutable once built. */
 	record Wanted(Map<String, LampStatus> lamps, boolean podiumOpen, boolean mergeActive, Map<String, Boolean> monitorLit) {
@@ -95,17 +104,70 @@ public final class HqWorldDriver {
 		last = w;
 		if (differs || ticks % RESYNC_TICKS == 0) {
 			Anchors.Bounds b = layout.bounds();
-			ServerTasks.run(level -> lastChanged = apply(level, w, b));
+			List<BlockPos> podiumSignals = signalCenters(layout, AnchorNames.DECISION_PODIUM);
+			List<BlockPos> mergeSignals = signalCenters(layout, AnchorNames.MERGESTATION);
+			ServerTasks.run(level -> lastChanged = apply(level, w, b, podiumSignals, mergeSignals));
 		}
+	}
+
+	/** Block positions of the anchors of a station (all its slots). */
+	private static List<BlockPos> signalCenters(Anchors.Layout layout, String station) {
+		List<BlockPos> out = new ArrayList<>();
+		for (Anchor a : layout.anchors().values()) {
+			String n = a.name();
+			if (n.equals(station) || n.startsWith(station + "_") && n.substring(station.length() + 1).chars().allMatch(Character::isDigit)) {
+				out.add(BlockPos.containing(a.x(), a.y(), a.z()));
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * Agent id -> an open decision waiting on Blendi for that agent: its own question / permission
+	 * prompt first, then merges it asked for, then decisions about its task (the same rule as the
+	 * agents' nameplates, so a lamp and its agent's status dot always agree).
+	 */
+	static Map<String, String> awaiting(ForemanState st) {
+		Map<String, String> out = new HashMap<>();
+		List<Protocol.Decision> open = st.openDecisions();
+		for (Protocol.Decision d : open) {
+			if (d.kind() != DecisionKind.MERGE) {
+				out.putIfAbsent(d.agentId(), d.id());
+			}
+		}
+		for (Protocol.Decision d : open) {
+			out.putIfAbsent(d.agentId(), d.id());
+		}
+		for (Protocol.Decision d : open) {
+			if (d.taskId() != null) {
+				Protocol.Task t = st.task(d.taskId());
+				if (t != null && t.assignee() != null) {
+					out.putIfAbsent(t.assignee(), d.id());
+				}
+			}
+		}
+		return out;
+	}
+
+	/** The lamp an agent shows: its state family, or waiting when it idles on a decision of yours. */
+	static LampStatus agentLamp(Agent a, boolean awaitingUser) {
+		if (!a.isActive()) {
+			return LampStatus.OFF;
+		}
+		String fam = a.state().family();
+		if (awaitingUser && (fam.equals("idle") || fam.equals("done"))) {
+			return LampStatus.WAITING;
+		}
+		return LampStatus.forAgentState(a.state().wire());
 	}
 
 	static Wanted compute(ForemanState st) {
 		Map<String, LampStatus> lamps = new HashMap<>();
 		Map<String, Boolean> lit = new HashMap<>();
+		Map<String, String> waitingOn = awaiting(st);
 		for (Agent a : st.agents().values()) {
-			boolean on = a.isActive();
-			lamps.put("agent:" + a.id(), on ? LampStatus.forAgentState(a.state().wire()) : LampStatus.OFF);
-			lit.put(a.id(), on);
+			lamps.put("agent:" + a.id(), agentLamp(a, waitingOn.containsKey(a.id())));
+			lit.put(a.id(), a.isActive());
 		}
 		int n = 0;
 		for (Repo r : st.repos().values()) {
@@ -119,6 +181,7 @@ public final class HqWorldDriver {
 		boolean open = !st.openDecisions().isEmpty();
 		lamps.put("decisions", open ? LampStatus.WAITING : LampStatus.OFF);
 		boolean merge = st.oldestOpen(DecisionKind.MERGE) != null;
+		lamps.put("merge", merge ? LampStatus.WAITING : LampStatus.OFF);
 		return new Wanted(Map.copyOf(lamps), open, merge, Map.copyOf(lit));
 	}
 
@@ -136,7 +199,7 @@ public final class HqWorldDriver {
 	}
 
 	/** Server thread: set every bound station block in the HQ region to its wanted state. */
-	static int apply(ServerLevel level, Wanted w, Anchors.Bounds b) {
+	static int apply(ServerLevel level, Wanted w, Anchors.Bounds b, List<BlockPos> podiumSignals, List<BlockPos> mergeSignals) {
 		List<BlockPos> pos = new ArrayList<>();
 		List<BlockState> to = new ArrayList<>();
 		int x0 = (b.minX() - MARGIN) >> 4;
@@ -163,10 +226,37 @@ public final class HqWorldDriver {
 				}
 			}
 		}
+		signals(level, podiumSignals, w.podiumOpen(), pos, to);
+		signals(level, mergeSignals, w.mergeActive(), pos, to);
 		for (int i = 0; i < pos.size(); i++) {
 			level.setBlock(pos.get(i), to.get(i), Block.UPDATE_CLIENTS);
 		}
 		return pos.size();
+	}
+
+	/** Copper bulbs around the given station anchors follow {@code on} (no redstone involved). */
+	private static void signals(ServerLevel level, List<BlockPos> centers, boolean on, List<BlockPos> pos, List<BlockState> to) {
+		BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
+		for (BlockPos c : centers) {
+			for (int dx = -SIGNAL_REACH; dx <= SIGNAL_REACH; dx++) {
+				for (int dz = -SIGNAL_REACH; dz <= SIGNAL_REACH; dz++) {
+					for (int dy = -1; dy <= 6; dy++) {
+						m.set(c.getX() + dx, c.getY() + dy, c.getZ() + dz);
+						if (!level.isLoaded(m)) {
+							continue;
+						}
+						BlockState s = level.getBlockState(m);
+						if (s.getBlock() instanceof CopperBulbBlock && s.getValue(CopperBulbBlock.LIT) != on) {
+							BlockPos p = m.immutable();
+							if (!pos.contains(p)) {
+								pos.add(p);
+								to.add(s.setValue(CopperBulbBlock.LIT, on));
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	private static @Nullable BlockState wantedState(BlockEntity be, BlockState s, Wanted w) {

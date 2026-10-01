@@ -4,7 +4,6 @@ import dev.agentcraft.AgentCraft;
 import dev.agentcraft.Cast;
 import dev.agentcraft.block.DecisionPodiumBlock;
 import dev.agentcraft.block.FacingEntityBlock;
-import dev.agentcraft.block.GlowStripBlock;
 import dev.agentcraft.block.LampStatus;
 import dev.agentcraft.block.MergeStationBlock;
 import dev.agentcraft.block.ModBlocks;
@@ -13,33 +12,40 @@ import dev.agentcraft.block.PanelBlock;
 import dev.agentcraft.block.StatusLampBlock;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CopperBulbBlock;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BellAttachType;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The real AgentCraft HQ ("Warm Studio"): a long timber-framed studio hall with a steep slate roof
- * and an exposed-truss vault, fronted by an octagonal, copper-domed Goal Atrium (the entrance
- * rotunda), on a landscaped meadow with terraces, a pond and trees.
+ * and an exposed-truss vault, fronted by an octagonal Goal Atrium under a copper dome with a glazed
+ * lantern (the entrance rotunda), in a landscaped hollow ringed by wooded hills.
  *
  * <pre>
  *            x=-24 ........................... 0 ............................ x=24
- *   z=-10    north wall: 3 desk bays | big north window | 3 desk bays   (monitors face south)
- *            Library (west end)  Lounge (sw)  aisle  Meeting (se)  Test bench / terminals / merge (east end)
+ *   z=-10    north wall: 3 desk bays | big north window | 3 desk bays   (monitors face south, chairs in front)
+ *            Library (west end)  Lounge (sw)  aisle  Meeting (se)  Test bench / merge / terminals (east end)
  *   z=6      south wall (terraces outside) ----+  opening  +----
  *   z=7..23                     Goal Atrium (octagon, centre 0,15): task wall W, podium + user E, hologram centre
- *   z=24                                    entrance (portico, steps, path south)
+ *   z=24                                    entrance (portico, steps, path south to the gate)
  * </pre>
  *
  * Floor blocks at y=65 (the hall sits one block above the meadow on a mud-brick plinth); agents
- * stand at y=66. Everything inside {@link #SITE} is rebuilt on every run (a {@link Plan} diff), so
- * the build is deterministic and idempotent, and nothing outside it is touched.
+ * stand at y=66. Seats follow the agents' seat contract: the chair/armchair block is at the
+ * station anchor itself ({@code desk_<id>}, {@code lounge*}, {@code meeting*}), with a free floor
+ * cell on its right-hand side for the agent to step in from. Everything inside {@link #SITE} is
+ * planned in memory and applied as a {@link Plan} diff (deterministic, idempotent, cells the player
+ * changed since the last build are kept), and nothing outside it is touched.
  */
 public final class StudioHqBuilder implements HqBuilder {
 	public static final String ID = "studio";
@@ -62,12 +68,21 @@ public final class StudioHqBuilder implements HqBuilder {
 	static final int AX = 0;
 	static final int AZ = 15;
 	static final int ATRIUM_TOP = 76;
-	static final int DOME_BASE = 77;
+	/** Spring line of the dome (the timber ring on the wall tops). */
+	static final int SPRING = 77;
 	/** Site box: rebuilt completely, never anything outside it. */
 	static final int[] SITE = {-46, 60, -36, 46, 100, 54};
 
-	/** Desk bay centres (x), west to east, in cast order. */
+	/** Desk bay centres (x), west to east. */
 	static final int[] DESK_X = {-15, -11, -7, 7, 11, 15};
+	/**
+	 * Who works in which bay (west to east): the archivist and the researcher next to the library,
+	 * the lead next to the atrium, the designer and the reviewer, the tester next to the test bench.
+	 * Cast members not listed here (a changed cast) fill the remaining bays in cast order.
+	 */
+	static final List<String> DESK_ORDER = List.of("tove", "juniper", "marlow", "wren", "rowan", "kit");
+	/** Chair column of a desk relative to the bay centre. */
+	static final int CHAIR_DX = 0;
 
 	static final Direction N = Direction.NORTH;
 	static final Direction S = Direction.SOUTH;
@@ -82,12 +97,10 @@ public final class StudioHqBuilder implements HqBuilder {
 	static final BlockState WALNUT_TRIM = ModBlocks.WALNUT_TRIM.defaultBlockState();
 	static final BlockState TILE = ModBlocks.TERRACOTTA_TILE.defaultBlockState();
 	static final BlockState PARQUET = ModBlocks.OAK_PARQUET.defaultBlockState();
-	static final BlockState GLOW_PANEL = ModBlocks.GLOW_PANEL.defaultBlockState();
 	static final BlockState PLINTH = Blocks.MUD_BRICKS.defaultBlockState();
 	static final BlockState FLOOR_WOOD = Blocks.BIRCH_PLANKS.defaultBlockState();
 	static final BlockState DARK_PLANKS = Blocks.DARK_OAK_PLANKS.defaultBlockState();
 	static final BlockState GLASS_PANE = Blocks.GLASS_PANE.defaultBlockState();
-	static final BlockState GLASS = Blocks.GLASS.defaultBlockState();
 	static final Block ROOF_STAIRS = Blocks.DEEPSLATE_TILE_STAIRS;
 	static final Block ROOF_SLAB = Blocks.DEEPSLATE_TILE_SLAB;
 	static final BlockState ROOF_FULL = Blocks.DEEPSLATE_TILES.defaultBlockState();
@@ -96,8 +109,13 @@ public final class StudioHqBuilder implements HqBuilder {
 	static final BlockState COPPER = Blocks.CUT_COPPER.waxed().unaffected().defaultBlockState();
 	static final Block COPPER_STAIRS = Blocks.CUT_COPPER_STAIRS.waxed().unaffected();
 	static final Block COPPER_SLAB = Blocks.CUT_COPPER_SLAB.waxed().unaffected();
-	static final Block COPPER_LANTERN = Blocks.COPPER_LANTERN.waxed().unaffected();
+	static final Block COPPER_CHAIN = Blocks.COPPER_CHAIN.waxed().unaffected();
+	static final Block COPPER_BULB = Blocks.COPPER_BULB.waxed().unaffected();
+	static final BlockState LANTERN = St.lantern(Blocks.LANTERN, false);
+	static final BlockState LANTERN_HANGING = St.lantern(Blocks.LANTERN, true);
+	static final Block SOFA = Blocks.WOOL_STAIRS.pick(DyeColor.BROWN);
 
+	/** Timber frame: walnut-dark stripped dark oak (posts, beams, pilasters, king posts). */
 	static BlockState post() {
 		return St.log(Blocks.STRIPPED_DARK_OAK_LOG, Direction.Axis.Y);
 	}
@@ -106,9 +124,9 @@ public final class StudioHqBuilder implements HqBuilder {
 		return St.log(Blocks.STRIPPED_DARK_OAK_LOG, axis);
 	}
 
-	/** Interior structure (pilasters, tie beams, king posts): warm stripped oak, lighter than the walnut frame. */
-	static BlockState timber(Direction.Axis axis) {
-		return St.log(Blocks.STRIPPED_OAK_LOG, axis);
+	/** A signal bulb (lit by {@code HqWorldDriver} while its station needs you). */
+	static BlockState bulb() {
+		return COPPER_BULB.defaultBlockState().setValue(CopperBulbBlock.LIT, false);
 	}
 
 	@Override
@@ -118,13 +136,20 @@ public final class StudioHqBuilder implements HqBuilder {
 
 	@Override
 	public String description() {
-		return "the Warm Studio HQ: timber hall + copper-domed Goal Atrium on a landscaped meadow";
+		return "the Warm Studio HQ: timber hall + copper-domed Goal Atrium in a wooded hollow";
 	}
 
 	@Override
 	public void build(ServerLevel level, Anchors.Builder a) {
+		build(level, a, Options.DEFAULT);
+	}
+
+	@Override
+	public @Nullable String build(ServerLevel level, Anchors.Builder a, Options options) {
 		long t0 = System.nanoTime();
-		Plan p = new Plan(SITE[0], SITE[1], SITE[2], SITE[3], SITE[4], SITE[5], y -> y > GROUND ? AIR
+		HqTweaks.load(level.getServer());
+		tweaks();
+		Plan p = new Plan(SITE[0], SITE[1], SITE[2], SITE[3], SITE[4], SITE[5], GROUND, y -> y > GROUND ? AIR
 			: y == GROUND ? Blocks.GRASS_BLOCK.defaultBlockState() : y >= GROUND - 3 ? Blocks.DIRT.defaultBlockState() : Blocks.STONE.defaultBlockState());
 		long tPlan0 = System.nanoTime();
 		HqLandscape.ground(p);
@@ -144,15 +169,55 @@ public final class StudioHqBuilder implements HqBuilder {
 		cameras(a);
 		p.settleGrass();
 		long tPlan = System.nanoTime() - tPlan0;
-		Plan.Stats st = p.apply(level);
+		BlockState[] previous = PlanStore.load(level.getServer(), ID, SITE, p.size());
+		Plan.Stats st = p.apply(level, previous, options.force());
+		PlanStore.save(level.getServer(), ID, SITE, p.cells());
 		a.bounds(-HX + 1, FLOOR, HZN + 1, HX - 1, FLOOR + 16, AZ + 8);
 		a.spot(AnchorNames.ENTRANCE, AX, FEET, AZ + 7, 180);
 		a.put(AnchorNames.SPAWN, AX + 0.5, FEET, AZ + 7.5, 180, 0);
-		AgentCraft.LOGGER.info("Studio HQ: planned in {} ms, applied {} cells in {} ms ({} changed, {} connections, {} bindings); total {} ms",
-			tPlan / 1_000_000, st.cells(), st.micros() / 1000, st.changed(), st.connected(), st.bound(), (System.nanoTime() - t0) / 1_000_000);
+		AgentCraft.LOGGER.info(
+			"Studio HQ: planned in {} ms, applied {} cells in {} ms ({} changed, {} connections, {} bindings, {} kept, {} foreign replaced, {} drops removed, previous plan {}); total {} ms",
+			tPlan / 1_000_000, st.cells(), st.micros() / 1000, st.changed(), st.connected(), st.bound(), st.kept(), st.foreign(), st.items(),
+			previous == null ? "none" : "known", (System.nanoTime() - t0) / 1_000_000);
 		if (st.changed() + st.connected() < 40 && !st.sample().isEmpty()) {
 			AgentCraft.LOGGER.info("Studio HQ: changed cells: {}", st.sample());
 		}
+		if (!st.keptSample().isEmpty()) {
+			AgentCraft.LOGGER.info("Studio HQ: kept your changes at {}", st.keptSample());
+		}
+		StringBuilder r = new StringBuilder(String.format(Locale.ROOT, "%d blocks updated", st.changed() + st.connected()));
+		if (st.kept() > 0) {
+			r.append(String.format(Locale.ROOT, "; kept %d block%s you changed since the last build (/agentcraft hq force resets them)", st.kept(),
+				st.kept() == 1 ? "" : "s"));
+		}
+		if (st.foreign() > 0) {
+			r.append(String.format(Locale.ROOT, "; replaced %d block%s that were not part of the HQ%s", st.foreign(), st.foreign() == 1 ? "" : "s",
+				options.force() ? " (force)" : " (no record of an earlier studio build)"));
+		}
+		if (st.items() > 0) {
+			r.append(String.format(Locale.ROOT, "; removed %d dropped item%s", st.items(), st.items() == 1 ? "" : "s"));
+		}
+		return r.toString();
+	}
+
+	/** Desk bay owners, west to east (see {@link #DESK_ORDER}). */
+	static List<String> deskIds() {
+		List<String> cast = Cast.ids();
+		List<String> out = new ArrayList<>();
+		for (String id : DESK_ORDER) {
+			if (cast.contains(id)) {
+				out.add(id);
+			}
+		}
+		for (String id : cast) {
+			if (!out.contains(id)) {
+				out.add(id);
+			}
+		}
+		while (out.size() < DESK_X.length) {
+			out.add("agent" + out.size());
+		}
+		return out;
 	}
 
 	// ================================================================== geometry helpers
@@ -182,6 +247,20 @@ public final class StudioHqBuilder implements HqBuilder {
 		return Math.max(Math.max(ax, az), ax + az - 4);
 	}
 
+	/** Continuous radius in the atrium's chamfered-square metric (9 = the wall footprint's edge cells). */
+	static double octMetric(int dx, int dz) {
+		int ax = Math.abs(dx);
+		int az = Math.abs(dz);
+		return Math.max(Math.max(ax, az), (ax + az) * 9.0 / 14.0);
+	}
+
+	/** Octagon of "size" a around the atrium centre (a = 9 is the wall's outer footprint). */
+	static boolean octInside(int dx, int dz, int a) {
+		int ax = Math.abs(dx);
+		int az = Math.abs(dz);
+		return ax <= a && az <= a && ax + az <= (3 * a + 1) / 2;
+	}
+
 	/** Roof top height at z (both slopes), from the eaves at z=-11 / 7 to the ridge. */
 	static int roofY(int z) {
 		return EAVE_Y + Math.min(z + 11, 7 - z);
@@ -190,6 +269,10 @@ public final class StudioHqBuilder implements HqBuilder {
 	static boolean isPostX(int x) {
 		int ax = Math.abs(x);
 		return ax == 24 || ax == 21 || ax == 17 || ax == 13 || ax == 9 || ax == 5;
+	}
+
+	static boolean fireplaceX(int x) {
+		return x >= -12 && x <= -9;
 	}
 
 	// ================================================================== hall
@@ -216,22 +299,33 @@ public final class StudioHqBuilder implements HqBuilder {
 				gableColumn(p, sx, z);
 			}
 		}
-		// interior pilasters in front of the posts, tie beams, king posts, struts
+		// the truss: tie beams on corbels (north: the desk wall stays flush, so a desk is seen from the
+		// side without a pilaster in the way) and on pilasters along the south windows, king posts, struts
 		for (int x = -21; x <= 21; x++) {
-			if (!isPostX(x) || Math.abs(x) == 24) {
+			if (!isPostX(x)) {
 				continue;
 			}
-			p.fill(x, FEET, HZN + 1, x, WALL_TOP, HZN + 1, timber(Direction.Axis.Y));
+			p.set(x, WALL_TOP, HZN + 1, St.stairs(Blocks.DARK_OAK_STAIRS, N, true));
 			if (Math.abs(x) >= 9) {
-				p.fill(x, FEET, HZS - 1, x, WALL_TOP, HZS - 1, timber(Direction.Axis.Y));
+				p.fill(x, FEET, HZS - 1, x, WALL_TOP, HZS - 1, post());
+			} else {
+				p.set(x, WALL_TOP, HZS - 1, St.stairs(Blocks.DARK_OAK_STAIRS, S, true));
 			}
-			// tie beam across the hall + king post up to the ridge
-			p.fill(x, FRIEZE, HZN + 1, x, FRIEZE, HZS - 1, timber(Direction.Axis.Z));
-			p.fill(x, FRIEZE + 1, RIDGE_Z, x, roofY(RIDGE_Z) - 2, RIDGE_Z, timber(Direction.Axis.Y));
-			// struts from the king post to the beam (upside-down stairs)
+			p.fill(x, FRIEZE, HZN + 1, x, FRIEZE, HZS - 1, beam(Direction.Axis.Z));
+			p.fill(x, FRIEZE + 1, RIDGE_Z, x, roofY(RIDGE_Z) - 2, RIDGE_Z, post());
 			for (int i = 1; i <= 3; i++) {
-				p.set(x, FRIEZE + 1 + (3 - i), RIDGE_Z - i, St.stairs(Blocks.OAK_STAIRS, S, true));
-				p.set(x, FRIEZE + 1 + (3 - i), RIDGE_Z + i, St.stairs(Blocks.OAK_STAIRS, N, true));
+				p.set(x, FRIEZE + 1 + (3 - i), RIDGE_Z - i, St.stairs(Blocks.DARK_OAK_STAIRS, S, true));
+				p.set(x, FRIEZE + 1 + (3 - i), RIDGE_Z + i, St.stairs(Blocks.DARK_OAK_STAIRS, N, true));
+			}
+		}
+		// pelmet ledges over the long walls' top windows (the hidden cove light sits above them)
+		for (int x = -HX + 1; x <= HX - 1; x++) {
+			if (isPostX(x)) {
+				continue;
+			}
+			p.set(x, WALL_TOP, HZN + 1, St.slab(Blocks.DARK_OAK_SLAB, true));
+			if (!octFoot(x - AX, HZS - AZ) && !fireplaceX(x)) {
+				p.set(x, WALL_TOP, HZS - 1, St.slab(Blocks.DARK_OAK_SLAB, true));
 			}
 		}
 	}
@@ -332,9 +426,9 @@ public final class StudioHqBuilder implements HqBuilder {
 	}
 
 	/**
-	 * A gabled wall dormer on the south slope, centred on x = cx, its window flush with the wall below:
-	 * front wall (posts + 3 panes) at the wall line, its own little roof ridged along z, cheeks down to
-	 * the main roof, and the main roof cut away inside so its light reaches the hall.
+	 * A gabled wall dormer centred on x = cx, its window flush with the wall below: front wall (posts +
+	 * 3 panes) at the wall line, its own little roof ridged across the slope, cheeks down to the main
+	 * roof, and the main roof cut away inside so its light reaches the hall.
 	 */
 	private static void dormer(Plan p, int cx, boolean south) {
 		int zf = south ? HZS : HZN;
@@ -343,7 +437,6 @@ public final class StudioHqBuilder implements HqBuilder {
 		for (int k = -3; k <= 3; k++) {
 			int x = cx + k;
 			int hd = ridge - Math.abs(k);
-			// dormer roof from the overhang back until it meets the main roof
 			for (int z = zf + out; z != RIDGE_Z - out; z -= out) {
 				int yr = roofY(z);
 				if (yr >= hd) {
@@ -357,18 +450,15 @@ public final class StudioHqBuilder implements HqBuilder {
 					continue;
 				}
 				if (Math.abs(k) <= 1) {
-					// inside: cut the main roof and its ceiling so the dormer opens into the vault
 					p.set(x, yr, z, AIR);
 					p.set(x, yr - 1, z, AIR);
 				} else if (Math.abs(k) == 2) {
-					// cheek wall from the main roof up to the dormer roof
 					for (int y = yr + 1; y < hd; y++) {
 						p.set(x, y, z, PLASTER);
 					}
 				}
 			}
 		}
-		// front wall, flush with the hall wall below
 		for (int k = -2; k <= 2; k++) {
 			int x = cx + k;
 			int hd = ridge - Math.abs(k);
@@ -400,8 +490,8 @@ public final class StudioHqBuilder implements HqBuilder {
 				int z = AZ + dz;
 				p.set(x, GROUND, z, Blocks.DIRT.defaultBlockState());
 				if (octIn(dx, dz)) {
-					// clear the interior right up into the dome
-					for (int y = FEET; y < DOME_BASE + DOME_COURSES.length; y++) {
+					// clear the interior right up into the dome (the dome sets its own shell)
+					for (int y = FEET; y <= 92; y++) {
 						p.set(x, y, z, AIR);
 					}
 					continue;
@@ -410,7 +500,6 @@ public final class StudioHqBuilder implements HqBuilder {
 				for (int y = FEET; y <= ATRIUM_TOP; y++) {
 					p.set(x, y, z, atriumWall(dx, dz, y));
 				}
-				p.set(x, ATRIUM_TOP + 1, z, beam(Math.abs(dx) > Math.abs(dz) ? Direction.Axis.Z : Direction.Axis.X));
 			}
 		}
 		// opening into the hall (north side, x -3..3) with a stepped arch
@@ -437,7 +526,6 @@ public final class StudioHqBuilder implements HqBuilder {
 		p.fill(-1, FEET + 5, zs, 1, FEET + 7, zs, GLASS_PANE);
 		p.fill(-2, FEET, zs, -2, FEET + 7, zs, post());
 		p.fill(2, FEET, zs, 2, FEET + 7, zs, post());
-		// entrance floor sill
 		for (int x = -1; x <= 1; x++) {
 			p.set(x, FLOOR, zs, DARK_PLANKS);
 		}
@@ -478,12 +566,9 @@ public final class StudioHqBuilder implements HqBuilder {
 			return y == 71 ? PLASTER_FRAME : PLASTER;
 		}
 		boolean southDiag = dz > 0;
-		// south diagonals: tall faceted windows; north diagonals (they face the hall roof): framed plaster
-		if (southDiag && y >= FEET + 1 && y <= 75 && ax + az == 13 && ax >= 6 && ax <= 7) {
-			return GLASS;
-		}
-		if (southDiag && y >= FEET + 1 && y <= 75 && ax + az == 14 && ax >= 6 && ax <= 8 && az >= 6) {
-			return GLASS;
+		// south diagonals: tall faceted (zig-zag) pane windows; north diagonals (they face the hall roof): framed plaster
+		if (southDiag && y >= FEET + 1 && y <= 75 && y != 72 && ax >= 6 && ax <= 8 && az >= 5 && az <= 8) {
+			return GLASS_PANE;
 		}
 		if (y == 72) {
 			return DARK_PLANKS;
@@ -491,82 +576,165 @@ public final class StudioHqBuilder implements HqBuilder {
 		return y == 71 ? PLASTER_FRAME : PLASTER;
 	}
 
-	/** Octagon of "size" a around the atrium centre (a = 9 is the wall's outer footprint). */
-	static boolean octInside(int dx, int dz, int a) {
-		int ax = Math.abs(dx);
-		int az = Math.abs(dz);
-		return ax <= a && az <= a && ax + az <= (3 * a + 1) / 2;
+	static double DOME_R = 9.7;
+	static double DOME_H = 7.4;
+	static double DOME_RI = 8.5;
+	static double DOME_HI = 6.0;
+	static double DOME_P = 2.0;
+	static String DOME_STYLE = "slab";
+	static String DOME_MAT = "copper";
+	static String DOME_METRIC = "oct";
+	static String DOME_STEP = "half";
+
+	static void tweaks() {
+		DOME_R = HqTweaks.d("dome.r", 9.7);
+		DOME_H = HqTweaks.d("dome.h", 8.5);
+		DOME_RI = HqTweaks.d("dome.ri", 8.5);
+		DOME_HI = HqTweaks.d("dome.hi", 7.0);
+		DOME_P = HqTweaks.d("dome.p", 2.4);
+		DOME_STYLE = HqTweaks.s("dome.style", "slab");
+		DOME_MAT = HqTweaks.s("dome.mat", "plain");
+		DOME_METRIC = HqTweaks.s("dome.metric", "round");
+		DOME_STEP = HqTweaks.s("dome.step", "full");
 	}
 
-	/** Dome courses: octagon size per course above the walls (convex: upright at the base, flatter on top). */
-	static final int[] DOME_COURSES = {9, 9, 8, 8, 7, 6, 4, 2};
+	/** Radius of a dome column: round (circle contours) or the atrium's chamfered-square metric. */
+	static double domeMetric(int dx, int dz) {
+		return DOME_METRIC.equals("round") ? Math.sqrt(dx * dx + dz * dz) : octMetric(dx, dz);
+	}
 
-	private static Direction outward(int dx, int dz) {
-		return Math.abs(dx) >= Math.abs(dz) ? (dx > 0 ? E : W) : (dz > 0 ? S : N);
+	/** Columns the dome covers. */
+	static boolean domeFoot(int dx, int dz) {
+		return octFoot(dx, dz) && domeMetric(dx, dz) < DOME_R - 0.05;
+	}
+
+	static double profile(double r, double rad, double h) {
+		double q = Math.pow(Math.min(1, r / rad), DOME_P);
+		return h * Math.sqrt(Math.max(0, 1 - q));
+	}
+
+	static BlockState domeFull() {
+		return switch (DOME_MAT) {
+			case "slate" -> ROOF_FULL;
+			case "verdigris" -> Blocks.CUT_COPPER.waxed().oxidized().defaultBlockState();
+			case "plain" -> Blocks.COPPER_BLOCK.waxed().unaffected().defaultBlockState();
+			default -> COPPER;
+		};
+	}
+
+	static Block domeSlab() {
+		return switch (DOME_MAT) {
+			case "slate" -> ROOF_SLAB;
+			case "verdigris" -> Blocks.CUT_COPPER_SLAB.waxed().oxidized();
+			default -> COPPER_SLAB;
+		};
+	}
+
+	static Block domeStairs() {
+		return switch (DOME_MAT) {
+			case "slate" -> ROOF_STAIRS;
+			case "verdigris" -> Blocks.CUT_COPPER_STAIRS.waxed().oxidized();
+			default -> COPPER_STAIRS;
+		};
+	}
+
+	/** Facet of a dome column: the direction the surface rises towards (null on a diagonal facet). */
+	static @Nullable Direction facetUp(int dx, int dz) {
+		int ax = Math.abs(dx);
+		int az = Math.abs(dz);
+		double diag = DOME_METRIC.equals("round") ? Math.max(ax, az) * 0.9 : (ax + az) * 9.0 / 14.0;
+		if (ax > az && ax > diag + 0.01) {
+			return dx > 0 ? W : E;
+		}
+		if (az > ax && az > diag + 0.01) {
+			return dz > 0 ? N : S;
+		}
+		return null;
+	}
+	/** Columns closer than this to the centre are the oculus under the lantern. */
+	static final double OCULUS_R = 2.2;
+
+	private static int domeTop2(int dx, int dz) {
+		double r = domeMetric(dx, dz);
+		if (!domeFoot(dx, dz)) {
+			return 2 * SPRING;
+		}
+		double h = profile(r, DOME_R, DOME_H);
+		return DOME_STEP.equals("full") ? 2 * (int) Math.round(SPRING + h) : (int) Math.round(2 * (SPRING + h));
+	}
+
+	private static int domeIn2(int dx, int dz) {
+		double r = domeMetric(dx, dz);
+		if (!domeFoot(dx, dz) || r >= DOME_RI) {
+			return 2 * SPRING;
+		}
+		double h = profile(r, DOME_RI, DOME_HI);
+		return DOME_STEP.equals("full") ? 2 * (int) Math.round(SPRING + h) : (int) Math.round(2 * (SPRING + h));
+	}
+
+	private static boolean oculus(int dx, int dz) {
+		return octInside(dx, dz, 2);
 	}
 
 	/**
-	 * The copper dome, built as octagonal courses: each course is an octagon one or two steps
-	 * smaller than the one below; its exposed rim is copper stairs facing outwards (a slab and a
-	 * stair where it steps in by two), so the eight facets read as clean straight runs. The shell is
-	 * two blocks thick and lined with copper (no light-coloured notches at the hips; a warm copper
-	 * vault inside). A glazed lantern with a copper cap and a finial sits on top.
+	 * The copper dome: a smooth shell from a height field (half-block steps, so every course is a
+	 * slab or a block and the eight facets keep straight hips), copper outside, a pale-oak vault
+	 * with eight walnut ribs inside, an oculus, and a glazed octagonal lantern (glass on all eight
+	 * sides) with a stepped copper cap and finial.
 	 */
 	private static void dome(Plan p) {
-		int n = DOME_COURSES.length;
-		for (int k = 0; k < n; k++) {
-			int y = DOME_BASE + k;
-			int a = DOME_COURSES[k];
-			int next = k + 1 < n ? DOME_COURSES[k + 1] : 1;
-			for (int dx = -a; dx <= a; dx++) {
-				for (int dz = -a; dz <= a; dz++) {
-					if (!octInside(dx, dz, a)) {
+		int topY = SPRING + (int) Math.ceil(DOME_H) + 1;
+		for (int dx = -9; dx <= 9; dx++) {
+			for (int dz = -9; dz <= 9; dz++) {
+				if (!domeFoot(dx, dz) || oculus(dx, dz)) {
+					continue;
+				}
+				int t2 = domeTop2(dx, dz);
+				int i2 = domeIn2(dx, dz);
+				boolean rib = dx == 0 || dz == 0 || Math.abs(dx) == Math.abs(dz);
+				for (int y = SPRING; y <= topY; y++) {
+					boolean lo = 2 * y >= i2 && 2 * y < t2;
+					boolean hi = 2 * y + 1 >= i2 && 2 * y + 1 < t2;
+					if (!lo && !hi) {
 						continue;
 					}
-					int x = AX + dx;
-					int z = AZ + dz;
-					if (octInside(dx, dz, a - 2)) {
-						p.set(x, y, z, AIR);
-						continue;
-					}
-					boolean outer = !octInside(dx, dz, a - 1);
-					boolean exposed = !octInside(dx, dz, next);
-					Direction in = outward(dx, dz).getOpposite();
+					boolean exterior = 2 * y + 2 >= t2 || exposedOut(dx, dz, y);
+					boolean interior = (i2 > 2 * SPRING && 2 * y <= i2 && i2 < 2 * y + 2) || exposedIn(dx, dz, y);
 					BlockState s;
-					if (!exposed) {
-						s = COPPER;
-					} else if (next <= a - 2 && outer) {
-						s = St.slab(COPPER_SLAB, false);
+					if (exterior) {
+						Direction up = facetUp(dx, dz);
+						Direction in = Math.abs(dx) >= Math.abs(dz) ? (dx > 0 ? W : E) : (dz > 0 ? N : S);
+						boolean topCell = 2 * y + 2 >= t2;
+						boolean rimStep = topCell && domeTop2(dx - in.getStepX(), dz - in.getStepZ()) < t2;
+						if (lo && hi && DOME_STYLE.equals("bevel") && rimStep && (dx != 0 || dz != 0)) {
+							s = St.stairs(domeStairs(), in, false);
+						} else if (lo && hi) {
+							s = domeFull();
+						} else if (lo && DOME_STYLE.equals("stairs") && up != null) {
+							s = St.stairs(domeStairs(), up, false);
+						} else {
+							s = lo ? St.slab(domeSlab(), false) : St.slab(domeSlab(), true);
+						}
+					} else if (interior) {
+						Block slab = rib ? Blocks.DARK_OAK_SLAB : Blocks.PALE_OAK_SLAB;
+						BlockState full = rib ? DARK_PLANKS : CEIL_FULL;
+						s = lo && hi ? full : lo ? St.slab(slab, false) : St.slab(slab, true);
 					} else {
-						s = St.stairs(COPPER_STAIRS, in, false);
+						s = COPPER;
 					}
-					p.set(x, y, z, s);
+					p.set(AX + dx, y, AZ + dz, s);
 				}
 			}
 		}
-		// lantern on top: glazed 3x3 with copper corner posts, a copper cap, a finial
-		int top = DOME_BASE + n;
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dz = -1; dz <= 1; dz++) {
-				boolean corner = Math.abs(dx) == 1 && Math.abs(dz) == 1;
-				p.set(AX + dx, top, AZ + dz, corner ? COPPER : GLASS);
-				p.set(AX + dx, top + 1, AZ + dz, corner ? St.slab(COPPER_SLAB, false) : St.stairs(COPPER_STAIRS,
-					dx < 0 ? E : dx > 0 ? W : dz < 0 ? S : N, false));
-			}
-		}
-		// the top course's inside (a = 3 -> the oculus under the lantern) is open
-		for (int dx = -2; dx <= 2; dx++) {
-			for (int dz = -2; dz <= 2; dz++) {
-				if (octInside(dx, dz, 1)) {
-					p.set(AX + dx, top - 1, AZ + dz, AIR);
-				}
-			}
-		}
-		p.set(AX, top + 1, AZ, COPPER);
-		p.set(AX, top + 2, AZ, Blocks.LIGHTNING_ROD.waxed().unaffected().defaultBlockState());
-		// cornice: upside-down walnut stairs round the top of the octagon wall, facing in (overhang out)
+		// timber ring on the wall tops (the spring line) and the cornice round the drum
 		for (int dx = -10; dx <= 10; dx++) {
 			for (int dz = -10; dz <= 10; dz++) {
+				int x = AX + dx;
+				int z = AZ + dz;
+				if (octWall(dx, dz)) {
+					p.set(x, SPRING, z, beam(Math.abs(dx) > Math.abs(dz) ? Direction.Axis.Z : Direction.Axis.X));
+					continue;
+				}
 				if (octFoot(dx, dz) || !octInside(dx, dz, 10)) {
 					continue;
 				}
@@ -576,13 +744,105 @@ public final class StudioHqBuilder implements HqBuilder {
 				if (!octFoot(dx + in.getStepX(), dz + in.getStepZ())) {
 					continue;
 				}
-				int x = AX + dx;
-				int z = AZ + dz;
 				if (p.isAir(x, ATRIUM_TOP, z)) {
 					p.set(x, ATRIUM_TOP, z, St.stairs(Blocks.DARK_OAK_STAIRS, in, true));
 				}
 			}
 		}
+		lantern(p);
+	}
+
+	/** True when the cell (dx, y, dz) of the dome has open sky beside it. */
+	private static boolean exposedOut(int dx, int dz, int y) {
+		for (Direction d : Direction.Plane.HORIZONTAL) {
+			int nx = dx + d.getStepX();
+			int nz = dz + d.getStepZ();
+			if (!domeFoot(nx, nz)) {
+				if (y > SPRING || !octFoot(nx, nz)) {
+					return true;
+				}
+				continue;
+			}
+			if (!oculus(nx, nz) && domeTop2(nx, nz) <= 2 * y + 1) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** True when the cell (dx, y, dz) of the dome has the vault's air beside it. */
+	private static boolean exposedIn(int dx, int dz, int y) {
+		for (Direction d : Direction.Plane.HORIZONTAL) {
+			int nx = dx + d.getStepX();
+			int nz = dz + d.getStepZ();
+			if (!domeFoot(nx, nz)) {
+				continue;
+			}
+			if (oculus(nx, nz)) {
+				if (2 * y + 1 < lanternBase() * 2) {
+					return true;
+				}
+				continue;
+			}
+			int i2 = domeIn2(nx, nz);
+			if (i2 > 2 * SPRING && i2 > 2 * y) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** Base course of the lantern: where the dome surface meets the lantern ring. */
+	static int lanternBase() {
+		return (int) Math.floor(SPRING + profile(3.0, DOME_R, DOME_H) + 0.5);
+	}
+
+	private static void lantern(Plan p) {
+		int b = lanternBase();
+		for (int dx = -4; dx <= 4; dx++) {
+			for (int dz = -4; dz <= 4; dz++) {
+				int x = AX + dx;
+				int z = AZ + dz;
+				int ax = Math.abs(dx);
+				int az = Math.abs(dz);
+				boolean ring = octInside(dx, dz, 3) && !octInside(dx, dz, 2);
+				boolean inner = octInside(dx, dz, 2);
+				if (ring) {
+					p.set(x, b, z, COPPER);
+					boolean postCell = (ax == 3 && az == 2) || (ax == 2 && az == 3);
+					for (int y = b + 1; y <= b + 3; y++) {
+						p.set(x, y, z, postCell ? COPPER : GLASS_PANE);
+					}
+				} else if (inner) {
+					for (int y = b - 2; y <= b + 3; y++) {
+						p.set(x, y, z, AIR);
+					}
+				}
+				// stepped cap
+				if (octInside(dx, dz, 4) && !octInside(dx, dz, 3)) {
+					p.set(x, b + 4, z, St.slab(COPPER_SLAB, false));
+				} else if (octInside(dx, dz, 3)) {
+					p.set(x, b + 4, z, COPPER);
+				}
+				if (octInside(dx, dz, 3) && !octInside(dx, dz, 2)) {
+					p.set(x, b + 5, z, St.slab(COPPER_SLAB, false));
+				} else if (octInside(dx, dz, 2)) {
+					p.set(x, b + 5, z, COPPER);
+				}
+				if (octInside(dx, dz, 2) && !octInside(dx, dz, 1)) {
+					p.set(x, b + 6, z, St.slab(COPPER_SLAB, false));
+				} else if (octInside(dx, dz, 1)) {
+					p.set(x, b + 6, z, COPPER);
+				}
+			}
+		}
+		p.set(AX, b + 7, AZ, St.slab(COPPER_SLAB, false));
+		p.set(AX, b + 8, AZ, Blocks.LIGHTNING_ROD.waxed().unaffected().defaultBlockState());
+		// the lantern glows at night: hidden light inside the glass (round the chandelier's chain)
+		p.set(AX + 1, b + 2, AZ, St.light(14));
+		p.set(AX - 1, b + 2, AZ, St.light(14));
+		p.set(AX, b + 2, AZ + 1, St.light(14));
+		p.set(AX, b + 2, AZ - 1, St.light(14));
 	}
 
 	// ================================================================== floors
@@ -634,12 +894,12 @@ public final class StudioHqBuilder implements HqBuilder {
 	// ================================================================== stations
 
 	private static void desks(Plan p, Anchors.Builder a) {
-		List<String> ids = Cast.ids();
+		List<String> ids = deskIds();
 		BlockState desk = St.slab(Blocks.DARK_OAK_SLAB, true);
+		int zd = HZN + 1; // -9: desk + monitor row against the north wall
 		for (int i = 0; i < DESK_X.length; i++) {
 			int bx = DESK_X[i];
-			String id = i < ids.size() ? ids.get(i) : "agent" + i;
-			int zd = HZN + 1; // -9: desk + monitor row against the north wall
+			String id = ids.get(i);
 			for (int x = bx - 1; x <= bx + 1; x++) {
 				p.set(x, FEET, zd, desk);
 				for (int y = FEET + 1; y <= FEET + 2; y++) {
@@ -652,15 +912,25 @@ public final class StudioHqBuilder implements HqBuilder {
 			p.bind(bx, FEET + 3, HZN, "agent:" + id);
 			p.set(bx - 1, FEET + 3, HZN, PLASTER_FRAME);
 			p.set(bx + 1, FEET + 3, HZN, PLASTER_FRAME);
-			// chair (backrest to the south), plant at the bay edge
-			p.set(bx - 1, FEET, zd + 2, St.stairs(Blocks.DARK_OAK_STAIRS, S, false));
-			p.set(bx - 2, FEET, zd + 1, St.of(Blocks.POTTED_FERN));
-			p.set(bx + 2, FEET, zd + 1, St.of(Blocks.POTTED_FERN));
-			// anchors: stand at the desk, the chair, the screen, a close-up camera
-			a.put(AnchorNames.desk(id), bx + 0.05, FEET, zd + 1.5, 180, 0);
-			a.put("seat_" + id, bx - 0.5, FEET + 0.5, zd + 2.5, 180, 0);
+			// the chair is the desk spot (agents sit on the seat block at desk_<id>); its right-hand
+			// side cell stays free so the agent can step in
+			int cx = bx + CHAIR_DX;
+			p.set(cx, FEET, zd + 1, St.stairs(Blocks.DARK_OAK_STAIRS, S, false));
+			a.put(AnchorNames.desk(id), cx + 0.5, FEET, zd + 1.5, 180, 0);
+			a.put("seat_" + id, cx + 0.5, FEET, zd + 1.5, 180, 0);
 			a.put(AnchorNames.monitor(id), bx + 0.5, FEET + 2.0, zd + 0.25 + 0.002, 0, 0);
-			a.cameraLookAt("desk_" + id, bx + 2.0, FEET + 2.3, zd + 4.8, bx + 0.9, FEET + 1.95, zd + 0.25);
+			a.cameraLookAt("desk_" + id, bx + 3.1, FEET + 2.05, zd + 4.6, bx + 0.15, FEET + 1.85, zd + 0.25);
+		}
+		// between the bays: walnut cabinets with a desk lantern (light pools between the desks at
+		// night) and plants at the ends
+		for (int x : new int[] {-17, -13, -9, -5, 5, 9, 13, 17}) {
+			int ax = Math.abs(x);
+			if (ax == 5) {
+				p.set(x, FEET, zd, St.of(Blocks.POTTED_FLOWERING_AZALEA));
+				continue;
+			}
+			p.set(x, FEET, zd, Blocks.CHISELED_BOOKSHELF.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, S));
+			p.set(x, FEET + 1, zd, ax == 17 ? St.of(Blocks.POTTED_FERN) : LANTERN);
 		}
 		// window seat + planters in the centre bay under the big north window
 		for (int x = -3; x <= 3; x++) {
@@ -690,34 +960,39 @@ public final class StudioHqBuilder implements HqBuilder {
 			}
 			p.set(xw, FEET + 3, z, pil ? post() : St.stairs(Blocks.DARK_OAK_STAIRS, W, true));
 		}
-		// north wall shelves in the corner (x -23..-19)
+		// north wall shelves in the corner (x -22..-19)
 		for (int x = -22; x <= -19; x++) {
 			for (int y = FEET; y <= FEET + 2; y++) {
 				p.set(x, y, HZN + 1, y == FEET + 1 ? Blocks.CHISELED_BOOKSHELF.defaultBlockState()
 					.setValue(HorizontalDirectionalBlock.FACING, S) : Blocks.BOOKSHELF.defaultBlockState());
 			}
 		}
+		p.set(-22, FEET + 3, HZN + 1, St.of(Blocks.POTTED_FERN));
+		p.set(-19, FEET + 3, HZN + 1, LANTERN);
 		// freestanding double shelf (memory archive both sides) and a catalog
 		for (int z = -1; z <= 1; z++) {
 			p.set(-18, FEET, z, ModBlocks.MEMORY_ARCHIVE.defaultBlockState().setValue(FacingEntityBlock.FACING, W));
 			p.bind(-18, FEET, z, "shared");
-			p.set(-18, FEET + 1, z, z == 0 ? St.of(Blocks.POTTED_FLOWERING_AZALEA) : St.candle(Blocks.CANDLE, 2, true));
+			p.set(-18, FEET + 1, z, z == 0 ? LANTERN : St.candle(Blocks.CANDLE, 2, true));
 		}
 		p.set(-18, FEET, -2, ModBlocks.MEMORY_CATALOG.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, W));
 		p.set(-18, FEET, 2, ModBlocks.MEMORY_CATALOG.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, W));
-		// lecterns and a reading table
-		p.set(-20, FEET, -4, St.facing(Blocks.LECTERN, W));
-		p.set(-20, FEET, 3, St.facing(Blocks.LECTERN, W));
+		p.set(-18, FEET + 1, -2, St.of(Blocks.POTTED_FLOWERING_AZALEA));
+		// lecterns (readers stand east of them, facing west)
+		p.set(-20, FEET, -4, St.facing(Blocks.LECTERN, E));
+		p.set(-20, FEET, 3, St.facing(Blocks.LECTERN, E));
 		// parquet "rug" for the library floor
 		for (int x = -22; x <= -19; x++) {
 			for (int z = -5; z <= 4; z++) {
 				p.set(x, FLOOR, z, PARQUET);
 			}
 		}
-		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 1), -21.5, FEET, -2.5, 90, 0);
-		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 2), -21.5, FEET, 1.5, 90, 0);
-		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 3), -19.0, FEET, -4.4, 90, 0);
-		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 4), -19.0, FEET, 3.6, 90, 0);
+		// slots: two at the archive wall (far enough out that a full nameplate never pokes into the
+		// shelves), two at the lecterns
+		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 1), -20.4, FEET, -2.5, 90, 0);
+		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 2), -20.4, FEET, 1.5, 90, 0);
+		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 3), -18.6, FEET, -3.5, 90, 0);
+		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 4), -18.6, FEET, 3.5, 90, 0);
 	}
 
 	private static void workshop(Plan p, Anchors.Builder a) {
@@ -733,11 +1008,11 @@ public final class StudioHqBuilder implements HqBuilder {
 			p.bind(HX, FEET + 2, z, "ci:#" + (i + 1));
 		}
 		p.set(xe, FEET + 1, -6, Blocks.BREWING_STAND.defaultBlockState());
-		p.set(xe, FEET + 1, -2, St.of(Blocks.POTTED_CACTUS));
+		p.set(xe, FEET + 1, -2, LANTERN);
 		p.set(xe, FEET + 1, -4, ModBlocks.CONSOLE_TERMINAL.defaultBlockState().setValue(FacingEntityBlock.FACING, W));
 		a.put(AnchorNames.slot(AnchorNames.TESTBENCH, 1), 21.6, FEET, -4.6, -90, 0);
-		a.put(AnchorNames.slot(AnchorNames.TESTBENCH, 2), 21.6, FEET, -2.4, -90, 0);
-		a.put(AnchorNames.slot(AnchorNames.TESTBENCH, 3), 19.8, FEET, -3.5, -90, 0);
+		a.put(AnchorNames.slot(AnchorNames.TESTBENCH, 2), 21.6, FEET, -2.6, -90, 0);
+		a.put(AnchorNames.slot(AnchorNames.TESTBENCH, 3), 19.8, FEET, -3.6, -90, 0);
 		// terminals: north wall, NE corner, facing south
 		for (int x = 19; x <= 21; x += 2) {
 			p.set(x, FEET, HZN + 1, ModBlocks.CONSOLE_TERMINAL.defaultBlockState().setValue(FacingEntityBlock.FACING, S));
@@ -746,25 +1021,45 @@ public final class StudioHqBuilder implements HqBuilder {
 		p.set(22, FEET, HZN + 1, bench);
 		p.set(22, FEET + 1, HZN + 1, St.of(Blocks.POTTED_FERN));
 		p.set(20, FEET + 1, HZN + 1, St.candle(Blocks.CANDLE, 3, true));
+		p.set(23, FEET, HZN + 1, Blocks.BARREL.defaultBlockState());
 		a.put(AnchorNames.slot(AnchorNames.TERMINAL, 1), 19.5, FEET, -7.6, 180, 0);
 		a.put(AnchorNames.slot(AnchorNames.TERMINAL, 2), 21.5, FEET, -7.6, 180, 0);
-		// merge station: two worktops against the east wall (z 1..2), facing west
-		for (int z = 1; z <= 2; z++) {
+		// merge station: a walnut-panelled alcove in the gable bay z -1..1 with a three-part worktop, a
+		// `merge` status lamp above it and two signal bulbs that light while a merge waits for you
+		for (int z = -1; z <= 1; z++) {
 			p.set(xe, FEET, z, ModBlocks.MERGE_STATION.defaultBlockState().setValue(FacingEntityBlock.FACING, W).setValue(MergeStationBlock.ACTIVE,
 				false));
+			for (int y = FEET; y <= WALL_TOP; y++) {
+				p.set(HX, y, z, y == FEET ? WALNUT_TRIM : WALNUT);
+			}
 		}
-		p.set(xe, FEET, 0, bench);
-		p.set(xe, FEET, 3, bench);
-		p.set(xe, FEET + 1, 3, St.lantern(COPPER_LANTERN, false));
-		a.put(AnchorNames.slot(AnchorNames.MERGESTATION, 1), 21.5, FEET, 1.5, -90, 0);
-		a.put(AnchorNames.slot(AnchorNames.MERGESTATION, 2), 21.5, FEET, 3.4, -90, 0);
+		p.set(HX, FEET + 3, 0, ModBlocks.STATUS_LAMP.defaultBlockState().setValue(StatusLampBlock.STATUS, LampStatus.OFF));
+		p.bind(HX, FEET + 3, 0, "merge");
+		p.set(HX, FEET + 3, -1, bulb());
+		p.set(HX, FEET + 3, 1, bulb());
+		p.set(xe, WALL_TOP, -1, St.slab(Blocks.DARK_OAK_SLAB, true));
+		p.set(xe, WALL_TOP, 0, St.slab(Blocks.DARK_OAK_SLAB, true));
+		p.set(xe, WALL_TOP, 1, St.slab(Blocks.DARK_OAK_SLAB, true));
+		p.set(xe, FEET + 1, 1, St.of(Blocks.POTTED_FLOWERING_AZALEA));
+		a.put(AnchorNames.slot(AnchorNames.MERGESTATION, 1), 21.5, FEET, -0.5, -90, 0);
+		a.put(AnchorNames.slot(AnchorNames.MERGESTATION, 2), 21.5, FEET, 1.4, -90, 0);
+		// south-east corner: a cabinet and a floor lamp
+		p.set(xe, FEET, 4, Blocks.BARREL.defaultBlockState());
+		p.set(xe, FEET + 1, 4, St.of(Blocks.POTTED_FERN));
+		floorLamp(p, xe, 3);
+	}
+
+	/** A floor lamp: a spruce fence post with a lantern on top (not walkable, no seat). */
+	static void floorLamp(Plan p, int x, int z) {
+		p.set(x, FEET, z, Blocks.SPRUCE_FENCE.defaultBlockState());
+		p.set(x, FEET + 1, z, LANTERN);
 	}
 
 	private static void lounge(Plan p, Anchors.Builder a) {
 		// rug
-		for (int x = -14; x <= -6; x++) {
+		for (int x = -14; x <= -7; x++) {
 			for (int z = -3; z <= 3; z++) {
-				boolean border = x == -14 || x == -6 || z == -3 || z == 3;
+				boolean border = x == -14 || x == -7 || z == -3 || z == 3;
 				p.set(x, FEET, z, St.carpet(border ? DyeColor.BROWN : DyeColor.WHITE));
 			}
 		}
@@ -780,55 +1075,66 @@ public final class StudioHqBuilder implements HqBuilder {
 			}
 			p.set(x, FEET + 2, HZS - 2, St.slab(Blocks.MUD_BRICK_SLAB, true));
 		}
-		// sofa (wool stairs) facing the fire, coffee table, a plant
-		Block sofa = Blocks.WOOL_STAIRS.pick(DyeColor.ORANGE);
-		for (int x = -13; x <= -8; x++) {
-			p.set(x, FEET, -3, St.stairs(sofa, N, false));
+		p.set(-12, FEET + 3, HZS - 2, St.candle(Blocks.CANDLE, 3, true));
+		p.set(-9, FEET + 3, HZS - 2, St.of(Blocks.POTTED_FERN));
+		// six leather armchairs round a low table, facing each other and the fire: a pair at the back
+		// (facing the fire) and two on each side. Each chair's right-hand neighbour is free floor.
+		int[][] chairs = {
+			// x, z, sitter's yaw
+			{-12, -2, 0}, {-9, -2, 0}, {-13, 0, -90}, {-8, 0, 90}, {-13, 2, -90}, {-8, 2, 90},
+		};
+		for (int i = 0; i < chairs.length; i++) {
+			int[] c = chairs[i];
+			Direction back = c[2] == 0 ? N : c[2] == -90 ? W : E;
+			p.set(c[0], FEET, c[1], St.stairs(SOFA, back, false));
+			a.put(AnchorNames.slot(AnchorNames.LOUNGE, i + 1), c[0] + 0.5, FEET, c[1] + 0.5, c[2], 0);
 		}
-		p.set(-14, FEET, -3, St.stairs(sofa, E, false));
-		for (int x = -12; x <= -10; x++) {
-			p.set(x, FEET, 0, St.slab(Blocks.DARK_OAK_SLAB, true));
+		// low coffee table (bottom slabs: nobody walks over it) with a candle and a plant
+		for (int x = -11; x <= -10; x++) {
+			for (int z = 0; z <= 1; z++) {
+				p.set(x, FEET, z, St.slab(Blocks.DARK_OAK_SLAB, false));
+			}
 		}
-		p.set(-11, FEET + 1, 0, St.of(Blocks.POTTED_FLOWERING_AZALEA));
-		p.set(-12, FEET + 1, 0, St.candle(Blocks.CANDLE, 3, true));
+		p.set(-11, FEET + 1, 0, St.candle(Blocks.CANDLE, 3, true));
+		p.set(-10, FEET + 1, 1, St.of(Blocks.POTTED_FLOWERING_AZALEA));
+		floorLamp(p, -14, -3);
+		floorLamp(p, -7, -3);
 		p.set(-14, FEET, 3, St.of(Blocks.POTTED_FERN));
-		// six slots in two staggered rows facing each other across the table, >= 1.6 apart
-		double[][] slots = {{-12.9, -1.5, 0}, {-10.9, -1.4, 0}, {-8.9, -1.6, 0}, {-12.0, 2.3, 180}, {-9.9, 2.5, 180}, {-7.7, 1.9, 180}};
-		for (int i = 0; i < slots.length; i++) {
-			a.put(AnchorNames.slot(AnchorNames.LOUNGE, i + 1), slots[i][0], FEET + 0.0625, slots[i][1], (float) slots[i][2], 0);
-		}
+		p.set(-7, FEET, 3, St.of(Blocks.POTTED_FERN));
 	}
 
 	private static void meeting(Plan p, Anchors.Builder a) {
-		// rug + table (x 8..11, z -1..1), chairs around
-		for (int x = 6; x <= 13; x++) {
-			for (int z = -3; z <= 3; z++) {
-				boolean border = x == 6 || x == 13 || z == -3 || z == 3;
+		// rug + a long table (x 8..13, z 0) with three chairs a side, staggered
+		for (int x = 6; x <= 15; x++) {
+			for (int z = -2; z <= 2; z++) {
+				boolean border = x == 6 || x == 15 || z == -2 || z == 2;
 				p.set(x, FEET, z, St.carpet(border ? DyeColor.BROWN : DyeColor.LIGHT_GRAY));
 			}
 		}
 		BlockState top = St.slab(Blocks.DARK_OAK_SLAB, true);
-		for (int x = 8; x <= 11; x++) {
+		for (int x = 8; x <= 13; x++) {
 			p.set(x, FEET, 0, top);
 		}
-		p.set(9, FEET + 1, 0, St.lantern(COPPER_LANTERN, false));
-		for (int x = 8; x <= 11; x += 3) {
-			p.set(x, FEET, -2, St.stairs(Blocks.BIRCH_STAIRS, N, false));
-			p.set(x, FEET, 2, St.stairs(Blocks.BIRCH_STAIRS, S, false));
+		p.set(10, FEET + 1, 0, LANTERN);
+		p.set(12, FEET + 1, 0, St.candle(Blocks.CANDLE, 2, true));
+		p.set(8, FEET + 1, 0, St.of(Blocks.POTTED_FERN));
+		int n = 1;
+		for (int x : new int[] {8, 10, 12}) {
+			// north side: back to the north, the sitter faces the table (south); free floor west of it
+			p.set(x, FEET, -1, St.stairs(Blocks.BIRCH_STAIRS, N, false));
+			a.put(AnchorNames.slot(AnchorNames.MEETING, n++), x + 0.5, FEET, -0.5, 0, 0);
 		}
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 1), 9.0, FEET + 0.0625, -1.5, 0, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 2), 11.4, FEET + 0.0625, 1.6, 180, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 3), 7.1, FEET + 0.0625, 0.5, -90, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 4), 12.9, FEET + 0.0625, 0.5, 90, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 5), 9.4, FEET + 0.0625, 1.5, 180, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 6), 10.9, FEET + 0.0625, -1.3, 0, 0);
+		for (int x : new int[] {9, 11, 13}) {
+			// south side: back to the south, facing north; free floor east of it
+			p.set(x, FEET, 1, St.stairs(Blocks.BIRCH_STAIRS, S, false));
+			a.put(AnchorNames.slot(AnchorNames.MEETING, n++), x + 0.5, FEET, 1.5, 180, 0);
+		}
 	}
 
 	private static void atrium(Plan p, Anchors.Builder a) {
 		// --- hologram plinth (centre): goal lamp on a copper base; the hologram is drawn by the lamp's BER
 		p.set(AX, FEET, AZ, ModBlocks.STATUS_LAMP.defaultBlockState().setValue(StatusLampBlock.STATUS, LampStatus.IDLE));
 		p.bind(AX, FEET, AZ, "goal:atrium");
-		// a low 3x3 copper dais around the projector lamp
 		for (int sx = -1; sx <= 1; sx++) {
 			for (int sz = -1; sz <= 1; sz++) {
 				if (sx != 0 || sz != 0) {
@@ -838,7 +1144,7 @@ public final class StudioHqBuilder implements HqBuilder {
 		}
 		a.put(AnchorNames.GOAL_ATRIUM, AX + 0.5, FEET, AZ + 0.5, 180, 0);
 
-		// --- task wall: west side, 7 x 4 board facing east, walnut surround, light strip above
+		// --- task wall: west side, 7 x 4 board facing east, walnut surround with a hood (a hidden light under it)
 		int xb = AX - 8;
 		BlockState board = ModBlocks.TASK_BOARD.defaultBlockState().setValue(PanelBlock.FACING, E);
 		for (int z = AZ - 3; z <= AZ + 3; z++) {
@@ -847,17 +1153,19 @@ public final class StudioHqBuilder implements HqBuilder {
 			}
 			p.set(xb, FEET, z, WALNUT_TRIM);
 			p.set(xb, FEET + 5, z, WALNUT);
-			p.set(xb + 1, FEET + 5, z, ModBlocks.GLOW_STRIP.defaultBlockState().setValue(GlowStripBlock.FACING, E));
+			p.set(xb + 1, FEET + 5, z, St.slab(Blocks.DARK_OAK_SLAB, true));
 		}
 		for (int y = FEET; y <= FEET + 5; y++) {
 			p.set(xb, y, AZ - 4, post());
 			p.set(xb, y, AZ + 4, post());
 		}
 		a.put(AnchorNames.TASK_WALL, xb + 1 - 0.875 + 0.002, FEET + 3.0, AZ + 0.5, -90, 0);
-		p.setIfAir(xb + 1, FEET + 1, AZ - 3, St.light(13));
-		p.setIfAir(xb + 1, FEET + 1, AZ + 3, St.light(13));
+		p.setIfAir(xb + 2, FEET + 4, AZ - 2, St.light(12));
+		p.setIfAir(xb + 2, FEET + 4, AZ + 2, St.light(12));
+		p.setIfAir(xb + 2, FEET + 1, AZ, St.light(11));
 
-		// --- decision podium: east side, facing west; alcove with the decision lamp and the bell
+		// --- decision podium: east side, facing west; a framed walnut niche behind it with the
+		// `decisions` lamp, the bell and three signal bulbs that light while a decision waits for you
 		int xp = AX + 6;
 		p.set(xp, FEET, AZ, ModBlocks.DECISION_PODIUM.defaultBlockState().setValue(FacingEntityBlock.FACING, W).setValue(DecisionPodiumBlock.OPEN,
 			false));
@@ -868,12 +1176,16 @@ public final class StudioHqBuilder implements HqBuilder {
 				boolean side = Math.abs(z - AZ) == 2;
 				p.set(xa, y, z, side ? post() : y == FEET ? WALNUT_TRIM : WALNUT);
 			}
+			p.set(xa, FEET + 6, z, beam(Direction.Axis.Z));
 		}
-		p.set(xa, FEET + 4, AZ, ModBlocks.STATUS_LAMP.defaultBlockState().setValue(StatusLampBlock.STATUS, LampStatus.OFF));
-		p.bind(xa, FEET + 4, AZ, "decisions");
+		p.set(xa, FEET + 3, AZ, ModBlocks.STATUS_LAMP.defaultBlockState().setValue(StatusLampBlock.STATUS, LampStatus.OFF));
+		p.bind(xa, FEET + 3, AZ, "decisions");
+		for (int z = AZ - 1; z <= AZ + 1; z++) {
+			p.set(xa, FEET + 5, z, bulb());
+		}
 		p.set(xa - 1, FEET + 3, AZ - 1, St.bell(W, BellAttachType.SINGLE_WALL));
-		p.set(xa - 1, FEET + 3, AZ + 1, St.lantern(COPPER_LANTERN, false));
 		p.set(xa - 1, FEET + 2, AZ + 1, St.slab(Blocks.DARK_OAK_SLAB, true));
+		p.set(xa - 1, FEET + 3, AZ + 1, LANTERN);
 		// user console beside the podium
 		p.set(xp + 1, FEET, AZ + 3, ModBlocks.CONSOLE_TERMINAL.defaultBlockState().setValue(FacingEntityBlock.FACING, W));
 		// the player's spot in front of the podium; waiting agents stand beside it, facing that spot
@@ -890,17 +1202,15 @@ public final class StudioHqBuilder implements HqBuilder {
 
 		// --- benches + planters on the diagonals
 		for (int sx : new int[] {-1, 1}) {
-			// NW / NE: benches facing the centre
 			p.set(AX + sx * 5, FEET, AZ - 6, St.stairs(Blocks.DARK_OAK_STAIRS, sx < 0 ? W : E, false));
 			p.set(AX + sx * 6, FEET, AZ - 5, St.stairs(Blocks.DARK_OAK_STAIRS, sx < 0 ? W : E, false));
 			p.set(AX + sx * 4, FEET, AZ - 7, St.of(Blocks.POTTED_FERN));
-			// SW / SE: planters with azalea
 			p.set(AX + sx * 6, FEET, AZ + 5, Blocks.MOSS_BLOCK.defaultBlockState());
 			p.set(AX + sx * 5, FEET, AZ + 6, Blocks.MOSS_BLOCK.defaultBlockState());
 			p.set(AX + sx * 6, FEET + 1, AZ + 5, Blocks.FLOWERING_AZALEA.defaultBlockState());
 			p.set(AX + sx * 5, FEET + 1, AZ + 6, Blocks.AZALEA.defaultBlockState());
 		}
-		// --- light: a cornice ledge round the drum with a hidden light cove, a copper chandelier above the hologram
+		// --- light: a cornice ledge round the drum with a hidden light cove, a ring chandelier above the hologram
 		for (int dx = -8; dx <= 8; dx++) {
 			for (int dz = -8; dz <= 8; dz++) {
 				if (!octIn(dx, dz) || octR(dx, dz) != 8) {
@@ -908,28 +1218,49 @@ public final class StudioHqBuilder implements HqBuilder {
 				}
 				p.set(AX + dx, ATRIUM_TOP, AZ + dz, St.slab(Blocks.DARK_OAK_SLAB, true));
 				if ((dx + dz) % 3 == 0) {
-					p.setIfAir(AX + dx, ATRIUM_TOP + 1, AZ + dz, St.light(13));
+					p.setIfAir(AX + dx, ATRIUM_TOP + 1, AZ + dz, St.light(12));
 				}
 			}
 		}
-		for (int y = DOME_BASE + 1; y < DOME_BASE + DOME_COURSES.length; y++) {
-			p.set(AX, y, AZ, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Y));
-		}
-		for (int sx = -2; sx <= 2; sx += 4) {
-			p.set(AX + sx, DOME_BASE, AZ, St.lantern(COPPER_LANTERN, true));
-			p.set(AX, DOME_BASE, AZ + sx, St.lantern(COPPER_LANTERN, true));
-			p.set(AX + sx, DOME_BASE + 1, AZ, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Y));
-			p.set(AX, DOME_BASE + 1, AZ + sx, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Y));
-		}
-		p.fill(AX - 2, DOME_BASE + 2, AZ, AX + 2, DOME_BASE + 2, AZ, St.chain(Blocks.IRON_CHAIN, Direction.Axis.X));
-		p.fill(AX, DOME_BASE + 2, AZ - 2, AX, DOME_BASE + 2, AZ + 2, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Z));
-		p.set(AX, DOME_BASE + 2, AZ, COPPER);
-		// hidden fill light (invisible light blocks) so no corner of the atrium is dark
+		chandelier(p);
+		// hidden fill light (invisible light blocks), kept low so the lanterns make pools of light
 		for (int dx = -8; dx <= 8; dx += 4) {
 			for (int dz = -8; dz <= 8; dz += 4) {
 				if (octIn(dx, dz) && (dx != 0 || dz != 0)) {
-					p.setIfAir(AX + dx, FEET + 1, AZ + dz, St.light(14));
-					p.setIfAir(AX + dx, FEET + 6, AZ + dz, St.light(12));
+					p.setIfAir(AX + dx, FEET + 1, AZ + dz, St.light(10));
+					p.setIfAir(AX + dx, FEET + 6, AZ + dz, St.light(10));
+				}
+			}
+		}
+		// floor lamps by the entrance
+		floorLamp(p, AX - 3, AZ + 7);
+		floorLamp(p, AX + 3, AZ + 7);
+	}
+
+	/**
+	 * A ring chandelier hung from the lantern's cap through the oculus: a square ring of copper chain
+	 * (half size 2) with eight lanterns under it, braced to the central chain.
+	 */
+	private static void chandelier(Plan p) {
+		int ry = ATRIUM_TOP - 1; // ring height
+		int top = lanternBase() + 3;
+		for (int y = ry; y <= top; y++) {
+			p.set(AX, y, AZ, St.chain(COPPER_CHAIN, Direction.Axis.Y));
+		}
+		for (int d = -2; d <= 2; d++) {
+			p.set(AX + d, ry, AZ - 2, St.chain(COPPER_CHAIN, Direction.Axis.X));
+			p.set(AX + d, ry, AZ + 2, St.chain(COPPER_CHAIN, Direction.Axis.X));
+			p.set(AX - 2, ry, AZ + d, St.chain(COPPER_CHAIN, Direction.Axis.Z));
+			p.set(AX + 2, ry, AZ + d, St.chain(COPPER_CHAIN, Direction.Axis.Z));
+		}
+		for (int d = -1; d <= 1; d += 2) {
+			p.set(AX + d, ry, AZ, St.chain(COPPER_CHAIN, Direction.Axis.X));
+			p.set(AX, ry, AZ + d, St.chain(COPPER_CHAIN, Direction.Axis.Z));
+		}
+		for (int dx = -2; dx <= 2; dx += 2) {
+			for (int dz = -2; dz <= 2; dz += 2) {
+				if (dx != 0 || dz != 0) {
+					p.set(AX + dx, ry - 1, AZ + dz, LANTERN_HANGING);
 				}
 			}
 		}
@@ -942,24 +1273,30 @@ public final class StudioHqBuilder implements HqBuilder {
 			}
 			for (int z : new int[] {-5, 1}) {
 				p.set(x, FRIEZE - 1, z, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Y));
-				p.set(x, FRIEZE - 2, z, St.lantern(Blocks.LANTERN, true));
+				p.set(x, FRIEZE - 2, z, LANTERN_HANGING);
 			}
 		}
-		// warm wash along the tops of the long walls
-		for (int x = -HX + 1; x <= HX - 1; x++) {
+		// hidden uplights on top of the tie beams and along the ridge, so the pale vault never goes dark
+		for (int x = -21; x <= 21; x++) {
 			if (isPostX(x)) {
-				continue;
-			}
-			p.setIfAir(x, WALL_TOP, HZN + 1, ModBlocks.GLOW_STRIP.defaultBlockState().setValue(GlowStripBlock.FACING, S));
-			if (!octFoot(x - AX, HZS - AZ)) {
-				p.setIfAir(x, WALL_TOP, HZS - 1, ModBlocks.GLOW_STRIP.defaultBlockState().setValue(GlowStripBlock.FACING, N));
+				p.setIfAir(x, FRIEZE + 1, -7, St.light(12));
+				p.setIfAir(x, FRIEZE + 1, 3, St.light(12));
+			} else if (Math.floorMod(x, 4) == 1) {
+				p.setIfAir(x, roofY(RIDGE_Z) - 2, RIDGE_Z, St.light(10));
 			}
 		}
-		// invisible fill light (light blocks: no model, no collision) two blocks above the floor, so
-		// the hall never has a dark corner at night; the visible lanterns and strips stay the key light
+		// hidden cove light above the pelmets: a warm wash on the sloped ceiling, no visible tube
+		for (int x = -HX + 1; x <= HX - 1; x += 2) {
+			p.setIfAir(x, FRIEZE, HZN + 1, St.light(12));
+			if (!octFoot(x - AX, HZS - AZ) && !fireplaceX(x)) {
+				p.setIfAir(x, FRIEZE, HZS - 1, St.light(12));
+			}
+		}
+		// invisible fill light (light blocks: no model, no collision) one block above the floor, kept
+		// low so the lanterns, screens and the fire make the pools of light at night
 		for (int x = -22; x <= 22; x += 4) {
-			for (int z = -8; z <= 4; z += 4) {
-				p.setIfAir(x, FEET + 1, z, St.light(14));
+			for (int z = -7; z <= 4; z += 4) {
+				p.setIfAir(x, FEET + 1, z, St.light(10));
 			}
 		}
 	}
@@ -968,20 +1305,20 @@ public final class StudioHqBuilder implements HqBuilder {
 
 	private static void cameras(Anchors.Builder a) {
 		int az = AZ;
-		a.cameraLookAt("exterior_hero", 26, 78, 47, -1, 72, 6);
-		a.cameraLookAt("night", 17, 69.5, 41, -5, 70, 9);
-		a.cameraLookAt("entrance_atrium", AX + 0.5, FEET + 1.7, az + 7.6, AX + 0.5, FEET + 3.2, az - 2);
+		a.cameraLookAt("exterior_hero", 27, 77, 42, -2, 72, 6);
+		a.cameraLookAt("night", 16, 69.5, 39, -4, 71, 10);
+		a.cameraLookAt("entrance_atrium", AX + 0.5, FEET + 1.7, az + 7.6, AX + 0.5, FEET + 3.6, az - 2);
 		a.cameraLookAt("task_wall", AX - 2.2, FEET + 2.9, az + 0.5, AX - 7.9, FEET + 2.9, az + 0.5);
-		a.cameraLookAt("decision_podium", AX + 1.8, FEET + 2.25, az + 3.9, AX + 6.2, FEET + 1.25, az - 0.9);
-		a.cameraLookAt("wide_interior", 19.6, FEET + 4.1, 3.3, -6, FEET + 0.9, -6.0);
-		a.cameraLookAt("library", -15.0, FEET + 3.0, 4.0, -22.5, FEET + 1.0, -2.0);
+		a.cameraLookAt("decision_podium", AX + 1.2, FEET + 1.75, az + 4.6, AX + 7.0, FEET + 2.2, az - 0.6);
+		a.cameraLookAt("wide_interior", -1.0, FEET + 3.8, 3.6, -15.5, FEET + 0.8, -5.5);
+		a.cameraLookAt("library", -14.0, FEET + 2.8, 4.0, -21.5, FEET + 1.2, -1.5);
 		a.cameraLookAt("console", AX + 2.5, FEET + 2.2, az + 6.5, AX + 7.5, FEET + 1.0, az + 2.5);
-		a.cameraLookAt("merge_station", 17.0, FEET + 2.4, -2.5, 22.6, FEET + 0.9, 2.0);
-		a.cameraLookAt("testbench", 16.0, FEET + 2.6, -2.0, 23, FEET + 1.0, -6.0);
-		a.cameraLookAt("lounge", -4.0, FEET + 3.0, -5.0, -11, FEET + 0.5, 1.0);
+		a.cameraLookAt("merge_station", 16.5, FEET + 2.4, 3.5, 23.5, FEET + 1.2, -0.2);
+		a.cameraLookAt("testbench", 16.0, FEET + 2.6, -0.5, 23, FEET + 1.0, -4.5);
+		a.cameraLookAt("lounge", -4.0, FEET + 3.0, -5.5, -11, FEET + 0.5, 1.0);
 		a.cameraLookAt("hall", 0.5, FEET + 2.2, HZS + 2.0, 0.5, FEET + 2.0, HZN);
 		// QA: the editing agent's desk in the showcase is Juniper's
-		int jx = DESK_X[1];
-		a.cameraLookAt("agent_desk", jx + 2.0, FEET + 2.3, HZN + 5.8, jx + 0.9, FEET + 1.95, HZN + 1.25);
+		int jx = DESK_X[Math.max(0, deskIds().indexOf("juniper"))];
+		a.cameraLookAt("agent_desk", jx + 3.1, FEET + 2.05, HZN + 5.6, jx + 0.15, FEET + 1.85, HZN + 1.25);
 	}
 }

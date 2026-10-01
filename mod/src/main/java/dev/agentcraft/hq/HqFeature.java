@@ -14,14 +14,22 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import org.jspecify.annotations.Nullable;
 
 /**
- * HQ feature (common side): {@code /agentcraft hq [builder]} builds the HQ and publishes its anchors.
- * Phase 3's HQ specialist registers the real builder in {@link #init()} (or its own init) and makes
- * it the default; this package is theirs.
+ * HQ feature (common side): {@code /agentcraft hq [builder] [force]} builds the HQ and publishes its
+ * anchors. The studio builder keeps cells the player changed since its last build; {@code force}
+ * resets them too.
  */
 public final class HqFeature {
 	private HqFeature() {
+	}
+
+	/** The report of the last build (for QA: {@code dev.state.hq.lastBuild}). */
+	private static volatile @Nullable String lastReport;
+
+	public static @Nullable String lastReport() {
+		return lastReport;
 	}
 
 	public static void init() {
@@ -37,7 +45,7 @@ public final class HqFeature {
 			HqBuilder builder = HqBuilders.get(HqBuilders.defaultId());
 			if (builder != null) {
 				try {
-					buildAndPublish(server.overworld(), builder);
+					buildAndPublish(server.overworld(), builder, HqBuilder.Options.DEFAULT);
 					AgentCraft.LOGGER.info("Fresh HQ world: built the default HQ '{}'", builder.id());
 				} catch (RuntimeException e) {
 					AgentCraft.LOGGER.error("Auto-building the HQ failed (run /agentcraft hq)", e);
@@ -45,13 +53,15 @@ public final class HqFeature {
 			}
 		});
 		AgentCraftCommands.sub(root -> root.then(Commands.literal("hq")
-			.executes(ctx -> build(ctx, HqBuilders.defaultId()))
+			.executes(ctx -> build(ctx, HqBuilders.defaultId(), false))
+			.then(Commands.literal("force").executes(ctx -> build(ctx, HqBuilders.defaultId(), true)))
 			.then(Commands.argument("builder", StringArgumentType.word())
 				.suggests((ctx, b) -> {
 					HqBuilders.ids().forEach(b::suggest);
 					return b.buildFuture();
 				})
-				.executes(ctx -> build(ctx, StringArgumentType.getString(ctx, "builder"))))));
+				.executes(ctx -> build(ctx, StringArgumentType.getString(ctx, "builder"), false))
+				.then(Commands.literal("force").executes(ctx -> build(ctx, StringArgumentType.getString(ctx, "builder"), true))))));
 	}
 
 	private static boolean autoBuild() {
@@ -62,7 +72,7 @@ public final class HqFeature {
 		return v == null || !(v.trim().equals("0") || v.trim().equalsIgnoreCase("false") || v.trim().equalsIgnoreCase("off"));
 	}
 
-	private static int build(CommandContext<CommandSourceStack> ctx, String id) {
+	private static int build(CommandContext<CommandSourceStack> ctx, String id, boolean force) {
 		HqBuilder builder = HqBuilders.get(id);
 		if (builder == null) {
 			ctx.getSource().sendFailure(Component.literal("Unknown HQ builder '" + id + "' (known: " + HqBuilders.ids() + ")"));
@@ -70,21 +80,30 @@ public final class HqFeature {
 		}
 		Anchors.Layout layout;
 		try {
-			layout = buildAndPublish(ctx.getSource().getLevel(), builder);
+			layout = buildAndPublish(ctx.getSource().getLevel(), builder, new HqBuilder.Options(force));
 		} catch (RuntimeException e) {
 			AgentCraft.LOGGER.error("HQ builder '{}' failed", id, e);
 			ctx.getSource().sendFailure(Component.literal("HQ builder '" + id + "' failed: " + e));
 			return 0;
 		}
-		ctx.getSource().sendSuccess(() -> Component.literal("Built HQ '" + id + "': " + layout.anchors().size() + " anchors"), true);
+		String report = lastReport;
+		ctx.getSource().sendSuccess(() -> Component.literal("Built HQ '" + id + "': " + layout.anchors().size() + " anchors"
+			+ (report == null ? "" : ". " + report)), true);
 		return layout.anchors().size();
 	}
 
 	/** Runs {@code builder} (server thread), publishes its layout and moves the world spawn to its spawn anchor. */
 	public static Anchors.Layout buildAndPublish(ServerLevel level, HqBuilder builder) {
+		return buildAndPublish(level, builder, HqBuilder.Options.DEFAULT);
+	}
+
+	public static Anchors.Layout buildAndPublish(ServerLevel level, HqBuilder builder, HqBuilder.Options options) {
 		long t0 = System.nanoTime();
+		// another builder rewrites the same ground without a record: the studio's memory of its last
+		// build no longer describes the world
+		PlanStore.invalidateUnless(level.getServer(), builder.id());
 		Anchors.Builder anchors = Anchors.builder(builder.id());
-		builder.build(level, anchors);
+		lastReport = builder.build(level, anchors, options);
 		Anchors.Layout layout = anchors.build();
 		Anchors.publish(level.getServer(), layout);
 		Anchor spawn = layout.get(AnchorNames.SPAWN);
@@ -93,7 +112,8 @@ public final class HqFeature {
 				String.format(Locale.ROOT, "setworldspawn %d %d %d %.1f 0", (int) Math.floor(spawn.x()), (int) Math.floor(spawn.y()),
 					(int) Math.floor(spawn.z()), spawn.yaw()));
 		}
-		AgentCraft.LOGGER.info("HQ '{}' built in {} ms", builder.id(), (System.nanoTime() - t0) / 1_000_000);
+		AgentCraft.LOGGER.info("HQ '{}' built in {} ms{}", builder.id(), (System.nanoTime() - t0) / 1_000_000,
+			lastReport == null ? "" : ": " + lastReport);
 		return layout;
 	}
 }

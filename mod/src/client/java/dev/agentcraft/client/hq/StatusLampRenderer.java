@@ -19,6 +19,7 @@ import dev.agentcraft.client.world.StationRenderState;
 import dev.agentcraft.client.world.StationRenderer;
 import java.util.List;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -39,6 +40,8 @@ import net.minecraft.core.Direction;
  */
 public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, StatusLampRenderer.State> {
 	public static final String ATRIUM_BINDING = "goal:atrium";
+	public static final String DECISIONS_BINDING = "decisions";
+	public static final String MERGE_BINDING = "merge";
 	/** Height of the hologram card's centre above the lamp block's origin (blocks). */
 	static final float HOLO_Y = 4.1f;
 	/** Card size in kit pixels and its world scale (blocks per pixel = PX * K). */
@@ -61,6 +64,9 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		public String line2a = "";
 		public String line2b = "";
 		public int cardW = CARD_W;
+		/** Waiting niche glow (lamps bound {@code decisions} / {@code merge}): face with air in front, frame half width (blocks). */
+		public @Nullable Direction frameFace;
+		public float frameHalf;
 	}
 
 	@Override
@@ -82,6 +88,20 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 	protected void extractStation(StatusLampBlockEntity be, State s, float partialTicks) {
 		s.status = be.getBlockState().getValue(StatusLampBlock.STATUS);
 		s.hologram = ATRIUM_BINDING.equals(s.binding);
+		ForemanState fs = Foreman.state();
+		// offline: the lamps hold their last state, but nothing pretends you are needed right now
+		s.stale = fs == null || fs.isStale();
+		s.frameFace = null;
+		if (s.status == LampStatus.WAITING && !s.stale && (DECISIONS_BINDING.equals(s.binding) || MERGE_BINDING.equals(s.binding))
+			&& be.getLevel() != null) {
+			for (Direction d : Direction.Plane.HORIZONTAL) {
+				if (be.getLevel().getBlockState(be.getBlockPos().relative(d)).isAir()) {
+					s.frameFace = d;
+					break;
+				}
+			}
+			s.frameHalf = DECISIONS_BINDING.equals(s.binding) ? 2.5f : 1.5f;
+		}
 		if (s.hologram) {
 			extractHologram(s);
 		}
@@ -98,6 +118,7 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		int doing = 0;
 		int review = 0;
 		int working = 0;
+		int onShift = 0;
 		int waitingUser = 0;
 		if (st != null) {
 			for (Task t : st.tasks().values()) {
@@ -117,6 +138,7 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 				if (!a.isActive()) {
 					continue;
 				}
+				onShift++;
 				String fam = a.state().family();
 				if (fam.equals("working") || fam.equals("thinking")) {
 					working++;
@@ -141,8 +163,8 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 				lines = List.of(lines.get(0), TextUtil.ellipsize(font, lines.get(1) + " " + lines.get(2), TEXT_W));
 			}
 			s.goalLines = List.copyOf(lines);
-			s.line1 = done + " of " + total + " tasks done" + (review > 0 ? "  ·  " + review + " in review" : "");
-			s.line2a = working + (working == 1 ? " agent" : " agents") + " working" + (doing > 0 ? " on " + doing : "");
+			s.line1 = done + " of " + total + " tasks done" + (doing > 0 ? "  ·  " + doing + " in progress" : "");
+			s.line2a = plural(working, "agent") + " working" + (review > 0 ? "  ·  " + review + " in review" : "");
 			s.line2b = waitingUser > 0 ? "  ·  " + waitingUser + " need" + (waitingUser == 1 ? "s" : "") + " you" : "";
 		} else {
 			s.progress = 0;
@@ -151,7 +173,7 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 			s.statusColor = UiStyle.status("idle");
 			s.goalLines = List.of("What should the team", "work on?");
 			s.line1 = "Press ` and type a goal";
-			s.line2a = st == null || !st.hasData() ? "Foreman not connected" : working + " agents on shift";
+			s.line2a = st == null || !st.hasData() ? "Foreman not connected" : plural(onShift, "agent") + " on shift";
 			s.line2b = "";
 		}
 		if (s.stale && st != null && st.hasData()) {
@@ -165,10 +187,17 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		s.cardW = Math.max(CARD_W, 84 + w + 12);
 	}
 
+	static String plural(int n, String word) {
+		return n + " " + word + (n == 1 ? "" : "s");
+	}
+
 	@Override
 	public void submit(State s, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
-		if (s.status == LampStatus.WAITING) {
+		if (s.status == LampStatus.WAITING && !s.stale) {
 			breathe(s, poseStack, collector);
+		}
+		if (s.frameFace != null) {
+			frame(s, poseStack, collector);
 		}
 		if (s.hologram) {
 			beam(s, poseStack, collector);
@@ -190,6 +219,49 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 			});
 			poseStack.popPose();
 		}
+	}
+
+	/**
+	 * A soft clay glow framing the niche around a waiting {@code decisions} / {@code merge} lamp, so
+	 * "a decision is waiting" reads from across the room: a thin bright line with a halo fading
+	 * outwards, breathing with the lamp. Drawn on the wall plane in front of the lamp, centred on it,
+	 * from the floor (3 blocks below the lamp) to 3 blocks above its bottom.
+	 */
+	private static void frame(State s, PoseStack poseStack, SubmitNodeCollector collector) {
+		float wave = 0.5f + 0.5f * (float) Math.sin(s.timeSeconds * Math.PI * 2 * 0.8);
+		int core = ((int) (120 + 110 * wave) << 24) | (UiStyle.CLAY & 0xFFFFFF);
+		int halo = ((int) (40 + 50 * wave) << 24) | (UiStyle.CLAY & 0xFFFFFF);
+		int clear = UiStyle.CLAY & 0xFFFFFF;
+		float half = s.frameHalf * 16f;
+		float x0 = 8 - half;
+		float x1 = 8 + half;
+		float y0 = -32f;
+		float y1 = 64f;
+		float t = 1.5f; // core line
+		float h = 7f; // halo reach
+		poseStack.pushPose();
+		toFace(poseStack, s.frameFace, -0.006f, 16f);
+		collector.submitCustomGeometry(poseStack, RenderTypes.lightning(), (pose, vc) -> {
+			// core lines
+			quad(pose, vc, x0, y0, x1, y0 + t, core, core);
+			quad(pose, vc, x0, y1 - t, x1, y1, core, core);
+			quad(pose, vc, x0, y0, x0 + t, y1, core, core);
+			quad(pose, vc, x1 - t, y0, x1, y1, core, core);
+			// inner halo, fading towards the middle of the niche
+			quad(pose, vc, x0 + t, y0 + t, x1 - t, y0 + t + h, halo, clear);
+			quad(pose, vc, x0 + t, y1 - t - h, x1 - t, y1 - t, clear, halo);
+			hquad(pose, vc, x0 + t, y0 + t, x0 + t + h, y1 - t, halo, clear);
+			hquad(pose, vc, x1 - t - h, y0 + t, x1 - t, y1 - t, clear, halo);
+		});
+		poseStack.popPose();
+	}
+
+	/** A quad with a horizontal colour gradient (left -> right). */
+	private static void hquad(PoseStack.Pose pose, VertexConsumer vc, float x0, float y0, float x1, float y1, int left, int right) {
+		vc.addVertex(pose, x0, y0, 0).setColor(left);
+		vc.addVertex(pose, x0, y1, 0).setColor(left);
+		vc.addVertex(pose, x1, y1, 0).setColor(right);
+		vc.addVertex(pose, x1, y0, 0).setColor(right);
 	}
 
 	// ------------------------------------------------------------------ hologram

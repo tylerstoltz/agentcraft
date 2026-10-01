@@ -8,6 +8,8 @@ import dev.agentcraft.block.entity.DecisionPodiumBlockEntity;
 import dev.agentcraft.block.entity.ModBlockEntities;
 import dev.agentcraft.block.entity.StatusLampBlockEntity;
 import dev.agentcraft.client.dev.DevBridge;
+import dev.agentcraft.client.foreman.Foreman;
+import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.layout.Anchors;
 import java.util.ArrayList;
@@ -60,6 +62,10 @@ public final class HqClientFeature {
 		o.addProperty("layout", l.name());
 		o.addProperty("revision", l.revision());
 		o.addProperty("lastChanged", HqWorldDriver.lastChanged());
+		String report = dev.agentcraft.hq.HqFeature.lastReport();
+		if (report != null) {
+			o.addProperty("lastBuild", report);
+		}
 		o.addProperty("waitingLamps", waitingLamps.size());
 		o.addProperty("openPodiums", openPodiums.size());
 		HqWorldDriver.Wanted w = HqWorldDriver.wanted();
@@ -80,6 +86,10 @@ public final class HqClientFeature {
 		}
 		if (++ticks % SCAN_TICKS == 0) {
 			scan(level);
+		}
+		ForemanState st = Foreman.state();
+		if (st == null || st.isStale()) {
+			return; // offline: the world keeps its last state, but nothing signals "you are needed"
 		}
 		for (BlockPos p : waitingLamps) {
 			if (RANDOM.nextFloat() < 0.18f) {

@@ -8,16 +8,21 @@ import static dev.agentcraft.hq.StudioHqBuilder.GROUND;
 import static dev.agentcraft.hq.StudioHqBuilder.HX;
 import static dev.agentcraft.hq.StudioHqBuilder.HZN;
 import static dev.agentcraft.hq.StudioHqBuilder.HZS;
+import static dev.agentcraft.hq.StudioHqBuilder.SITE;
 
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
- * Everything outside the walls: terraces, the entrance portico, paths with lanterns, the pond, trees
- * and a meadow of grass and flowers. All "random" choices come from a coordinate hash, so the
- * landscape is identical on every build.
+ * Everything outside the walls: the ground (a hollow ringed by low wooded hills, so the horizon is
+ * closed and the site reads as a meadow in the woods rather than a build on a superflat plain),
+ * terraces, the gabled entrance portico, paths with lanterns ending at a lychgate, the pond, the
+ * cottage garden, trees and a meadow of grass and flowers. All "random" choices come from a
+ * coordinate hash, so the landscape is identical on every build.
  */
 final class HqLandscape {
 	private HqLandscape() {
@@ -37,14 +42,65 @@ final class HqLandscape {
 		return hash(x, z, salt) / (double) 0x7fffffff;
 	}
 
-	/** Ground work before the building (nothing yet: the plan's default is the meadow). */
+	// ------------------------------------------------------------------ ground
+
+	/** Areas kept level with the hall's plinth (x0, z0, x1, z1): building, front court, pond, garden, the path to the gate. */
+	private static final int[][] FLAT = {
+		{-29, -16, 29, 12}, {-20, 6, 20, 33}, {-37, 9, -10, 34}, {4, 29, 22, 45}, {-6, 25, 6, 49},
+	};
+	/** The lychgate at the end of the main path. */
+	static final int GATE_Z = 48;
+
+	static double smooth(double e0, double e1, double v) {
+		double t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0)));
+		return t * t * (3 - 2 * t);
+	}
+
+	static double flatDistance(int x, int z) {
+		double best = Double.MAX_VALUE;
+		for (int[] r : FLAT) {
+			double dx = Math.max(0, Math.max(r[0] - x, x - r[2]));
+			double dz = Math.max(0, Math.max(r[1] - z, z - r[3]));
+			best = Math.min(best, Math.sqrt(dx * dx + dz * dz));
+		}
+		return best;
+	}
+
+	/** Distance to the edge of the site box (0 = the last column inside it). */
+	static int edge(int x, int z) {
+		return Math.min(Math.min(x - SITE[0], SITE[3] - x), Math.min(z - SITE[2], SITE[5] - z));
+	}
+
+	/** Terrain height above the meadow (blocks): a rolling ring of hills near the box edges, level inside. */
+	static int terrainHeight(int x, int z) {
+		double e = edge(x, z);
+		double crest = 5.2 + 1.8 * Math.sin(x * 0.15 + z * 0.07) + 1.4 * Math.cos(z * 0.19 - x * 0.11) + 0.8 * Math.sin((x + z) * 0.31);
+		double berm = e >= 6 ? crest * smooth(18, 6, e) : crest * (0.25 + 0.75 * smooth(0, 6, e));
+		return (int) Math.round(berm * smooth(0, 7, flatDistance(x, z)));
+	}
+
+	/** Shapes the ground before anything is built: dirt under a grass top at the terrain height. */
 	static void ground(Plan p) {
+		for (int x = p.minX; x <= p.maxX; x++) {
+			for (int z = p.minZ; z <= p.maxZ; z++) {
+				int h = terrainHeight(x, z);
+				if (h <= 0) {
+					continue;
+				}
+				for (int y = GROUND; y < GROUND + h; y++) {
+					p.set(x, y, z, Blocks.DIRT.defaultBlockState());
+				}
+				p.set(x, GROUND + h, z, Blocks.GRASS_BLOCK.defaultBlockState());
+				p.setTop(x, z, GROUND + h);
+			}
+		}
 	}
 
 	static void exterior(Plan p) {
 		terraces(p);
 		portico(p);
 		paths(p);
+		gate(p);
 		pond(p);
 		garden(p);
 		trees(p);
@@ -54,7 +110,8 @@ final class HqLandscape {
 
 	/** True when (x, z) is untouched meadow in the plan (grass with air above). */
 	static boolean meadowAt(Plan p, int x, int z) {
-		return p.get(x, GROUND, z).is(Blocks.GRASS_BLOCK) && p.isAir(x, FLOOR, z);
+		int t = p.top(x, z);
+		return p.get(x, t, z).is(Blocks.GRASS_BLOCK) && p.isAir(x, t + 1, z);
 	}
 
 	// ------------------------------------------------------------------ terraces + portico
@@ -85,7 +142,7 @@ final class HqLandscape {
 					p.set(x, FEET + 1, z, (hash(x, z, 5) & 1) == 0 ? Blocks.FLOWERING_AZALEA.defaultBlockState() : Blocks.AZALEA.defaultBlockState());
 				} else if ((x - xa) % 4 == 0 && x != xa + 0) {
 					p.set(x, FEET, z, Blocks.SPRUCE_FENCE.defaultBlockState());
-					p.set(x, FEET + 1, z, St.lantern(Blocks.LANTERN, false));
+					p.set(x, FEET + 1, z, StudioHqBuilder.LANTERN);
 				}
 			}
 			// window boxes under the hall windows (on the deck, against the wall)
@@ -105,15 +162,19 @@ final class HqLandscape {
 		}
 	}
 
+	/**
+	 * The entrance portico: a gabled copper roof on two slim front posts (the back rests on the
+	 * atrium wall), a plastered pediment with a timber frame and a round window, a lantern under the
+	 * ridge, steps down to the path.
+	 */
 	private static void portico(Plan p) {
-		int z0 = AZ + 10; // 25
-		int z1 = AZ + 13; // 28
+		int z0 = AZ + 10; // 25: just outside the entrance wall (z = 24)
+		int z1 = AZ + 13; // 28: front posts
 		for (int x = -4; x <= 4; x++) {
 			for (int z = z0; z <= z1; z++) {
 				p.set(x, GROUND, z, Blocks.DIRT.defaultBlockState());
 				p.set(x, FLOOR, z, Math.abs(x) == 4 || z == z1 ? StudioHqBuilder.PLINTH : StudioHqBuilder.DARK_PLANKS);
 			}
-			// two steps down to the path
 			if (Math.abs(x) <= 2) {
 				p.set(x, FLOOR, z1 + 1, St.slab(Blocks.MUD_BRICK_SLAB, false));
 			}
@@ -121,22 +182,46 @@ final class HqLandscape {
 		for (int x = -2; x <= 2; x++) {
 			p.set(x, FLOOR, z1, St.slab(Blocks.MUD_BRICK_SLAB, true));
 		}
+		// posts, side beams, front lintel
+		int beamY = FEET + 4; // 70
 		for (int sx : new int[] {-3, 3}) {
-			for (int z : new int[] {z0, z1}) {
-				p.fill(sx, FEET, z, sx, FEET + 4, z, StudioHqBuilder.post());
-			}
-			p.set(sx, FEET + 5, z1, StudioHqBuilder.beam(Direction.Axis.X));
+			p.fill(sx, FEET, z1, sx, beamY - 1, z1, StudioHqBuilder.post());
+			p.fill(sx, beamY, z0, sx, beamY, z1, StudioHqBuilder.beam(Direction.Axis.Z));
+			p.set(sx, beamY - 1, z0, St.stairs(Blocks.DARK_OAK_STAIRS, Direction.SOUTH, true));
 		}
-		p.fill(-3, FEET + 5, z1, 3, FEET + 5, z1, StudioHqBuilder.beam(Direction.Axis.X));
-		p.fill(-3, FEET + 5, z0, -3, FEET + 5, z1, StudioHqBuilder.beam(Direction.Axis.Z));
-		p.fill(3, FEET + 5, z0, 3, FEET + 5, z1, StudioHqBuilder.beam(Direction.Axis.Z));
-		for (int x = -4; x <= 4; x++) {
-			for (int z = z0; z <= z1 + 1; z++) {
-				p.set(x, FEET + 6, z, St.slab(StudioHqBuilder.COPPER_SLAB, false));
+		p.fill(-3, beamY, z1, 3, beamY, z1, StudioHqBuilder.beam(Direction.Axis.X));
+		// gabled roof ridged north-south, overhanging one block at the eaves and the front
+		Block rs = StudioHqBuilder.COPPER_STAIRS;
+		for (int z = z0; z <= z1 + 1; z++) {
+			for (int k = 0; k <= 4; k++) {
+				int y = beamY + 1 + (4 - k);
+				if (k == 0) {
+					p.set(AX, y, z, StudioHqBuilder.COPPER);
+					p.set(AX, y + 1, z, St.slab(StudioHqBuilder.COPPER_SLAB, false));
+				} else {
+					p.set(AX - k, y, z, St.stairs(rs, Direction.EAST, false));
+					p.set(AX + k, y, z, St.stairs(rs, Direction.WEST, false));
+				}
+			}
+			// overhang lip one lower at the eaves
+			p.set(AX - 5, beamY, z, St.slab(StudioHqBuilder.COPPER_SLAB, true));
+			p.set(AX + 5, beamY, z, St.slab(StudioHqBuilder.COPPER_SLAB, true));
+		}
+		// pediment under the front of the roof: plaster, timber frame, a round window
+		for (int k = -3; k <= 3; k++) {
+			int topY = beamY + (4 - Math.abs(k));
+			for (int y = beamY + 1; y <= topY; y++) {
+				p.set(AX + k, y, z1, StudioHqBuilder.PLASTER);
 			}
 		}
-		p.set(0, FEET + 4, z0 + 1, St.lantern(StudioHqBuilder.COPPER_LANTERN, true));
-		p.set(0, FEET + 5, z0 + 1, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Y));
+		p.set(AX, beamY + 2, z1, Blocks.GLASS_PANE.defaultBlockState());
+		p.set(AX, beamY + 3, z1, StudioHqBuilder.DARK_PLANKS);
+		p.set(AX - 1, beamY + 2, z1, StudioHqBuilder.DARK_PLANKS);
+		p.set(AX + 1, beamY + 2, z1, StudioHqBuilder.DARK_PLANKS);
+		// under the roof: a lantern on a chain
+		p.set(AX, beamY + 3, z0 + 1, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Y));
+		p.set(AX, beamY + 2, z0 + 1, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Y));
+		p.set(AX, beamY + 1, z0 + 1, StudioHqBuilder.LANTERN_HANGING);
 		// potted plants beside the door
 		p.set(-2, FEET, z0, St.of(Blocks.POTTED_FLOWERING_AZALEA));
 		p.set(2, FEET, z0, St.of(Blocks.POTTED_FLOWERING_AZALEA));
@@ -145,8 +230,9 @@ final class HqLandscape {
 	// ------------------------------------------------------------------ paths
 
 	private static void path(Plan p, int x, int z) {
-		if (p.get(x, GROUND, z).is(Blocks.GRASS_BLOCK) && p.isAir(x, FLOOR, z)) {
-			p.set(x, GROUND, z, Blocks.DIRT_PATH.defaultBlockState());
+		int t = p.top(x, z);
+		if (p.get(x, t, z).is(Blocks.GRASS_BLOCK) && p.isAir(x, t + 1, z)) {
+			p.set(x, t, z, Blocks.DIRT_PATH.defaultBlockState());
 		}
 	}
 
@@ -154,25 +240,30 @@ final class HqLandscape {
 		if (!meadowAt(p, x, z)) {
 			return;
 		}
-		p.set(x, FLOOR, z, Blocks.SPRUCE_FENCE.defaultBlockState());
-		p.set(x, FLOOR + 1, z, Blocks.SPRUCE_FENCE.defaultBlockState());
-		p.set(x, FLOOR + 2, z, St.lantern(Blocks.LANTERN, false));
+		int t = p.top(x, z);
+		p.set(x, t + 1, z, Blocks.SPRUCE_FENCE.defaultBlockState());
+		p.set(x, t + 2, z, Blocks.SPRUCE_FENCE.defaultBlockState());
+		p.set(x, t + 3, z, StudioHqBuilder.LANTERN);
+	}
+
+	static int pathX(int z) {
+		int z1 = AZ + 15;
+		return (int) Math.round(Math.sin((z - z1) / 9.0) * 2.0);
 	}
 
 	private static void paths(Plan p) {
 		int z1 = AZ + 15;
-		// main path south from the portico, gently curving
-		for (int z = z1; z <= 54; z++) {
-			int cx = (int) Math.round(Math.sin((z - z1) / 9.0) * 2.0);
+		// main path south from the portico, gently curving, to the lychgate
+		for (int z = z1; z <= GATE_Z + 1; z++) {
+			int cx = pathX(z);
 			for (int x = cx - 1; x <= cx + 1; x++) {
 				path(p, x, z);
 			}
-			if ((z - z1) % 7 == 3) {
+			if ((z - z1) % 7 == 3 && z < GATE_Z - 2) {
 				lanternPost(p, cx + ((z - z1) / 7 % 2 == 0 ? 3 : -3), z);
 			}
 		}
-		// terrace steps -> meadow paths
-		// terrace steps -> curve in towards the portico (passes east of the pond)
+		// terrace steps -> curve in towards the portico
 		for (int side : new int[] {-1, 1}) {
 			int mid = side * 17;
 			for (int z = HZS + 6; z <= AZ + 15; z++) {
@@ -192,6 +283,26 @@ final class HqLandscape {
 		}
 	}
 
+	/** A lychgate where the main path ends: two posts, a lintel, a little slate roof, a lantern. */
+	private static void gate(Plan p) {
+		int cx = pathX(GATE_Z);
+		int t = p.top(cx, GATE_Z);
+		int y0 = t + 1;
+		for (int sx : new int[] {-2, 2}) {
+			p.fill(cx + sx, y0, GATE_Z, cx + sx, y0 + 3, GATE_Z, StudioHqBuilder.post());
+			p.set(cx + sx, t, GATE_Z, StudioHqBuilder.PLINTH);
+		}
+		p.fill(cx - 3, y0 + 4, GATE_Z, cx + 3, y0 + 4, GATE_Z, StudioHqBuilder.beam(Direction.Axis.X));
+		for (int x = cx - 3; x <= cx + 3; x++) {
+			p.set(x, y0 + 4, GATE_Z - 1, St.stairs(StudioHqBuilder.ROOF_STAIRS, Direction.SOUTH, false));
+			p.set(x, y0 + 4, GATE_Z + 1, St.stairs(StudioHqBuilder.ROOF_STAIRS, Direction.NORTH, false));
+			p.set(x, y0 + 5, GATE_Z, St.slab(StudioHqBuilder.ROOF_SLAB, false));
+		}
+		p.set(cx, y0 + 3, GATE_Z, StudioHqBuilder.LANTERN_HANGING);
+		p.set(cx - 3, y0, GATE_Z + 1, Blocks.FIREFLY_BUSH.defaultBlockState());
+		p.set(cx + 3, y0, GATE_Z - 1, St.of(Blocks.FLOWERING_AZALEA));
+	}
+
 	// ------------------------------------------------------------------ pond
 
 	private static void pond(Plan p) {
@@ -207,7 +318,6 @@ final class HqLandscape {
 					continue;
 				}
 				if (d > 1.0) {
-					// bank: mud, moss, the odd stone
 					int h = hash(x, z, 31) % 10;
 					p.set(x, GROUND, z, h < 3 ? Blocks.MOSS_BLOCK.defaultBlockState() : h < 5 ? Blocks.MUD.defaultBlockState()
 						: Blocks.GRASS_BLOCK.defaultBlockState());
@@ -230,14 +340,13 @@ final class HqLandscape {
 				}
 			}
 		}
-		// a small spruce dock reaching in from the east
 		for (int x = -19; x <= -15; x++) {
 			for (int z = 20; z <= 21; z++) {
 				p.set(x, FLOOR, z, St.slab(Blocks.SPRUCE_SLAB, false));
 			}
 		}
 		p.set(-19, FLOOR, 19, Blocks.SPRUCE_FENCE.defaultBlockState());
-		p.set(-19, FLOOR + 1, 19, St.lantern(Blocks.LANTERN, false));
+		p.set(-19, FLOOR + 1, 19, StudioHqBuilder.LANTERN);
 		p.set(-16, FLOOR + 0, 23, Blocks.FIREFLY_BUSH.defaultBlockState());
 		p.set(-28, FLOOR, 13, Blocks.FIREFLY_BUSH.defaultBlockState());
 		p.set(-34, FLOOR, 23, Blocks.FIREFLY_BUSH.defaultBlockState());
@@ -250,7 +359,8 @@ final class HqLandscape {
 		POPLAR(Blocks.POPLAR_LOG, Blocks.YELLOW_POPLAR_LEAVES, Blocks.ORANGE_POPLAR_LEAVES, 4, 2.3, 5.6),
 		AZALEA(Blocks.OAK_LOG, Blocks.AZALEA_LEAVES, Blocks.FLOWERING_AZALEA_LEAVES, 4, 3.6, 2.3),
 		OAK(Blocks.DARK_OAK_LOG, Blocks.OAK_LEAVES, null, 6, 4.2, 2.8),
-		CHERRY(Blocks.CHERRY_LOG, Blocks.CHERRY_LEAVES, null, 4, 3.4, 2.3);
+		CHERRY(Blocks.CHERRY_LOG, Blocks.CHERRY_LEAVES, null, 4, 3.4, 2.3),
+		SPRUCE(Blocks.SPRUCE_LOG, Blocks.SPRUCE_LEAVES, null, 11, 3.3, 0);
 
 		final Block log;
 		final Block leaves;
@@ -272,16 +382,20 @@ final class HqLandscape {
 	/**
 	 * A lobed tree: a trunk, two to four branches ending in leaf lobes around a main crown, each lobe
 	 * a jittered ellipsoid. Birches and poplars stay narrow; azaleas, oaks and cherries spread.
+	 * Spruces are tiered cones.
 	 */
 	static void tree(Plan p, int x, int z, Kind k, int seed) {
+		if (k == Kind.SPRUCE) {
+			spruce(p, x, z, seed);
+			return;
+		}
 		int trunk = k.trunk + hash(x, z, seed) % 3;
-		int base = FLOOR;
+		int base = p.top(x, z) + 1;
 		for (int y = base; y < base + trunk; y++) {
 			p.set(x, y, z, St.log(k.log, Direction.Axis.Y));
 		}
 		int top = base + trunk;
-		// lobes: (dx, dy, dz, rx, ry)
-		java.util.List<double[]> lobes = new java.util.ArrayList<>();
+		List<double[]> lobes = new ArrayList<>();
 		lobes.add(new double[] {0, k.ry * 0.45, 0, k.rx, k.ry});
 		boolean narrow = k == Kind.POPLAR || k == Kind.BIRCH;
 		int branches = k == Kind.POPLAR ? 0 : narrow ? 2 : 3 + hash(x, z, seed + 3) % 2;
@@ -293,7 +407,6 @@ final class HqLandscape {
 			double bz = Math.sin(ang) * reach;
 			double by = -k.ry * (narrow ? 0.9 : 0.35) - rnd(x - i, z, seed + 7) * 1.2;
 			lobes.add(new double[] {bx, by, bz, k.rx * (narrow ? 0.7 : 0.62), k.ry * (narrow ? 0.6 : 0.62)});
-			// branch: logs from the trunk towards the lobe centre (sideways axis)
 			if (!narrow) {
 				int steps = (int) Math.ceil(reach);
 				for (int t = 1; t <= steps; t++) {
@@ -317,7 +430,7 @@ final class HqLandscape {
 			for (int ix = (int) Math.floor(cx) - r; ix <= (int) Math.floor(cx) + r; ix++) {
 				for (int iz = (int) Math.floor(cz) - r; iz <= (int) Math.floor(cz) + r; iz++) {
 					for (int iy = (int) Math.floor(cy) - ry; iy <= (int) Math.floor(cy) + ry; iy++) {
-						if (iy <= base + 1) {
+						if (iy <= base + 1 || iy <= p.top(ix, iz) + 1) {
 							continue;
 						}
 						double ex = (ix + 0.5 - cx) / l[3];
@@ -334,31 +447,119 @@ final class HqLandscape {
 				}
 			}
 		}
-		// leaf litter under the crown
-		int lr = (int) Math.ceil(k.rx);
+		litter(p, x, z, (int) Math.ceil(k.rx), seed);
+	}
+
+	/** A tiered spruce: a tall trunk and stacked, shrinking rings of needles with a spike on top. */
+	private static void spruce(Plan p, int x, int z, int seed) {
+		int base = p.top(x, z) + 1;
+		int h = 11 + hash(x, z, seed) % 5;
+		for (int y = base; y < base + h - 1; y++) {
+			p.set(x, y, z, St.log(Blocks.SPRUCE_LOG, Direction.Axis.Y));
+		}
+		int crownStart = base + 3;
+		double maxR = 3.3 + rnd(x, z, seed + 2) * 0.8;
+		for (int y = crownStart; y <= base + h; y++) {
+			double f = (y - crownStart) / (double) (base + h - crownStart);
+			double r = maxR * (1 - f) + 0.6;
+			// tiers: every other layer pulled in a little
+			if (((y - crownStart) & 1) == 1) {
+				r *= 0.72;
+			}
+			int ri = (int) Math.ceil(r);
+			for (int dx = -ri; dx <= ri; dx++) {
+				for (int dz = -ri; dz <= ri; dz++) {
+					double d = Math.sqrt(dx * dx + dz * dz) + (rnd(x + dx, z + dz + y, seed) - 0.5) * 0.5;
+					if (d > r || !p.isAir(x + dx, y, z + dz) || y <= p.top(x + dx, z + dz) + 1) {
+						continue;
+					}
+					p.set(x + dx, y, z + dz, St.leaves(Blocks.SPRUCE_LEAVES));
+				}
+			}
+		}
+		p.set(x, base + h + 1, z, St.leaves(Blocks.SPRUCE_LEAVES));
+	}
+
+	private static void litter(Plan p, int x, int z, int lr, int seed) {
 		for (int dx = -lr; dx <= lr; dx++) {
 			for (int dz = -lr; dz <= lr; dz++) {
 				if ((dx != 0 || dz != 0) && meadowAt(p, x + dx, z + dz) && rnd(x + dx, z + dz, seed + 7) < 0.4) {
-					p.set(x + dx, FLOOR, z + dz, St.leafLitter(Direction.from2DDataValue(hash(dx, dz, seed) & 3), 1 + hash(x + dx, z + dz, seed) % 4));
+					int t = p.top(x + dx, z + dz);
+					p.set(x + dx, t + 1, z + dz, St.leafLitter(Direction.from2DDataValue(hash(dx, dz, seed) & 3), 1 + hash(x + dx, z + dz, seed) % 4));
 				}
 			}
 		}
 	}
 
 	private static void trees(Plan p) {
+		List<int[]> placed = new ArrayList<>();
 		int[][] spots = {
 			// x, z, kind ordinal (0 birch, 1 poplar, 2 azalea, 3 oak, 4 cherry). The south-east quadrant is
 			// kept open: it is the hero/night sight line (cam_exterior_hero, cam_night).
 			{-30, -18, 1}, {-18, -21, 0}, {-5, -23, 3}, {9, -21, 1}, {22, -19, 0}, {35, -15, 2},
 			{-39, 0, 2}, {-41, 14, 0}, {-35, 32, 1}, {-25, 41, 4}, {-12, 45, 0}, {-31, 8, 0},
-			{39, -3, 1}, {42, 12, 0}, {37, 25, 3}, {3, 48, 1}, {22, 53, 0}, {29, -7, 0},
+			{39, -3, 1}, {42, 12, 0}, {37, 25, 3}, {3, 52, 1}, {29, -7, 0},
 		};
 		Kind[] kinds = Kind.values();
 		for (int i = 0; i < spots.length; i++) {
 			int[] s = spots[i];
 			if (meadowAt(p, s[0], s[1])) {
 				tree(p, s[0], s[1], kinds[s[2]], 100 + i);
+				placed.add(new int[] {s[0], s[1]});
 			}
+		}
+		// the wooded ring on the hills: an outer row of mixed spruce / oak / birch / poplar and an inner,
+		// sparser row, so the horizon is closed from every camera inside the site
+		ring(p, placed, 3, 6.5, 0, 300);
+		ring(p, placed, 9, 8.5, 3, 400);
+	}
+
+	/** Camera spots (x, z) no tree may crowd (the hero and night cameras stand on the meadow). */
+	private static final int[][] CAMERA_SPOTS = {{27, 42}, {16, 39}};
+
+	/** Trees along the box edge at inset {@code inset}, about {@code step} apart. */
+	private static void ring(Plan p, List<int[]> placed, int inset, double step, int phase, int seed) {
+		int x0 = SITE[0] + inset;
+		int x1 = SITE[3] - inset;
+		int z0 = SITE[2] + inset;
+		int z1 = SITE[5] - inset;
+		List<int[]> pts = new ArrayList<>();
+		for (double x = x0 + phase; x <= x1; x += step) {
+			pts.add(new int[] {(int) Math.round(x), z0});
+			pts.add(new int[] {(int) Math.round(x), z1});
+		}
+		for (double z = z0 + step / 2 + phase; z <= z1 - step / 2; z += step) {
+			pts.add(new int[] {x0, (int) Math.round(z)});
+			pts.add(new int[] {x1, (int) Math.round(z)});
+		}
+		Kind[] mix = {Kind.SPRUCE, Kind.OAK, Kind.SPRUCE, Kind.BIRCH, Kind.OAK, Kind.POPLAR, Kind.SPRUCE, Kind.OAK};
+		int n = 0;
+		for (int[] q : pts) {
+			int jx = q[0] + (int) Math.round((rnd(q[0], q[1], seed) - 0.5) * 3.0);
+			int jz = q[1] + (int) Math.round((rnd(q[1], q[0], seed + 1) - 0.5) * 3.0);
+			jx = Math.max(SITE[0] + 2, Math.min(SITE[3] - 2, jx));
+			jz = Math.max(SITE[2] + 2, Math.min(SITE[5] - 2, jz));
+			if (flatDistance(jx, jz) < 2.5 && edge(jx, jz) > 4) {
+				continue;
+			}
+			boolean crowded = false;
+			for (int[] c : CAMERA_SPOTS) {
+				if (Math.hypot(c[0] - jx, c[1] - jz) < 8) {
+					crowded = true;
+				}
+			}
+			for (int[] o : placed) {
+				if (Math.hypot(o[0] - jx, o[1] - jz) < step * 0.7) {
+					crowded = true;
+					break;
+				}
+			}
+			if (crowded || !meadowAt(p, jx, jz)) {
+				continue;
+			}
+			Kind k = mix[(hash(jx, jz, seed + 2) + n++) % mix.length];
+			tree(p, jx, jz, k, seed + n);
+			placed.add(new int[] {jx, jz});
 		}
 	}
 
@@ -393,7 +594,6 @@ final class HqLandscape {
 					p.set(x, FLOOR, z, AIR_STATE);
 					continue;
 				}
-				// beds: a coarse-dirt rim, tall flowers in the middle, low ones at the edges
 				boolean rim = x == x0 + 1 || x == x1 - 1 || z == z0 + 1 || z == z1 - 1 || Math.abs(x - cx) == 1 || Math.abs(z - cz) == 1;
 				p.set(x, GROUND, z, Blocks.GRASS_BLOCK.defaultBlockState());
 				int h = hash(x, z, 61) % 9;
@@ -415,11 +615,10 @@ final class HqLandscape {
 				}
 			}
 		}
-		// crossing: bench + lantern, fireflies by the hedge
 		p.set(cx + 1, FLOOR, cz + 1, St.stairs(Blocks.SPRUCE_STAIRS, Direction.SOUTH, false));
 		p.set(cx - 1, FLOOR, cz + 1, St.stairs(Blocks.SPRUCE_STAIRS, Direction.SOUTH, false));
 		p.set(cx + 1, FLOOR, cz - 1, Blocks.SPRUCE_FENCE.defaultBlockState());
-		p.set(cx + 1, FLOOR + 1, cz - 1, St.lantern(Blocks.LANTERN, false));
+		p.set(cx + 1, FLOOR + 1, cz - 1, StudioHqBuilder.LANTERN);
 		p.set(x1 + 1, FLOOR, z0 + 3, Blocks.FIREFLY_BUSH.defaultBlockState());
 		p.set(x1 + 1, FLOOR, z1 - 2, Blocks.FIREFLY_BUSH.defaultBlockState());
 		p.set(x0 + 4, FLOOR, z1 + 1, Blocks.FIREFLY_BUSH.defaultBlockState());
@@ -430,12 +629,10 @@ final class HqLandscape {
 	// ------------------------------------------------------------------ planting + meadow
 
 	private static void foundationPlanting(Plan p) {
-		// low azalea hedge along the north and gable walls
 		for (int x = -HX - 1; x <= HX + 1; x++) {
-			for (int z : new int[] {HZN - 1}) {
-				if (meadowAt(p, x, z) && hash(x, z, 41) % 5 != 0) {
-					p.set(x, FLOOR, z, St.leaves(hash(x, z, 42) % 3 == 0 ? Blocks.FLOWERING_AZALEA_LEAVES : Blocks.AZALEA_LEAVES));
-				}
+			int z = HZN - 1;
+			if (meadowAt(p, x, z) && hash(x, z, 41) % 5 != 0) {
+				p.set(x, FLOOR, z, St.leaves(hash(x, z, 42) % 3 == 0 ? Blocks.FLOWERING_AZALEA_LEAVES : Blocks.AZALEA_LEAVES));
 			}
 		}
 		for (int z = HZN - 1; z <= HZS + 5; z++) {
@@ -445,7 +642,6 @@ final class HqLandscape {
 				}
 			}
 		}
-		// flower beds around the atrium
 		for (int dx = -11; dx <= 11; dx++) {
 			for (int dz = -11; dz <= 11; dz++) {
 				int x = AX + dx;
@@ -482,20 +678,22 @@ final class HqLandscape {
 				if (!meadowAt(p, x, z)) {
 					continue;
 				}
+				int t = p.top(x, z);
 				double r = rnd(x, z, 51);
-				// flower drifts: low-frequency patches
 				double patch = Math.sin(x * 0.21 + Math.cos(z * 0.17) * 2.0) + Math.cos(z * 0.23 - x * 0.07);
+				// the wooded hills get ferns and bushes rather than flowers
+				boolean hill = t > GROUND + 1;
 				BlockState s = null;
 				if (r < 0.26) {
-					s = Blocks.SHORT_GRASS.defaultBlockState();
+					s = hill && r < 0.08 ? Blocks.FERN.defaultBlockState() : Blocks.SHORT_GRASS.defaultBlockState();
 				} else if (r < 0.30) {
-					if (p.isAir(x, FLOOR + 1, z)) {
-						p.set(x, FLOOR + 1, z, St.upper(Blocks.TALL_GRASS));
-						s = St.lower(Blocks.TALL_GRASS);
+					if (p.isAir(x, t + 2, z)) {
+						p.set(x, t + 2, z, St.upper(hill ? Blocks.LARGE_FERN : Blocks.TALL_GRASS));
+						s = St.lower(hill ? Blocks.LARGE_FERN : Blocks.TALL_GRASS);
 					}
 				} else if (r < 0.36 && patch > 0.9) {
 					s = St.flowerBed(Blocks.WILDFLOWERS, Direction.from2DDataValue(hash(x, z, 52) & 3), 1 + hash(x, z, 53) % 4);
-				} else if (r < 0.40 && patch < -1.1) {
+				} else if (r < 0.40 && patch < -1.1 && !hill) {
 					s = switch (hash(x, z, 54) % 5) {
 						case 0 -> Blocks.POPPY.defaultBlockState();
 						case 1 -> Blocks.CORNFLOWER.defaultBlockState();
@@ -503,11 +701,11 @@ final class HqLandscape {
 						case 3 -> Blocks.OXEYE_DAISY.defaultBlockState();
 						default -> Blocks.LILY_OF_THE_VALLEY.defaultBlockState();
 					};
-				} else if (r < 0.405) {
+				} else if (r < (hill ? 0.43 : 0.405)) {
 					s = Blocks.BUSH.defaultBlockState();
 				}
 				if (s != null) {
-					p.set(x, FLOOR, z, s);
+					p.set(x, t + 1, z, s);
 				}
 			}
 		}
