@@ -14,7 +14,7 @@ of value is lost if the game closes, because the game is only a view.
 ## Architecture
 
 ```
-Minecraft 1.21.x (Fabric mod "agentcraft", Java 21)        Foreman (Node 22 + TypeScript)
+Minecraft 26.3 (Fabric mod "agentcraft", Java 25)          Foreman (Node 22 + TypeScript)
  ├─ integrated server side: entities, blocks, HQ builder <-WS-> ├─ AgentManager (Claude Agent SDK sessions)
  ├─ client side: screens, renderers, HUD, keybinds           │   backends: "claude" (real) | "sim" (scripted)
  └─ DevBridge: camera / screenshot / scene control           ├─ TaskGraph (persisted JSON)
@@ -35,6 +35,23 @@ Minecraft 1.21.x (Fabric mod "agentcraft", Java 21)        Foreman (Node 22 + Ty
   with quick-play into the HQ world.
 
 ## Protocol (v1) — source of truth is `foreman/src/protocol.ts`, mirrored in `mod/.../protocol/`
+
+**Field-level reference with JSON examples: `docs/protocol.md`** (generated from the zod schemas;
+`npm run check:protocol-doc` in `foreman/` fails if it is stale). The list below is the overview.
+Additions made while building the Foreman (2026-10-01): `foreman.status` {status: backend/auth/
+message for the banner} (also in `snapshot.foreman`); `ack` {re, ok, error?, result?} for any client
+message with an `id`, and `error` {message, re?}; `snapshot.goals[]` and `snapshot.logs[]` (log tail
+per agent); Agent `title`, `accent`, `worktree`, `paused`, `active` (off-shift agents); Task
+`description`, `goalId`, `priority`, `branch`, `worktree`, `ci`, `blockedReason`, `summary`,
+timestamps, and status `cancelled` (hidden on the wall); Decision `answer`, `taskId`, `repoId`,
+`worktree`, `tool`, and status `cancelled`; structured Worktree objects in `repo.worktrees[]`;
+diff lines `{kind: add|del|ctx, text, oldNo?, newNo?}`. Merge option labels are exactly
+`Merge` / `Request changes` / `Reject`; permission labels `Allow once` / `Always allow for this
+agent` / `Deny`. `agent.action` semantics (2026-10-01 fix round): `pause` keeps the task, `stop` =
+off shift (`active=false`) until `resume`/`spawn`, its tasks go back to the board; `spawn` takes an
+optional task id (`arg`) to assign. Second fix round: a goal whose tasks were all cancelled/rejected
+becomes `cancelled` (not stuck at 0%); a task that changed no files closes as `done` without a merge
+decision; approved merge commits use the user's git identity (signed if their git config signs).
 
 Every message: `{ "v":1, "type": string, "id"?: string, ...payload }`.
 
@@ -66,9 +83,12 @@ Mod → Foreman
 
 Dev control (used by tools + QA, NOT by gameplay): separate WS `ws://127.0.0.1:${AGENTCRAFT_DEV_PORT:-7879}`
 served **by the mod client**:
-- `dev.camera` {x,y,z,yaw,pitch,fov?} · `dev.screenshot` {name, hideHud?, width?, height?} → `{ok, path}`
-- `dev.time` {ticks} · `dev.weather` {clear} · `dev.screen` {open: name|null} · `dev.command` {cmd}
-- `dev.key` {key} · `dev.state` → {connected, player pos, open screen, fps}
+- `dev.camera` {x,y,z, yaw,pitch | lookAt:{x,y,z}, fov?, mode?} · `dev.screenshot` {name, hideHud?} → `{ok, path, width, height, stats}` (window framebuffer size; width/height not supported)
+- `dev.time` {ticks} · `dev.weather` {weather: clear|rain|thunder} · `dev.screen` {open: name|null} · `dev.command` {cmd}
+- `dev.key` {key|mapping} · `dev.type` {text} · `dev.waitChunks` · `dev.quit` · `dev.state` → {ready, paused, player, camera, screen, fps, window, fov, foreman}
+- `dev.ping` → {stalled, msSinceLastFrame} (answers even when the game is hung) · `dev.release` (hand the view back: FOV pin off, HUD on, creative)
+- `dev.camera` replies ok only once a rendered frame matches the request; each call pins the exact FOV (default: the player's option), nothing carries over. `dev.quit` force-exits a hung game (world saved, exit code 3).
+- Full reference: mod/DEV.md. Request fields `id`, `type`, `timeoutMs` are reserved. Fields are strictly typed (finite numbers, ranges); errors name the field.
 - `tools/shoot.mjs <scene.json>` drives a list of shots and writes PNGs to `artifacts/shots/`.
 
 ## Practicality requirements (non-negotiable)
@@ -116,7 +136,7 @@ skins, nameplates showing name + state, speech bubbles, pathfinding between stat
 ## Repo layout
 
 ```
-mod/          Fabric mod (Gradle, Java 21, Loom)
+mod/          Fabric mod (Gradle 9.7, Java 25, Loom 1.18; MC 26.3, see mod/DEV.md for why)
 foreman/      Node/TS orchestrator (npm, vitest)
 assets-src/   procedural texture/model/skin generators (Python+PIL / Node), Blender scripts
 tools/        launch.ps1, shoot.mjs, scenes/*.json, smoke tests

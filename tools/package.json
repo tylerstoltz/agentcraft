@@ -1,0 +1,17 @@
+{
+  "name": "agentcraft-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AgentCraft dev tools: DevBridge CLI (devcli.mjs) and scene screenshot runner (shoot.mjs).",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "state": "node devcli.mjs state",
+    "wait": "node devcli.mjs wait"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

@@ -13,3 +13,6 @@ __pycache__/
 sandbox/*/
 .agentcraft-home/
 mod/run/
+foreman/scratch/
+mod/.gradle/
+mod/build/
