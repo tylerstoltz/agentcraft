@@ -331,8 +331,8 @@ hidden.
   CPU cost per frame).
 - Shots: `tools/scenes/displays.json` (test room: wall, monitors incl. an oblique view, task
   screens incl. the cancel confirmation, crosshair hover, night) and `tools/scenes/displays_bay.json`
-  (builds a bay south of the test room with the HQ's sizes, a 7x4 east-facing wall and three 3x2
-  monitors, and frames them like the HQ cameras), `node tools/shoot.mjs <scene> --port <dev> --foreman <port>`.
+  (builds a bay far from any HQ, around x=1000 z=1000, with the HQ's sizes: a 7x4 east-facing wall
+  and three 3x2 monitors, framed like the HQ cameras; its setup clears that box), `node tools/shoot.mjs <scene> --port <dev> --foreman <port>`.
 
 Drawing helpers shared by both (`client.monitor.DisplayDraw`): opaque flat rects/gradients in one
 custom-geometry node per screen (a 4x4 white `DynamicTexture` on a no-blend copy of the world text
