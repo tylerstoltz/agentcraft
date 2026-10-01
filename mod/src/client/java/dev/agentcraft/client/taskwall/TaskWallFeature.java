@@ -40,7 +40,7 @@ import org.jspecify.annotations.Nullable;
  * <p>Dev: {@code dev.taskwall} lists the laid-out boards and cards; {@code {open: taskId}} opens a
  * task's screen; {@code {press: buttonId}} presses a button in the open task screen (prev next
  * retry prioritize reassign cancel to:&lt;agent&gt;); {@code {aim: taskId}} returns the world point
- * of that card's centre and an eye position in front of it (point {@code dev.camera} there, then
+ * of that card's centre (on {@code board} "x y z" if given) and an eye position in front of it (point {@code dev.camera} there, then
  * {@code dev.key {mapping:"key.use"}} clicks it through the real crosshair path).
  */
 public final class TaskWallFeature {
@@ -94,12 +94,13 @@ public final class TaskWallFeature {
 			}
 		});
 		DevBridge.registerScreen("task", mc -> new TaskScreen(defaultTask()));
-		DevBridge.register("dev.taskwall", 10_000, "{open?: taskId, press?: button, aim?: taskId} -> task wall boards/cards; opens/presses/aims",
+		DevBridge.register("dev.taskwall", 10_000, "{open?: taskId, press?: button, aim?: taskId, board?: \"x y z\" origin} -> task wall boards/cards; opens/presses/aims",
 			(req, mc) -> {
 				Fields f = Fields.of(req);
 				String open = f.optStr("open", null);
 				String press = f.optStr("press", null);
 				String aim = f.optStr("aim", null);
+				String onBoard = f.optStr("board", null);
 				return DevBridge.onClient(mc, () -> {
 					JsonObject o = new JsonObject();
 					if (open != null) {
@@ -118,7 +119,7 @@ public final class TaskWallFeature {
 						o.addProperty("task", ts.taskId());
 					}
 					if (aim != null) {
-						o.add("aim", aimJson(mc, aim));
+						o.add("aim", aimJson(mc, aim, onBoard));
 					}
 					o.add("boards", boardsJson());
 					return o;
@@ -194,8 +195,11 @@ public final class TaskWallFeature {
 		return null;
 	}
 
-	private static JsonObject aimJson(Minecraft mc, String taskId) {
+	private static JsonObject aimJson(Minecraft mc, String taskId, @Nullable String onBoard) {
 		for (TaskBoard b : BOARDS.values()) {
+			if (onBoard != null && !onBoard.equals(b.origin.getX() + " " + b.origin.getY() + " " + b.origin.getZ())) {
+				continue;
+			}
 			TaskBoard.Card c = b.cards.get(taskId);
 			if (c == null || mc.level == null) {
 				continue;

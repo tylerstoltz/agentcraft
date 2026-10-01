@@ -139,7 +139,10 @@ public class MonitorRenderer extends StationRenderer<MonitorBlockEntity, Monitor
 		ps.pushPose();
 		ps.translate(0, 0, Z_TEXT);
 		boolean sliding = s.shift > 0.01f;
-		for (LogRows.Row r : m.rows) {
+		boolean feed = m.mode == MonitorScreen.Mode.FEED;
+		List<LogRows.Row> rows = m.rows;
+		for (int i = 0; i < rows.size(); i++) {
+			LogRows.Row r = rows.get(i);
 			float top = y - r.height();
 			if (y <= m.cy0 - 1 || (!sliding && top < m.cy0 - 0.5f)) {
 				break; // under the header band (rows only pass under it while sliding)
@@ -147,6 +150,9 @@ public class MonitorRenderer extends StationRenderer<MonitorBlockEntity, Monitor
 			if (y > limit) {
 				y = top;
 				continue;
+			}
+			if (feed && !sliding && r.textX() > 0 && (i + 1 >= rows.size() || top - rows.get(i + 1).height() < m.cy0 - 0.5f)) {
+				break; // a feed item's second line without its first: leave it out
 			}
 			int alpha = 255;
 			if (overflow && top < m.cy0 + LogRows.LINE) {

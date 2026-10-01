@@ -263,15 +263,28 @@ final class TaskBoard {
 			col.label = seq(label);
 			col.countSeq = seq(cs);
 			col.countX = col.x + col.w - 4 - font.width(cs);
-			// a column that overflows switches to compact one-line cards (title + face) before it hides any
-			col.compact = ts.size() > capacity;
-			int cardH = col.compact ? COMPACT_H : CARD_H;
-			int rowsHere = Math.max(1, (int) ((avail + GAP) / (cardH + GAP)));
-			int cap = rowsHere * perRow;
-			int show = ts.size();
-			if (ts.size() > cap) {
-				float used = (float) Math.ceil(cap / (float) perRow) * (cardH + GAP);
-				show = used + CHIP_H <= avail + GAP ? cap : cap - perRow;
+			// rows: as many full-height rows as fit while every remaining card still fits as a one-line
+			// card; only when even all-compact overflows, the tail hides behind "+N more"
+			int rowsNeeded = (ts.size() + perRow - 1) / perRow;
+			int fullRows;
+			int shownRows;
+			if (rowsNeeded * (CARD_H + GAP) - GAP <= avail) {
+				fullRows = rowsNeeded;
+				shownRows = rowsNeeded;
+			} else if (rowsNeeded * (COMPACT_H + GAP) - GAP <= avail) {
+				fullRows = (int) Math.floor((avail + GAP - rowsNeeded * (COMPACT_H + GAP)) / (float) (CARD_H - COMPACT_H));
+				fullRows = Math.max(0, Math.min(rowsNeeded, fullRows));
+				shownRows = rowsNeeded;
+			} else {
+				fullRows = 0;
+				shownRows = Math.max(0, (int) ((avail + GAP - CHIP_H) / (COMPACT_H + GAP)));
+			}
+			col.compact = fullRows < rowsNeeded;
+			int show = Math.min(ts.size(), shownRows * perRow);
+			float[] rowY = new float[shownRows + 1];
+			rowY[0] = cardsTop;
+			for (int r = 0; r < shownRows; r++) {
+				rowY[r + 1] = rowY[r] + (r < fullRows ? CARD_H : COMPACT_H) + GAP;
 			}
 			for (int i = 0; i < ts.size(); i++) {
 				Task t = ts.get(i);
@@ -287,18 +300,18 @@ final class TaskBoard {
 				card.col = listMode ? colOf(t) : c;
 				card.removing = false;
 				card.w = cardW;
-				card.compact = col.compact;
-				card.th = cardH;
+				int row = i / perRow;
+				card.compact = row >= fullRows;
+				card.th = card.compact ? COMPACT_H : CARD_H;
 				if (i < show) {
-					int r = i / perRow;
 					int k = i % perRow;
 					card.tx = col.x + k * (cardW + GAP);
-					card.ty = cardsTop + r * (cardH + GAP);
+					card.ty = rowY[row];
 					card.visible = true;
 				} else {
 					// hidden behind the "+N more" chip: park it there (it glides out of the chip when it gets a slot)
 					card.tx = col.x;
-					card.ty = cardsTop + (show / perRow) * (cardH + GAP);
+					card.ty = rowY[shownRows];
 					card.visible = false;
 					col.hidden.add(t.id());
 				}
@@ -319,7 +332,7 @@ final class TaskBoard {
 				col.chip = seq(more);
 				col.chipW = font.width(more) + 10;
 				col.chipX = col.x + (colW - col.chipW) / 2f;
-				col.chipY = cardsTop + (float) Math.ceil(show / (float) perRow) * (cardH + GAP) - 1;
+				col.chipY = rowY[shownRows] - 1;
 			}
 			columns.add(col);
 		}
