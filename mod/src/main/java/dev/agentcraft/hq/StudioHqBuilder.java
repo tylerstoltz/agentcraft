@@ -816,12 +816,12 @@ public final class StudioHqBuilder implements HqBuilder {
 			p.set(x, FEET, -2, St.stairs(Blocks.BIRCH_STAIRS, N, false));
 			p.set(x, FEET, 2, St.stairs(Blocks.BIRCH_STAIRS, S, false));
 		}
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 1), 9.0, FEET, -1.5, 0, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 2), 11.4, FEET, 1.6, 180, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 3), 7.1, FEET, 0.5, -90, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 4), 12.9, FEET, 0.5, 90, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 5), 9.4, FEET, 1.5, 180, 0);
-		a.put(AnchorNames.slot(AnchorNames.MEETING, 6), 10.9, FEET, -1.3, 0, 0);
+		a.put(AnchorNames.slot(AnchorNames.MEETING, 1), 9.0, FEET + 0.0625, -1.5, 0, 0);
+		a.put(AnchorNames.slot(AnchorNames.MEETING, 2), 11.4, FEET + 0.0625, 1.6, 180, 0);
+		a.put(AnchorNames.slot(AnchorNames.MEETING, 3), 7.1, FEET + 0.0625, 0.5, -90, 0);
+		a.put(AnchorNames.slot(AnchorNames.MEETING, 4), 12.9, FEET + 0.0625, 0.5, 90, 0);
+		a.put(AnchorNames.slot(AnchorNames.MEETING, 5), 9.4, FEET + 0.0625, 1.5, 180, 0);
+		a.put(AnchorNames.slot(AnchorNames.MEETING, 6), 10.9, FEET + 0.0625, -1.3, 0, 0);
 	}
 
 	private static void atrium(Plan p, Anchors.Builder a) {
