@@ -1,0 +1,282 @@
+package dev.agentcraft.hq;
+
+import dev.agentcraft.block.DecisionPodiumBlock;
+import dev.agentcraft.block.MergeStationBlock;
+import dev.agentcraft.block.MonitorBlock;
+import dev.agentcraft.block.PanelBlock;
+import dev.agentcraft.block.StatusLampBlock;
+import dev.agentcraft.block.entity.StationBlockEntity;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.IntFunction;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CrossCollisionBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.lighting.LightEngine;
+
+/**
+ * The complete desired contents of an HQ site box, built in memory and then applied to the world as
+ * a diff. That is what makes an HQ builder deterministic and idempotent:
+ * <ul>
+ *   <li>every cell of the box has a desired state (unset cells are the meadow: air above the
+ *       ground, grass/dirt below), so a second build changes nothing and anything inside the box that
+ *       is not part of the HQ is reset; nothing outside the box is ever touched;</li>
+ *   <li>only cells that differ are written, with no neighbour or shape updates (fast: no physics, no
+ *       drops, no fluid flow);</li>
+ *   <li>connecting blocks (stairs, panes, fences, walls, AgentCraft panels) are written in a second
+ *       pass with their connections computed from the finished neighbours, and compared without
+ *       those connection properties in the first pass, so they never flicker on a rebuild;</li>
+ *   <li>state driven live by the Foreman (lamp status, podium open, merge station active, monitor
+ *       lit) is kept from the world when the block itself is unchanged.</li>
+ * </ul>
+ */
+final class Plan {
+	/** Write without neighbour updates, shape updates, drops, block-entity side effects or onPlace. */
+	static final int FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE | Block.UPDATE_SUPPRESS_DROPS
+		| Block.UPDATE_SKIP_BLOCK_ENTITY_SIDEEFFECTS | Block.UPDATE_SKIP_ON_PLACE;
+	private static final Set<String> CONNECTION_PROPS = Set.of("shape", "north", "east", "south", "west", "up", "down", "left", "right",
+		"in_wall");
+
+	final int minX;
+	final int minY;
+	final int minZ;
+	final int maxX;
+	final int maxY;
+	final int maxZ;
+	private final int sx;
+	private final int sy;
+	private final int sz;
+	private final BlockState[] cells;
+	private final Map<BlockPos, String> bindings = new LinkedHashMap<>();
+
+	record Stats(int cells, int changed, int connected, int bound, long micros, List<String> sample) {
+	}
+
+	/** @param ground desired state of an unset cell by y (the meadow profile). */
+	Plan(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, IntFunction<BlockState> ground) {
+		this.minX = minX;
+		this.minY = minY;
+		this.minZ = minZ;
+		this.maxX = maxX;
+		this.maxY = maxY;
+		this.maxZ = maxZ;
+		this.sx = maxX - minX + 1;
+		this.sy = maxY - minY + 1;
+		this.sz = maxZ - minZ + 1;
+		this.cells = new BlockState[sx * sy * sz];
+		for (int y = minY; y <= maxY; y++) {
+			BlockState g = ground.apply(y);
+			for (int x = minX; x <= maxX; x++) {
+				for (int z = minZ; z <= maxZ; z++) {
+					cells[index(x, y, z)] = g;
+				}
+			}
+		}
+	}
+
+	boolean in(int x, int y, int z) {
+		return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
+	}
+
+	private int index(int x, int y, int z) {
+		return ((y - minY) * sz + (z - minZ)) * sx + (x - minX);
+	}
+
+	BlockState get(int x, int y, int z) {
+		return in(x, y, z) ? cells[index(x, y, z)] : Blocks.AIR.defaultBlockState();
+	}
+
+	boolean isAir(int x, int y, int z) {
+		return get(x, y, z).isAir();
+	}
+
+	void set(int x, int y, int z, BlockState state) {
+		if (in(x, y, z)) {
+			cells[index(x, y, z)] = state;
+		}
+	}
+
+	void set(int x, int y, int z, Block block) {
+		set(x, y, z, block.defaultBlockState());
+	}
+
+	/** Only where the plan currently has air. */
+	void setIfAir(int x, int y, int z, BlockState state) {
+		if (isAir(x, y, z)) {
+			set(x, y, z, state);
+		}
+	}
+
+	void fill(int x0, int y0, int z0, int x1, int y1, int z1, BlockState state) {
+		for (int x = Math.min(x0, x1); x <= Math.max(x0, x1); x++) {
+			for (int y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) {
+				for (int z = Math.min(z0, z1); z <= Math.max(z0, z1); z++) {
+					set(x, y, z, state);
+				}
+			}
+		}
+	}
+
+	void fill(int x0, int y0, int z0, int x1, int y1, int z1, Block block) {
+		fill(x0, y0, z0, x1, y1, z1, block.defaultBlockState());
+	}
+
+	/** Binding for the station block entity at (x, y, z), applied after the blocks. */
+	void bind(int x, int y, int z, String binding) {
+		bindings.put(new BlockPos(x, y, z), binding);
+	}
+
+	/**
+	 * Vanilla's grass rule applied to the plan (SpreadingSnowyBlock): grass under a full fluid or a
+	 * block that stops light from its top face becomes dirt, so the world never "decays" between two
+	 * builds (which would make a rebuild change cells).
+	 */
+	void settleGrass() {
+		BlockState grass = Blocks.GRASS_BLOCK.defaultBlockState();
+		for (int y = minY; y < maxY; y++) {
+			for (int z = minZ; z <= maxZ; z++) {
+				for (int x = minX; x <= maxX; x++) {
+					BlockState s = cells[index(x, y, z)];
+					boolean isGrass = s.is(Blocks.GRASS_BLOCK);
+					if (!isGrass && !s.is(Blocks.DIRT)) {
+						continue;
+					}
+					BlockState above = cells[index(x, y + 1, z)];
+					boolean lives = !above.getFluidState().isFull()
+						&& LightEngine.getLightDampeningInto(grass, above, Direction.UP, above.getLightDampening()) < 15;
+					// grass that cannot live decays to dirt; dirt that grass could live on is eventually
+					// grown over by a neighbour: both are settled here, so a rebuild never finds them changed
+					if (isGrass && !lives) {
+						cells[index(x, y, z)] = Blocks.DIRT.defaultBlockState();
+					} else if (!isGrass && lives) {
+						cells[index(x, y, z)] = grass;
+					}
+				}
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------ apply
+
+	private static boolean connecting(BlockState s) {
+		Block b = s.getBlock();
+		return b instanceof StairBlock || b instanceof CrossCollisionBlock || b instanceof WallBlock || b instanceof FenceGateBlock
+			|| b instanceof PanelBlock;
+	}
+
+	/** Same block and same properties, ignoring connection properties. */
+	private static boolean sameIgnoringConnections(BlockState a, BlockState b) {
+		if (a.getBlock() != b.getBlock()) {
+			return false;
+		}
+		for (Property<?> p : b.getProperties()) {
+			if (!CONNECTION_PROPS.contains(p.getName()) && !a.getValue(p).equals(b.getValue(p))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Keep the live, Foreman-driven property values of an unchanged station block. */
+	private static BlockState keepDriven(BlockState current, BlockState desired) {
+		if (current.getBlock() != desired.getBlock()) {
+			return desired;
+		}
+		Block b = desired.getBlock();
+		if (b instanceof StatusLampBlock) {
+			return desired.setValue(StatusLampBlock.STATUS, current.getValue(StatusLampBlock.STATUS));
+		}
+		if (b instanceof DecisionPodiumBlock) {
+			return desired.setValue(DecisionPodiumBlock.OPEN, current.getValue(DecisionPodiumBlock.OPEN));
+		}
+		if (b instanceof MergeStationBlock) {
+			return desired.setValue(MergeStationBlock.ACTIVE, current.getValue(MergeStationBlock.ACTIVE));
+		}
+		if (b instanceof MonitorBlock) {
+			return desired.setValue(MonitorBlock.LIT, current.getValue(MonitorBlock.LIT));
+		}
+		return desired;
+	}
+
+	/** Applies the plan to the world (server thread). */
+	Stats apply(ServerLevel level) {
+		long t0 = System.nanoTime();
+		int changed = 0;
+		List<String> sample = new ArrayList<>();
+		List<BlockPos> deferred = new ArrayList<>();
+		BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
+		for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
+			for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
+				LevelChunk chunk = level.getChunk(cx, cz);
+				int x0 = Math.max(minX, cx << 4);
+				int x1 = Math.min(maxX, (cx << 4) + 15);
+				int z0 = Math.max(minZ, cz << 4);
+				int z1 = Math.min(maxZ, (cz << 4) + 15);
+				for (int y = minY; y <= maxY; y++) {
+					for (int z = z0; z <= z1; z++) {
+						for (int x = x0; x <= x1; x++) {
+							BlockState want = cells[index(x, y, z)];
+							m.set(x, y, z);
+							BlockState cur = chunk.getBlockState(m);
+							if (connecting(want)) {
+								deferred.add(m.immutable());
+								want = keepDriven(cur, want);
+								if (!sameIgnoringConnections(cur, want)) {
+									note(sample, m, cur, want);
+									level.setBlock(m, want, FLAGS);
+									changed++;
+								}
+								continue;
+							}
+							want = keepDriven(cur, want);
+							if (cur != want) {
+								note(sample, m, cur, want);
+								level.setBlock(m, want, FLAGS);
+								changed++;
+							}
+						}
+					}
+				}
+			}
+		}
+		// connections from the finished neighbours
+		int connected = 0;
+		for (BlockPos p : deferred) {
+			BlockState cur = level.getBlockState(p);
+			BlockState want = Block.updateFromNeighbourShapes(keepDriven(cur, cells[index(p.getX(), p.getY(), p.getZ())]), level, p);
+			if (cur != want) {
+				note(sample, p, cur, want);
+				level.setBlock(p, want, FLAGS);
+				connected++;
+			}
+		}
+		int bound = 0;
+		for (var e : bindings.entrySet()) {
+			if (level.getBlockEntity(e.getKey()) instanceof StationBlockEntity be) {
+				if (!be.binding().equals(e.getValue())) {
+					bound++;
+				}
+				be.setBinding(e.getValue());
+			}
+		}
+		return new Stats(cells.length, changed, connected, bound, (System.nanoTime() - t0) / 1000, sample);
+	}
+
+	private static void note(List<String> sample, BlockPos p, BlockState from, BlockState to) {
+		if (sample.size() < 6) {
+			sample.add(p.toShortString() + " " + from + " -> " + to);
+		}
+	}
+}
