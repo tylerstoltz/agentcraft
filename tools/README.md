@@ -46,6 +46,7 @@ If the game of this checkout is already running it is reused (one client per che
 | `-GradleHome <dir>` | `GRADLE_USER_HOME` or `<main checkout>\.gradle-home` | |
 | `-TimeoutSec N` | 600 | how long to wait for the world |
 | `-SummaryJson <file>` | | machine-readable result (what was started or reused, pids, ports, logs) |
+| `-DryRun` | | print the Foreman command, the game command and the game env; start nothing |
 
 `stop.ps1` stops only what `launch.ps1` started, using the run files in `artifacts\run\`
 (pid + process start time, so a reused pid is never touched): the game via the DevBridge

@@ -43,6 +43,13 @@ function ConvertTo-CmdArg([string]$s) {
 
 function Join-CmdArgs([string[]]$Items) { ($Items | ForEach-Object { ConvertTo-CmdArg $_ }) -join ' ' }
 
+# Absolute path relative to PowerShell's current location ([IO.Path]::GetFullPath would use the
+# process working directory, which Set-Location does not change).
+function Resolve-FullPath([string]$Path) {
+    if (-not $Path) { return $Path }
+    return [System.IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path))
+}
+
 function Get-ShortHash([string]$Text) {
     $sha = [System.Security.Cryptography.SHA1]::Create()
     $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Text.ToLowerInvariant()))

@@ -4,12 +4,13 @@
 //
 //   node tools/qa.mjs [--showcase busy|late] [--scene tools/scenes/qa.json] [--only qa01_exterior_hero,...]
 //        [--port 7878] [--dev-port 7879] [--home <dir>] [--profile <name>] [--run-id <id>]
-//        [--keep] [--no-launch] [--strict] [--stop-daemon] [--columns 3]
+//        [--keep] [--no-launch] [--strict] [--stop-daemon] [--no-restore] [--columns 3]
 //
 //   --keep          leave the Foreman and the game running afterwards (faster re-runs)
 //   --no-launch     use the game/Foreman that are already running on the ports (never start/stop)
 //   --strict        skipped shots fail the run (use once the HQ provides every anchor)
 //   --stop-daemon   also stop this checkout's Gradle daemon if this run launched the game
+//   --no-restore    leave the player/time where the last shot put them (default: restored)
 //
 // Output: artifacts/shots/qa/<runId>/<shot>.png, contact_sheet.png, manifest.json (and
 // artifacts/shots/qa/latest.json pointing at the run). Exit 0 when no shot failed.
@@ -38,7 +39,8 @@ for (let i = 0; i < argv.length; i++) {
   else opt[k] = true;
 }
 if (opt.help) {
-  console.error(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 18).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+  const lines = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').split(/\r?\n/).slice(1);
+  console.error(lines.slice(0, lines.findIndex((l) => !l.startsWith('//'))).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
   process.exit(0);
 }
 
@@ -161,6 +163,17 @@ try {
     foreman = null;
   }
   summary = await runScene({ scene, dev, foreman, prefix: `qa/${runId}/`, only, log, verbose: !!opt.verbose });
+  // The QA world is the checkout's real HQ world (mod/run): put the player and the clock back
+  // where they were (shots move the player in spectator and end at night), then hand the view back.
+  if (!opt['no-restore'] && !summary.hung && st.player) {
+    const p = st.player;
+    const r = [];
+    if (st.world?.time !== undefined) r.push(await dev.request('dev.time', { ticks: st.world.time }));
+    r.push(await dev.request('dev.camera', { x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch, feet: true, mode: 'creative' }));
+    r.push(await dev.request('dev.release', {}));
+    const bad = r.filter((x) => !x.ok);
+    env.restored = bad.length ? `partly: ${bad.map((x) => x.error).join('; ')}` : `player at ${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)}, time ${st.world?.time}`;
+  }
 } catch (e) {
   fatal = e.message;
   log(`FAILED: ${e.message}`);

@@ -41,7 +41,9 @@ What a run does:
      (`meanLuma`, `stdLuma`, `darkFraction`) and warnings
    - `launch.log`, `stop.log`, `launch.json`
    - `artifacts/shots/qa/latest.json` points at the newest run
-5. Stops exactly what it started (`tools\stop.ps1 -FromSummary <run>/launch.json`).
+5. Puts the player and the clock back where they were before the run (`--no-restore` skips it;
+   the QA world is the checkout's real HQ world in `mod/run`), then stops exactly what it started
+   (`tools\stop.ps1 -FromSummary <run>/launch.json`).
 
 Exit code 0 = no shot failed (and, with `--strict`, none was skipped). A run takes about
 30-50 s with a warm Gradle daemon.
@@ -67,7 +69,11 @@ anything about how it looks.
 The showcase busy state (`foreman/README.md`): Marlow waiting_user@user, Juniper editing@desk,
 Kit testing@testbench, Wren idle@lounge, Rowan reading@library, Tove thinking@desk; 9 tasks
 (done 2, doing 2, review 1, todo 3, blocked 1); open decisions `d3` (merge of `wren-t4`, a real
-2-file diff in repo `sim-demo-showcase`) and `d4` (question); 4 memory entries.
+2-file diff in repo `sim-demo-showcase`) and `d4` (question); 4 memory entries. The QA set is
+judged on this state. `--showcase late` (Marlow thinking@meeting, Juniper running@terminal, Kit
+done@lounge, Wren blocked@desk, Rowan error@library, Tove editing@desk) has **no open
+decisions**, so qa06 shows an idle podium and qa08 is skipped ("no open merge decision"); use it
+to check the blocked/error/done looks.
 
 ## Contract with the mod (what the HQ builder and the screens must provide)
 

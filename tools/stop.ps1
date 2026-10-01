@@ -41,13 +41,14 @@ $doGame = $Game.IsPresent -or -not $Foreman.IsPresent
 $doForeman = $Foreman.IsPresent -or -not $Game.IsPresent
 $onlyForemanPid = $null
 if ($FromSummary) {
+    $FromSummary = Resolve-FullPath $FromSummary
     $s = Read-JsonFile $FromSummary
     if (-not $s) { Write-Fail "cannot read $FromSummary"; exit 1 }
     $doGame = [bool]($s.game -and $s.game.started)
     $doForeman = [bool]($s.foreman -and $s.foreman.started)
     if ($doForeman) { $onlyForemanPid = [int]$s.foreman.pid }
 }
-if ($AgentHome) { $AgentHome = [System.IO.Path]::GetFullPath($AgentHome) }
+if ($AgentHome) { $AgentHome = Resolve-FullPath $AgentHome }
 
 $failures = 0
 $stoppedAny = $false
@@ -82,26 +83,53 @@ if ($doGame) {
         } else {
             $stoppedAny = $true
             $how = 'force'
+            $quitSkipped = $false
             if ($gameAlive) {
-                # only ask the DevBridge to quit if the port really belongs to OUR game JVM
+                # only ask the DevBridge to quit if the port really belongs to OUR game JVM; a game
+                # that is still starting gets up to 20 s to open it (quitting saves a new world cleanly)
                 $owner = Get-PortOwner ([int]$g.devPort)
+                if ($owner -ne $gamePid) {
+                    $until = (Get-Date).AddSeconds(20)
+                    while ((Get-Date) -lt $until -and (Test-SameProc $gamePid $gameStart)) {
+                        if (Test-PortOpen ([int]$g.devPort)) { $owner = Get-PortOwner ([int]$g.devPort); if ($owner -eq $gamePid) { break } }
+                        Start-Sleep -Milliseconds 500
+                    }
+                }
                 if ($owner -eq $gamePid -and $node) {
+                    $hung = $false
+                    try { $hung = [bool]((& $node.Source (Join-Path $L.Tools 'devcli.mjs') ping --port ([int]$g.devPort) --timeout 5 2>$null | Out-String | ConvertFrom-Json).stalled) } catch {}
+                    if ($hung) { Write-Warn2 'the game is hung (render thread stalled): dev.quit saves the world and force-exits it after 15 s' }
                     Write-Kv 'game' "dev.quit via DevBridge :$($g.devPort) (pid $gamePid; saves the world) ..."
                     $q = (& $node.Source (Join-Path $L.Tools 'devcli.mjs') quit --port ([int]$g.devPort) --timeout 10 2>$null) | Out-String
-                    if (Wait-ProcExit $gamePid $gameStart $TimeoutSec) { $how = 'graceful' }
+                    if (Wait-ProcExit $gamePid $gameStart ([Math]::Max($TimeoutSec, 25))) {
+                        $how = 'graceful'
+                        if ($hung) { $how = 'dev.quit watchdog, world saved' }
+                    }
                 } else {
-                    Write-Warn2 "DevBridge :$($g.devPort) is not served by pid $gamePid (owner: $owner); skipping dev.quit"
+                    $quitSkipped = $true
+                    $ownerText = 'nobody'
+                    if ($owner) { $ownerText = "pid $owner" }
+                    Write-Warn2 "DevBridge :$($g.devPort) is not served by game pid $gamePid (owner: $ownerText); skipping dev.quit"
                 }
             }
             if ($gameAlive -and (Test-SameProc $gamePid $gameStart)) {
                 $k = Stop-OwnTree $gamePid $gameStart
-                Write-Warn2 "game JVM did not exit in $TimeoutSec s: force-killed pid(s) $($k -join ', ')"
+                if ($quitSkipped) { Write-Warn2 "force-killed the game JVM tree: pid(s) $($k -join ', ')" }
+                else { Write-Warn2 "game JVM did not exit after dev.quit: force-killed pid(s) $($k -join ', ')" }
             }
             # gradlew ends by itself once the game JVM is gone; give it a moment, then force
             if ($gradleAlive -and -not (Wait-ProcExit $rootPid $rootStart 15)) {
                 $k = Stop-OwnTree $rootPid $rootStart
                 Write-Warn2 "gradlew (pid $($g.gradlePid), wrapper $rootPid) did not exit: force-killed pid(s) $($k -join ', ')"
                 if ($how -eq 'graceful') { $how = 'graceful (gradlew forced)' }
+                # stopped mid-build: the daemon may still have spawned the game JVM; it is ours if it
+                # names this checkout's launch.cfg and started after our wrapper
+                Start-Sleep -Seconds 2
+                $late = Find-GameJvm $L
+                if ($late -and $late.CreationDate -and $rootStart -and ($late.CreationDate.ToUniversalTime() -ge [DateTime]::Parse($rootStart).ToUniversalTime().AddSeconds(-2))) {
+                    $k = Stop-OwnTree ([int]$late.ProcessId) (Get-ProcStart ([int]$late.ProcessId))
+                    Write-Warn2 "game JVM pid $($late.ProcessId) appeared after gradlew was stopped: force-killed pid(s) $($k -join ', ')"
+                }
             }
             $left = @()
             if ($gamePid -and (Test-SameProc $gamePid $gameStart)) { $left += $gamePid }

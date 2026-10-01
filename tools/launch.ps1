@@ -44,7 +44,9 @@ param(
     [switch]$NoForeman,
     [switch]$NoWait,
     [int]$TimeoutSec = 600,
-    [string]$SummaryJson
+    [string]$SummaryJson,
+    # print what would be started (commands + game env) without starting anything
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,16 +97,17 @@ if (-not $AgentHome) {
     elseif ($Dev) { $AgentHome = Join-Path $Main '.agentcraft-home' }   # unattended runs never touch ~/.agentcraft
     else { $AgentHome = Join-Path $env:USERPROFILE '.agentcraft' }
 }
-$AgentHome = [System.IO.Path]::GetFullPath($AgentHome)
+$AgentHome = Resolve-FullPath $AgentHome
 if (-not $GradleHome) {
     if ($env:GRADLE_USER_HOME) { $GradleHome = $env:GRADLE_USER_HOME } else { $GradleHome = Join-Path $Main '.gradle-home' }
 }
-$GradleHome = [System.IO.Path]::GetFullPath($GradleHome)
+$GradleHome = Resolve-FullPath $GradleHome
+if ($SummaryJson) { $SummaryJson = Resolve-FullPath $SummaryJson }
 $repoPaths = @()
 foreach ($r in @($Repo | Where-Object { $_ })) {
     foreach ($part in ($r -split ',')) {
         if (-not $part.Trim()) { continue }
-        $full = [System.IO.Path]::GetFullPath($part.Trim())
+        $full = Resolve-FullPath $part.Trim()
         if (-not (Test-Path (Join-Path $full '.git'))) { Fail "-Repo $full is not a git repository root" }
         $repoPaths += $full
     }
@@ -136,6 +139,7 @@ function Install-NodeDeps([string]$Dir, [string]$Name) {
     $log = Join-Path $L.Logs "npm-$Name.log"
     $verb = 'install'
     if (Test-Path $lock) { $verb = 'ci' }
+    if ($DryRun) { Write-Kv 'would run' "npm $verb in $Name/ ($why)" 'Yellow'; return }
     Write-Kv 'setup' "npm $verb in $Name/ ($why; log $log) ..." 'Yellow'
     $p = Start-Process -FilePath $env:ComSpec -ArgumentList "/d /s /c `"npm $verb --no-audit --no-fund`"" -WorkingDirectory $Dir -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError "$log.err" -Wait -PassThru
     if ($p.ExitCode -ne 0) { Fail "npm $verb failed in $Name/ (exit $($p.ExitCode))" ((Get-LogTail $log 10) + (Get-LogTail "$log.err" 15)) }
@@ -208,6 +212,10 @@ if ($live) {
     if ($Goal) { $fargs += @('--goal', $Goal) }
     if ($Dev -or $NoNotify) { $fargs += '--no-notify' } elseif ($Notify) { $fargs += '--notify' }
     if ($ForemanArgs) { $fargs += $ForemanArgs }
+    if ($DryRun) {
+        Write-Kv 'would run' ("node " + (Join-CmdArgs $fargs) + "   (in foreman/)") 'Yellow'
+        $fmInfo = [ordered]@{ started = $false; reused = $false; dryRun = $true; pid = $null; port = $Port; backend = $Backend; profile = $ForemanProfile; home = $AgentHome; args = $fargs }
+    } else {
     $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
     $fmLog = Join-Path $L.Logs "foreman-$ForemanProfile.log"
     $fmErr = Join-Path $L.Logs "foreman-$ForemanProfile.err.log"
@@ -232,13 +240,14 @@ if ($live) {
         Fail "the Foreman did not come up (see $fmLog)" ((Get-LogTail $fmLog 15) + (Get-LogTail $fmErr 15))
     }
     Write-Kv 'running' ("ws://127.0.0.1:$Port  ready in {0:N1} s" -f ((Get-Date) - $t0).TotalSeconds) 'Green'
+    }
 }
 if ($fmInfo.log) { Write-Kv 'log' $fmInfo.log }
 $summary.foreman = $fmInfo
 Save-Summary
 
 # backend/auth banner (and, for a showcase, wait until the scripted state is held)
-if (-not $NoForeman -or (Test-PortOpen $fmPort)) {
+if (-not ($DryRun -and -not $fmInfo.reused) -and (-not $NoForeman -or (Test-PortOpen $fmPort))) {
     $statusArgs = @((Join-Path $L.Tools 'foremancli.mjs'), 'status', '--port', [string]$fmPort, '--timeout', '20')
     if ($showcaseOn) { $statusArgs += @('--wait-showcase', '240') }
     $stJson = (& $node.Source @statusArgs 2>$null) | Out-String
@@ -329,6 +338,14 @@ if ($liveGame) {
     # cmd.exe /s /c "<gradlew.bat> args": a .bat cannot be spawned directly; the arguments are fixed
     # (no user text), quoted per argument and passed verbatim
     $inner = Join-CmdArgs (@((Join-Path $L.Mod 'gradlew.bat')) + $gargs)
+    if ($DryRun) {
+        Write-Kv 'would run' "cmd /d /s /c `"$inner`"   (in mod/)" 'Yellow'
+        foreach ($k in ($gameEnv.Keys | Sort-Object)) { Write-Kv '  env' "$k=$($gameEnv[$k])" }
+        $summary.game = [ordered]@{ started = $false; dryRun = $true; command = $inner; env = $gameEnv; devPort = $DevPort; foremanPort = $fmPort }
+        $summary.ok = $true
+        Save-Summary
+        exit 0
+    }
     try {
         $bg = Start-Bg $L $node.Source 'game' $env:ComSpec @('/d', '/s', '/c', "`"$inner`"") $L.Mod $gameLog $gameErr $gameEnv -Verbatim
     } catch { Fail $_.Exception.Message (Get-LogTail $gameLog 15) }
