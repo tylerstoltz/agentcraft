@@ -12,7 +12,7 @@
       "title": "Exterior hero: golden hour, 3/4 view of the HQ",
       "anchor": "cam_exterior_hero",
       "camera": { "x": -40, "y": 86, "z": -40, "lookAt": { "x": 0, "y": 70, "z": 0 } },
-      "time": 12000,
+      "time": 12400,
       "waitMs": 1500
     },
     {

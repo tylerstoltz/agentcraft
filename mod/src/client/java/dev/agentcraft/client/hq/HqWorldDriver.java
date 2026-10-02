@@ -182,7 +182,52 @@ public final class HqWorldDriver {
 		lamps.put("decisions", open ? LampStatus.WAITING : LampStatus.OFF);
 		boolean merge = st.oldestOpen(DecisionKind.MERGE) != null;
 		lamps.put("merge", merge ? LampStatus.WAITING : LampStatus.OFF);
+		lamps.put(BEACON_BINDING, beaconLamp(st, open, goal));
 		return new Wanted(Map.copyOf(lamps), open, merge, Map.copyOf(lit));
+	}
+
+	/** The cupola beacon's binding (the whole studio at a glance, seen from outside). */
+	public static final String BEACON_BINDING = "beacon";
+
+	/**
+	 * The studio's aggregate state for the cupola beacon, most urgent first: anything waiting on you
+	 * (clay), an agent in error/blocked (red), work going on (teal) or thinking (brass), the goal done
+	 * (sage), else idle.
+	 */
+	static LampStatus beaconLamp(ForemanState st, boolean decisionOpen, LampStatus goal) {
+		if (decisionOpen) {
+			return LampStatus.WAITING;
+		}
+		boolean error = false;
+		boolean working = false;
+		boolean thinking = false;
+		boolean waiting = false;
+		for (Agent a : st.agents().values()) {
+			if (!a.isActive()) {
+				continue;
+			}
+			switch (a.state().family()) {
+				case "waiting" -> waiting = true;
+				case "error" -> error = true;
+				case "working" -> working = true;
+				case "thinking" -> thinking = true;
+				default -> {
+				}
+			}
+		}
+		if (waiting) {
+			return LampStatus.WAITING;
+		}
+		if (error) {
+			return LampStatus.ERROR;
+		}
+		if (working) {
+			return LampStatus.WORKING;
+		}
+		if (thinking) {
+			return LampStatus.THINKING;
+		}
+		return goal == LampStatus.DONE ? LampStatus.DONE : LampStatus.IDLE;
 	}
 
 	static LampStatus goalLamp(@Nullable Goal g) {

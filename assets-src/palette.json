@@ -82,7 +82,7 @@
     "flax":     ["#F3DE9A", "#DDBE6C", "#B8964A", "#8C6E33"]
   },
   "details": {
-    "marlow":  { "eye": "#3A4466", "frame": "#3B2A20", "frame_glint": "#634733" },
+    "marlow":  { "eye": "#3A4466", "frame": "#9E7D1C", "frame_glint": "#F7E39A" },
     "juniper": { "eye": "#2A1A12", "lip": "#7E4733" },
     "kit":     { "eye": "#4A6B3A", "lip": "#B87A5C", "freckle": "#C9896A", "cord": "#3A3734" },
     "wren":    { "eye": "#2B2530", "lip": "#C8857A", "cheek": "#E79A93" },
