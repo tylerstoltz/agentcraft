@@ -9,9 +9,12 @@
 - Phase 2 (integration) launched as wf_807c7459-74d: core mod integration (Foreman link, blocks, NPCs, anchors, feature skeleton) + tools (launch.ps1, stop.ps1, qa.mjs) in a worktree.
 - 2026-10-01 ~14:00 Phase 2 PASSED: core (Foreman link, blocks+BEs, client-side NPCs w/ A* + decluttered nameplates, anchors, FEATURES.md contract) + tools (launch.ps1/stop.ps1/qa.mjs). Orchestrator re-verified: launch.ps1 -Dev -Showcase busy -> connected, 6 agents, shots artifacts/shots/orch_p2_room.png, orch_p2_desk.png; stop.ps1 clean. Commits ea00efc, a34f624.
 - Phase 3 (features) launched as wf_08436cd8-0fa: HQ / agent life / in-world displays / console+decisions+permissions+HUD / diff+library, each in a worktree (max 3 concurrent MC clients, RAM), verify + 1 fix, then merge + QA judge run.
+- 2026-10-01 18:20 Blendi asked to go faster, accepting less than absolute polish. Decision: merge finished features right away, skip extra verify rounds, and fold Phases 4+5 into one shorter pass (a single QA judge run, one fix wave on the top problems, the real-claude e2e, README + cold start). No repeated polish loops.
+- 18:25 Merged HQ (78cdebd), agent life (99b391b), in-world displays (b8d0a6d). Each got 2 verify rounds and was just under the bar (mostly 7s on composition/legibility). Orchestrator check of the integrated build: artifacts/shots/orch_p3_cam_*.png (exterior hero, desk monitor log with diff tinting, task wall kanban); all look good. Known: the task wall panel is small for its bay.
 
 ## Known blockers
 - (resolved 2026-10-01) claude CLI re-authenticated; headless `claude -p` verified working.
+
 
 
 
