@@ -23,7 +23,7 @@ loop, so the final pass was cut short. See "Not done" below.
   merge decisions. Merge opens a **diff review screen** (file list, line numbers, scrolling) with
   Merge / Request changes / Reject.
 - **Memory library**: the lead's plan and shared/per-agent notes in a two-pane reader.
-- **HUD**: connection/backend pill, goal progress, "N waiting Â· press J" badge, toasts.
+- **HUD**: connection/backend pill, goal progress, "N waiting · press J" badge, toasts.
 - **Foreman**: sim + claude backends, task graph, message bus, memory, decision queue, per-worker
   git worktrees, merges only on approval, persistence across restarts, reconnects, and Windows
   toasts. 465 tests. Pushes are impossible: blocked at the git level for agents, and the Foreman's
@@ -47,8 +47,12 @@ See `README.md`. The quickest try (no API usage):
   composition and legibility. Weak spots: the Task Wall is small and dim inside its bay, the night
   shot is too dark, some atrium/desk areas are muddy, Marlow's glasses read as sunglasses, and the
   oak parquet is busy at room scale.
-- No final independent â‰¥8-on-every-axis judge pass. No cold start from a fresh clone of the final
-  `main`; the Phase 2 cold-start test of launch.ps1 passed on that era's build.
+- **Cold start verified** (19:40): a fresh `git clone` of main (4643119) and
+  `launch.ps1 -Dev -Backend sim -Showcase busy` ran npm ci for tools and the Foreman, built the mod,
+  auto-built the studio HQ, and connected to the world in **43 s** (Gradle caches shared). Evidence:
+  docs/img/coldstart_atrium.png.
+- Final independent judge pass (≥8 on every axis): running now in workflow wf_87293b55-eb8,
+  together with the in-game real-claude e2e and targeted visual fixes.
 - launch.ps1 nits from the Phase 2 verifier:
   - `AGENTCRAFT_HOME` overrides the `-Dev` home default.
   - `-Dev` without `-Backend` uses the claude backend.
