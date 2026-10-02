@@ -143,6 +143,7 @@ See `README.md`. The quickest try (no API usage):
 - 19:10 Merged review and console. Resolved the PlateLayout conflict by hand. Integrated QA run 10/10 (qa/orch-p3).
 - 19:20 Final pass (e2e / visual / practicality) started, then stopped at Blendi's request to wrap up. Cleaned up every process it left. Wrote README.md and this summary.
 - 19:40 Cold start from a fresh clone verified (43 s).
+- 20:45 **UI polish merged** (1a6e705). It resolved the StatusLampRenderer conflict: the paper/brass goal card, the 3-line goal and a "2/9 tasks" ring. The main world was rebuilt with `/agentcraft hq`. QA run `ui-merged-2` captured 10/10 shots with both polish tracks in (docs/img/qa_contact_sheet.png). Not re-judged.
 - 20:35 Polish pass stopped at Blendi's request, partway through round 1:
   - The **world polish is merged** (98ec08d): golden-hour exterior, one roof language, a cupola status beacon, night window glow, chimney smoke, a full-frame task wall on a birch backing, and reframed QA cameras. The mod builds and 474 tests pass.
   - The **UI polish is NOT merged**. It covers one status-colour map, no truncated text, nameplates kept off monitors, a paper goal panel, and agent presence on the screens. It lives on branch `worktree-wf_14dfefd1-3f1-2` (merge conflict in StatusLampRenderer.java, unresolved).
