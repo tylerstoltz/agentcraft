@@ -539,9 +539,11 @@ public class ConsoleScreen extends Screen {
 
 	@Override
 	public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float a) {
-		// keep the world visible; a soft ink fade at the bottom makes the bar and the feed read
+		// the world stays visible but steps back: a warm walnut dim over everything, deeper at the
+		// bottom where the bar and the feed sit (like the modals' veil, lighter)
+		g.fill(0, 0, width, height, UiStyle.withAlpha(UiStyle.WALNUT, 92));
 		int h = height * 2 / 3;
-		g.fillGradient(0, height - h, width, height, UiStyle.withAlpha(UiStyle.INK, 0), UiStyle.withAlpha(UiStyle.INK, 110));
+		g.fillGradient(0, height - h, width, height, UiStyle.withAlpha(UiStyle.INK, 0), UiStyle.withAlpha(UiStyle.INK, 120));
 	}
 
 	private TextFieldView.Style fieldStyle() {
@@ -587,14 +589,15 @@ public class ConsoleScreen extends Screen {
 		ForemanState s = Foreman.state();
 
 		// ---- command bar
+		// the bar and the feed share one column (one aligned console, not a full-width bar under a panel)
+		panelW = Math.min(420, Math.max(260, width * 62 / 100));
 		fieldX = M;
-		fieldW = width - 2 * M;
+		fieldW = panelW;
 		TextFieldView.Style st = fieldStyle();
 		fieldH = field.height(font, input, fieldW, st);
 		fieldY = height - M - fieldH;
 
 		// ---- feed panel
-		panelW = Math.min(420, Math.max(260, width * 62 / 100));
 		panelX = M;
 		int panelBottom = fieldY - 5;
 		panelH = Math.min(panelBottom - 46, Math.max(120, (int) (height * 0.6)));
@@ -626,12 +629,12 @@ public class ConsoleScreen extends Screen {
 		int y = panelY + p.top();
 
 		// header: title + link summary, roster on the right
-		g.text(font, "Console", x, y + 1, UiBits.ink(), false);
+		g.text(font, "Console", x, y + 5, UiBits.ink(), false);
 		String sub = headerSub(s);
 		int rosterW = rosterWidth(s);
-		g.text(font, TextUtil.ellipsize(font, sub, w - font.width("Console") - 10 - rosterW), x + font.width("Console") + 6, y + 1, UiBits.muted(), false);
-		drawRoster(g, s, x + w - rosterW, y - 1, mouseX, mouseY);
-		y += 13;
+		g.text(font, TextUtil.ellipsize(font, sub, w - font.width("Console") - 10 - rosterW), x + font.width("Console") + 6, y + 5, UiBits.muted(), false);
+		drawRoster(g, s, x + w - rosterW + 2, y, mouseX, mouseY);
+		y += 20;
 		g.fill(x, y, x + w, y + 1, UiStyle.color("palette.ui.edge", 0xFFC9BBA3));
 		y += 4;
 
@@ -739,8 +742,11 @@ public class ConsoleScreen extends Screen {
 	}
 
 	private int rosterWidth(@Nullable ForemanState s) {
-		return s == null ? 0 : s.agents().size() * 13;
+		return s == null ? 0 : s.agents().size() * ROSTER_STEP;
 	}
+
+	/** Roster portraits: 16 px faces (2x), so who is on shift reads at a glance. */
+	private static final int ROSTER_STEP = 21;
 
 	private void drawRoster(GuiGraphicsExtractor g, @Nullable ForemanState s, int x, int y, int mouseX, int mouseY) {
 		if (s == null) {
@@ -750,18 +756,24 @@ public class ConsoleScreen extends Screen {
 		String hovered = null;
 		boolean stale = s.isStale();
 		for (Agent a : s.agents().values()) {
-			int cx = x + i * 13;
+			int cx = x + i * ROSTER_STEP;
 			boolean off = !a.isActive() || stale;
-			UiBits.face(g, a.id(), cx, y + 1, 1);
-			if (off) {
-				g.fill(cx, y + 1, cx + 8, y + 9, UiStyle.withAlpha(UiStyle.CREAM, 150));
-			}
 			// while the Foreman is offline nobody's state is known: no live colours
-			String fam = stale || a.isPaused() ? "idle" : a.state().family();
-			Panels.sprite(g, Kit.dot(fam, false), cx + 5, y + 6, 7, 7);
+			String fam = stale || a.isPaused() ? "idle" : dev.agentcraft.client.ui.StatusMap.agent(s, a);
+			// a thin ring in the state colour around the portrait (breathing clay while it waits on you)
+			int ring = UiStyle.status(fam);
+			if ("waiting".equals(fam)) {
+				ring = UiStyle.withAlpha(ring, (int) (110 + 145 * dev.agentcraft.client.ui.StatusMap.pulse(System.nanoTime())));
+			}
+			g.fill(cx - 1, y - 1, cx + 17, y + 17, ring);
+			UiBits.face(g, a.id(), cx, y, 2);
+			if (off) {
+				g.fill(cx, y, cx + 16, y + 16, UiStyle.withAlpha(UiStyle.CREAM, 150));
+			}
+			Panels.sprite(g, Kit.dot(fam, false), cx + 12, y + 11, 7, 7);
 			chipAgents.add(a.id());
-			chipHits.add(new int[] {cx - 1, y, 12, 13, chipAgents.size() - 1});
-			if (mouseX >= cx - 1 && mouseX < cx + 11 && mouseY >= y && mouseY < y + 13) {
+			chipHits.add(new int[] {cx - 1, y - 1, 19, 19, chipAgents.size() - 1});
+			if (mouseX >= cx - 1 && mouseX < cx + 18 && mouseY >= y - 1 && mouseY < y + 18) {
 				hovered = a.id();
 			}
 			i++;
@@ -842,13 +854,16 @@ public class ConsoleScreen extends Screen {
 		popupX = x;
 		popupY = y;
 		popupW = w;
-		Panels.sprite(g, Kit.TOOLTIP, x, y, w, h);
+		// paper card with a brass frame (the kit's language, not a dark tooltip box)
+		g.fill(x - 1, y - 1, x + w + 1, y + h + 1, UiStyle.BRASS);
+		Panels.sprite(g, Kit.PANEL_PAPER, x, y, w, h);
 		int ry = y + p.top();
 		for (int i = 0; i < n; i++) {
 			Completion c = completions.get(i);
 			boolean sel = i == compSel;
 			if (sel) {
-				g.fill(x + 3, ry - 1, x + w - 3, ry + popupRowH - 1, UiStyle.withAlpha(UiStyle.BRASS, 70));
+				g.fill(x + 3, ry - 1, x + w - 3, ry + popupRowH - 1, UiStyle.withAlpha(UiStyle.CLAY, 46));
+				g.fill(x + 3, ry - 1, x + 5, ry + popupRowH - 1, UiStyle.CLAY);
 			}
 			int cx = x + p.left();
 			if (c.agentId() != null) {
@@ -860,19 +875,19 @@ public class ConsoleScreen extends Screen {
 				g.text(font, "/", cx + 2, ry + 1, UiStyle.BRASS, false);
 			}
 			cx += 15;
-			int nameColor = c.agentId() != null ? UiBits.nameOnDark(c.agentId()) : UiBits.cream();
+			int nameColor = c.agentId() != null ? UiBits.nameOnLight(c.agentId()) : UiBits.ink();
 			String label = c.label().startsWith("/") ? c.label().substring(1) : c.label();
 			g.text(font, label, cx, ry + 1, nameColor, false);
 			if (c.detail() != null) {
 				String d = TextUtil.ellipsize(font, c.detail(), Math.max(20, w - (cx - x) - maxLabel - 10 - p.right()));
-				g.text(font, d, cx + maxLabel + 10, ry + 1, UiBits.activityOnInk(), false);
+				g.text(font, d, cx + maxLabel + 10, ry + 1, UiBits.muted(), false);
 			}
 			ry += popupRowH;
 		}
-		UiBits.hints(g, font, x + p.left(), ry + 2, true, "Tab", tabHint);
+		UiBits.hints(g, font, x + p.left(), ry + 2, false, "Tab", tabHint);
 		if (n > 1) {
 			String nav = "↑↓";
-			g.text(font, nav, x + w - p.right() - font.width(nav) - 2, ry + 4, UiBits.activityOnInk(), false);
+			g.text(font, nav, x + w - p.right() - font.width(nav) - 2, ry + 4, UiBits.muted(), false);
 		}
 	}
 

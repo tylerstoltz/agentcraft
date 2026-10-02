@@ -68,6 +68,8 @@ public final class PlateLayout {
 	private static final float MAX_LIFT_PLATES = 8f;
 	/** Plates nearer to the camera than this (blocks) are hidden: the agent is in your face and the plate would fill the screen. */
 	public static final float HIDE_NEARER = 1.3f;
+	/** Seated agents nearer than this (blocks) show no plate: their own monitor names them. */
+	public static final float NEAR_DESK = 6.5f;
 	/** A camera jump (blocks / degrees in one frame) counts as a cut: plates snap instead of animating. */
 	private static final double CUT_DISTANCE = 1.5;
 	private static final float CUT_DEGREES = 25f;
@@ -338,8 +340,17 @@ public final class PlateLayout {
 				t.clear();
 				continue;
 			}
-			if (!visible(lvl, cam.pos, camBlock, camInSolid, s, t, tick)) {
-				// hidden behind walls: drawn as is (depth-tested), takes no space
+			if (screenOpen || !visible(lvl, cam.pos, camBlock, camInSolid, s, t, tick)) {
+				// a screen is open (the console sits over the world: no plates peeking out behind it), or
+				// the agent's body is hidden (behind a shelf, a wall): no orphan plate floating over it
+				s.plate = null;
+				t.clear();
+				continue;
+			}
+			if (s.atMonitor && depth < NEAR_DESK) {
+				// seated at its desk, seen up close: its monitor already says who and what (header), and
+				// the plate would sit right on top of the monitor's text
+				s.plate = null;
 				t.clear();
 				continue;
 			}
@@ -700,8 +711,11 @@ public final class PlateLayout {
 			return t.visible;
 		}
 		t.visTick = tick;
-		t.visible = clear(level, cam, camBlock, camInSolid, new Vec3(s.x, s.y + s.plateBase + 0.2, s.z))
-			|| clear(level, cam, camBlock, camInSolid, new Vec3(s.x, s.y + 1.6, s.z));
+		// the body must show (head or chest), not just the air above it: a plate whose agent stands
+		// behind a bookshelf would float over nothing
+		double head = Math.min(1.6, s.plateBase - 0.45);
+		t.visible = clear(level, cam, camBlock, camInSolid, new Vec3(s.x, s.y + head, s.z))
+			|| clear(level, cam, camBlock, camInSolid, new Vec3(s.x, s.y + head - 0.5, s.z));
 		return t.visible;
 	}
 

@@ -565,13 +565,8 @@ public class TaskScreen extends Screen {
 	}
 
 	static String statusFamily(Task t) {
-		return switch (t.status()) {
-			case DOING -> "working";
-			case REVIEW -> "thinking";
-			case DONE -> "done";
-			case BLOCKED -> "error";
-			default -> "idle";
-		};
+		String f = dev.agentcraft.client.ui.StatusMap.task(dev.agentcraft.client.foreman.Foreman.state(), t);
+		return "cancelled".equals(f) ? "idle" : f;
 	}
 
 	private static List<FormattedCharSequence> clip(List<FormattedCharSequence> lines, int max) {

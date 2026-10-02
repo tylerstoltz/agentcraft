@@ -47,6 +47,8 @@ public class AgentRenderState extends AvatarRenderState {
 	public float pageFlip;
 	/** Height of the plate's natural bottom above the feet (blocks): {@link Nameplate#HEIGHT} + seat drop. */
 	public float plateBase = (float) Nameplate.HEIGHT;
+	/** Seated at a desk/terminal with its own monitor (the plate gives way to the monitor up close). */
+	public boolean atMonitor;
 	/**
 	 * Extra plate-space pixels stacked above the plate this frame (speech bubble, "!" marker) and
 	 * their width: {@link PlateLayout} reserves them so other plates are lifted clear of them.

@@ -44,12 +44,12 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 	public static final String DECISIONS_BINDING = "decisions";
 	public static final String MERGE_BINDING = "merge";
 	/** Height of the hologram card's centre above the lamp block's origin (blocks). */
-	static final float HOLO_Y = 4.1f;
+	static final float HOLO_Y = 3.55f;
 	/** Card size in kit pixels and its world scale (blocks per pixel = PX * K). */
-	static final int CARD_W = 220;
-	static final int CARD_H = 80;
-	static final float K = 0.92f;
-	static final int TEXT_W = 140;
+	static final int CARD_W = 236;
+	static final int CARD_H = 92;
+	static final float K = 0.74f;
+	static final int TEXT_W = 176;
 
 	public static class State extends StationRenderState {
 		public LampStatus status = LampStatus.OFF;
@@ -114,6 +114,10 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		}
 		if (s.hologram) {
 			extractHologram(s);
+			// nameplates near the plinth lift clear of the goal panel instead of hiding behind it
+			net.minecraft.core.BlockPos p = be.getBlockPos();
+			dev.agentcraft.client.agents.PlateLayout.reserve(p.getX() + 0.5, p.getY() + HOLO_Y - CARD_H / 2f * WorldUi.PX * K, p.getZ() + 0.5,
+				s.cardW + 8, CARD_H + 8, WorldUi.PX * K);
 		}
 	}
 
@@ -168,9 +172,10 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 				default -> "idle";
 			};
 			s.statusColor = UiStyle.status(fam);
-			List<String> lines = TextUtil.wrapPlain(font, g.text(), TEXT_W);
-			if (lines.size() > 2) {
-				lines = List.of(lines.get(0), TextUtil.ellipsize(font, lines.get(1) + " " + lines.get(2), TEXT_W));
+			// the goal wraps to 3 lines (wider column) before anything is cut
+			List<String> lines = TextUtil.wrapPlain(font, g.text().replace("`", ""), TEXT_W);
+			if (lines.size() > 3) {
+				lines = List.of(lines.get(0), lines.get(1), TextUtil.ellipsize(font, String.join(" ", lines.subList(2, lines.size())), TEXT_W));
 			}
 			s.goalLines = List.copyOf(lines);
 			s.line1 = done + " of " + total + " tasks done" + (doing > 0 ? "  ·  " + doing + " in progress" : "");
@@ -252,14 +257,9 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		poseStack.pushPose();
 		toFace(poseStack, s.frameFace, -0.006f, 16f);
 		collector.submitCustomGeometry(poseStack, RenderTypes.lightning(), (pose, vc) -> {
-			// core lines
-			quad(pose, vc, x0, y0, x1, y0 + t, core, core);
-			quad(pose, vc, x0, y1 - t, x1, y1, core, core);
-			quad(pose, vc, x0, y0, x0 + t, y1, core, core);
-			quad(pose, vc, x1 - t, y0, x1, y1, core, core);
-			// inner halo, fading towards the middle of the niche
-			quad(pose, vc, x0 + t, y0 + t, x1 - t, y0 + t + h, halo, clear);
-			quad(pose, vc, x0 + t, y1 - t - h, x1 - t, y1 - t, clear, halo);
+			// no hard outline (it read as a debug selection box): a warm light pooling up from the
+			// floor of the niche and a faint wash on its sides, breathing with the lamp
+			quad(pose, vc, x0 + t, y0 + t, x1 - t, y0 + t + h * 3, halo, clear);
 			hquad(pose, vc, x0 + t, y0 + t, x0 + t + h, y1 - t, halo, clear);
 			hquad(pose, vc, x1 - t - h, y0 + t, x1 - t, y1 - t, clear, halo);
 		});
@@ -282,7 +282,7 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		float top = HOLO_Y - CARD_H / 2f * WorldUi.PX * K + 0.05f;
 		float pulse = 0.85f + 0.15f * (float) Math.sin(s.timeSeconds * 1.3);
 		int base = s.hasGoal ? s.statusColor : UiStyle.CREAM;
-		int lo = ((int) (70 * pulse * (s.stale ? 0.4f : 1f)) << 24) | (base & 0xFFFFFF);
+		int lo = ((int) (115 * pulse * (s.stale ? 0.4f : 1f)) << 24) | (base & 0xFFFFFF);
 		int hi = base & 0xFFFFFF; // alpha 0
 		collector.submitCustomGeometry(poseStack, RenderTypes.lightning(), (pose, vc) -> {
 			float rb = 0.16f;
@@ -323,33 +323,60 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		int cw = s.cardW;
 		float x0 = -cw / 2f;
 		float y0 = -CARD_H / 2f;
-		WorldUi.submitNineSlice(poseStack, collector, WorldUi.Layer.SOLID, Kit.TOOLTIP, x0, y0, cw, CARD_H, 0xFFFFFFFF, light);
-		// progress ring (2x) with the percentage inside
-		float rx = x0 + 9;
-		float ry = y0 + (CARD_H - 64) / 2f + 2;
+		// matte paper panel with a thin brass frame and a walnut hairline (the Warm Studio kit, like the
+		// diff and library modals), not a dark HUD slab
+		int brass = UiStyle.BRASS;
+		int walnut = UiStyle.WALNUT;
+		// frame strips sit outside the panel (never overlapping it, so no depth fight)
+		frameStrip(poseStack, collector, x0 - 3, y0 - 3, x0 + cw + 3, y0 + CARD_H + 3, 1, walnut, light);
+		frameStrip(poseStack, collector, x0 - 2, y0 - 2, x0 + cw + 2, y0 + CARD_H + 2, 2, brass, light);
+		WorldUi.submitNineSlice(poseStack, collector, WorldUi.Layer.SOLID, Kit.PANEL_PAPER, x0, y0, cw, CARD_H, 0xFFFFFFFF, light);
+		int ink = UiStyle.INK;
+		int muted = UiStyle.color("paper.muted", 0xFF655E55);
+		int dim = s.stale ? 0x99 : 0xFF;
+		// progress ring (2x), the percentage inside, labelled as share of the work (not of the task count)
+		float rx = x0 + 10;
+		float ry = y0 + (CARD_H - 64) / 2f;
 		WorldUi.submitSprite(poseStack, collector, WorldUi.Layer.OVERLAY, Kit.progressRing(s.progress), rx, ry, 64, 64, 0xFFFFFFFF, light);
 		int pw = font.width(s.percent);
-		WorldUi.submitText(poseStack, collector, s.percent, rx + 32 - pw / 2f, ry + 28, UiStyle.CREAM, light);
+		WorldUi.submitText(poseStack, collector, s.percent, rx + 32 - pw / 2f, ry + 23, UiStyle.withAlpha(ink, dim), light);
+		if (s.hasGoal) {
+			String cap = "of work";
+			poseStack.pushPose();
+			poseStack.translate(rx + 32, ry + 34, 0f);
+			poseStack.scale(0.75f, 0.75f, 1f);
+			WorldUi.submitText(poseStack, collector, cap, -font.width(cap) / 2f, 0, UiStyle.withAlpha(muted, dim), light);
+			poseStack.popPose();
+		}
 		// text column
-		float tx = x0 + 84;
+		float tx = x0 + 86;
 		float ty = y0 + 9;
-		int dim = s.stale ? 0x99 : 0xFF;
-		WorldUi.submitText(poseStack, collector, "GOAL", tx, ty, UiStyle.withAlpha(UiStyle.BRASS, dim), light);
+		WorldUi.submitText(poseStack, collector, "GOAL", tx, ty, UiStyle.withAlpha(UiStyle.CLAY_DARK, dim), light);
 		WorldUi.submitText(poseStack, collector, s.statusWord, tx + font.width("GOAL") + 6, ty, UiStyle.withAlpha(s.statusColor, dim), light);
 		float ly = ty + 13;
 		for (String line : s.goalLines) {
-			WorldUi.submitText(poseStack, collector, line, tx, ly, UiStyle.withAlpha(UiStyle.CREAM, dim), light);
+			WorldUi.submitText(poseStack, collector, line, tx, ly, UiStyle.withAlpha(ink, dim), light);
 			ly += 10;
 		}
-		float ry2 = y0 + CARD_H - 30;
-		WorldUi.submitFill(poseStack, collector, tx, ry2 - 4, x0 + cw - 10, ry2 - 3, UiStyle.withAlpha(UiStyle.BRASS, 0x88), light);
-		int muted = UiStyle.color("ink_ui.activity", 0xFFC4BDB2);
+		float ry2 = y0 + CARD_H - 27;
+		WorldUi.submitFill(poseStack, collector, tx, ry2 - 4, x0 + cw - 10, ry2 - 3, UiStyle.withAlpha(brass, 0xCC), light);
 		WorldUi.submitText(poseStack, collector, s.line1, tx, ry2, UiStyle.withAlpha(muted, dim), light);
 		WorldUi.submitText(poseStack, collector, s.line2a, tx, ry2 + 10, UiStyle.withAlpha(muted, dim), light);
 		if (!s.line2b.isEmpty()) {
-			WorldUi.submitText(poseStack, collector, s.line2b, tx + font.width(s.line2a), ry2 + 10, UiStyle.withAlpha(UiStyle.CLAY, dim), light);
+			// "2 need you": clay, breathing with every other waiting surface
+			float k = dev.agentcraft.client.ui.StatusMap.pulse(System.nanoTime());
+			int clay = dev.agentcraft.client.monitor.DisplayDraw.mix(UiStyle.CLAY_DARK, UiStyle.CLAY, k);
+			WorldUi.submitText(poseStack, collector, s.line2b, tx + font.width(s.line2a), ry2 + 10, UiStyle.withAlpha(clay, dim), light);
 		}
 		poseStack.popPose();
+	}
+
+	/** A rectangular frame {@code t} px thick just inside (x0, y0)-(x1, y1). */
+	private static void frameStrip(PoseStack ps, SubmitNodeCollector c, float x0, float y0, float x1, float y1, float t, int argb, int light) {
+		WorldUi.submitFill(ps, c, x0, y0, x1, y0 + t, argb, light);
+		WorldUi.submitFill(ps, c, x0, y1 - t, x1, y1, argb, light);
+		WorldUi.submitFill(ps, c, x0, y0 + t, x0 + t, y1 - t, argb, light);
+		WorldUi.submitFill(ps, c, x1 - t, y0 + t, x1, y1 - t, argb, light);
 	}
 
 	private static void quad(PoseStack.Pose pose, VertexConsumer vc, float x0, float y0, float x1, float y1, int top, int bottom) {

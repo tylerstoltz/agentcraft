@@ -480,7 +480,16 @@ public final class DiffScreen extends Screen {
 			stateText = opt + (d.answer() != null ? " · " + ReviewKit.ago(d.answer().ts()) : "");
 			fam = answerFamily(opt);
 		}
-		String idText = d != null ? d.id() : "";
+		// "1 of 2" when more decisions wait (the raw id "d3" meant nothing to a reader)
+		String idText = "";
+		ForemanState fsIdx = Foreman.state();
+		if (d != null && d.isOpen() && fsIdx != null) {
+			List<Protocol.Decision> open = fsIdx.openDecisions();
+			int at = open.indexOf(d);
+			if (open.size() > 1 && at >= 0) {
+				idText = (at + 1) + " of " + open.size();
+			}
+		}
 		if (!idText.isEmpty()) {
 			rx -= font.width(idText);
 			g.text(font, idText, rx, iy + 3, muted, false);
@@ -507,6 +516,11 @@ public final class DiffScreen extends Screen {
 		// meta row: who, branch -> base, asked by, CI, stats
 		int my0 = iy + 18;
 		String who = worker();
+		if (d != null && d.isOpen()) {
+			// the asking agent waits on you: a breathing clay ring around its portrait
+			int clay = UiStyle.withAlpha(UiStyle.CLAY, (int) (90 + 165 * dev.agentcraft.client.ui.StatusMap.pulse(System.nanoTime())));
+			g.fill(ix - 2, my0 - 2, ix + 22, my0 + 22, clay);
+		}
 		ReviewKit.framedFace(g, font, who, ix, my0);
 		int x = ix + 25;
 		// right block
@@ -551,7 +565,7 @@ public final class DiffScreen extends Screen {
 		} else if (w != null) {
 			sub.append(w.ahead()).append(w.ahead() == 1 ? " commit" : " commits").append(" ahead · ").append(w.status().wire());
 		}
-		if (target.worktree() != null) {
+		if (target.worktree() != null && d == null) {
 			sub.append(sub.isEmpty() ? "" : " · ").append(target.worktree());
 		}
 		g.text(font, TextUtil.ellipsize(font, sub.toString(), rightMin - (ix + 25)), ix + 25, my0 + 12, muted, false);

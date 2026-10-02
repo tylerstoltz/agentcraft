@@ -49,12 +49,12 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 	static final float Z = DisplayDraw.Z_STEP;
 	static final float LIFT = 5 * DisplayDraw.Z_STEP; // flying cards sit above the others
 	/** The board's surface sprite (block atlas), tiled under the cards. */
-	static final Identifier SURFACE = AgentCraft.id("block/task_board_surface");
+	static final Identifier SURFACE = Identifier.withDefaultNamespace("block/stripped_oak_log");
 	/**
-	 * Block-light floor for the board: paper in a dark room still reads, without the wall looking
-	 * backlit at night (12 did); the HQ lights its wall anyway. {@code dev.taskwall {lightFloor}}.
+	 * Block-light floor for the board: paper in a dark room still reads (the alcove is the dimmest
+	 * spot of the studio, and the cards are the thing to read there). {@code dev.taskwall {lightFloor}}.
 	 */
-	static int lightFloor = 10;
+	static int lightFloor = 13;
 
 	public static class State extends StationRenderState {
 		@Nullable TaskBoard board;
@@ -181,9 +181,10 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		for (TaskBoard.Column col : b.columns) {
 			WorldUi.submitText(ps, c, col.label, col.ax + 4, b.iy0 + 3, headInk, light);
 			WorldUi.submitText(ps, c, col.countSeq, col.countX(), b.iy0 + 3, muted, light);
-			if (col.blocked > 0) {
-				float bx = col.countX() - 10;
-				WorldUi.submitSprite(ps, c, WorldUi.Layer.SOLID, DisplayDraw.dot("error", false), bx, b.iy0 + 3, 7, 7, 0f, 0xFFFFFFFF, light);
+			if (col.blocked > 0 && col.blockedW > 0) {
+				// explicit "1 blocked" in the error colour, apart from the column's count
+				float bx = col.countX() - 8 - col.blockedW;
+				WorldUi.submitText(ps, c, col.blockedSeq, bx, b.iy0 + 3, UiStyle.color("paper.del_fg", 0xFF873C2A), light);
 			}
 			if (col.chip != null) {
 				WorldUi.submitText(ps, c, col.chip, col.chipX() + 5, col.chipY + 2, muted, light);
@@ -357,6 +358,13 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		int shadowInk = UiStyle.color("palette.ui.shadow", 0xFF1F1E1D);
 		soft.add(x + 1, y + h - 1, x + w, y + h, zc, UiStyle.withAlpha(shadowInk, 60), light);
 		soft.add(x + 2, y + h, x + w - 1, y + h + 1, zc, UiStyle.withAlpha(shadowInk, 24), light);
+		if (ct.needsYou && !hovered) {
+			// waits on you: a breathing clay outline (same pulse as every other "waiting" surface)
+			float k = dev.agentcraft.client.ui.StatusMap.pulse(now);
+			int clay = UiStyle.status("waiting");
+			ring(soft, x, y, w, h - 1, 1.5f, zc, UiStyle.withAlpha(clay, (int) (150 + 105 * k)), light);
+			ring(soft, x - 1.5f, y - 1.5f, w + 3, h + 2, 1.5f, zc, UiStyle.withAlpha(clay, (int) (30 + 70 * k)), light);
+		}
 		if (hovered) {
 			// crosshair on the card: a brass outline says "right-click opens it"
 			ring(soft, x - 0.5f, y - 0.5f, w + 1, h + 1, 1, zc, UiStyle.color("palette.colors.brass", 0xFFC9A227), light);
@@ -383,12 +391,21 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 		} else {
 			float ty = y + p.top();
 			float fy = y + h - TaskBoard.FOOT;
-			for (int i = 0; i < ct.lines.size(); i++) {
-				float ly = ty + i * TaskBoard.LINE;
+			int li = 0;
+			for (int i = 0; i < ct.lines.size(); i++, li++) {
+				float ly = ty + li * TaskBoard.LINE;
 				if (i > 0 && ly + 8 > fy - 2) {
 					break; // the footer has risen into this line: the next content takes over once it fits
 				}
 				WorldUi.submitText(ps, c, ct.lines.get(i), cx0, ly, ct.titleColor, light);
+			}
+			int reasonInk = UiStyle.color("paper.del_fg", 0xFF873C2A);
+			for (int i = 0; i < ct.reason.size(); i++, li++) {
+				float ly = ty + li * TaskBoard.LINE;
+				if (ly + 8 > fy - 2) {
+					break;
+				}
+				WorldUi.submitText(ps, c, ct.reason.get(i), cx0, ly, reasonInk, light);
 			}
 			if (ct.dot != null) {
 				if (ct.dot.equals("waiting")) {
