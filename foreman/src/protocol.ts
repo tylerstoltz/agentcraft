@@ -216,7 +216,7 @@ export const ForemanStatus = z.object({
   account: z.string().optional().describe('e.g. organization / plan when auth ok'),
   speed: z.number().optional().describe('sim: speed multiplier'),
   showcase: z.boolean().optional().describe('sim: holding a static showcase state (`--showcase` or `--showcase late`)'),
-  costUsd: z.number().optional().describe('claude: estimated spend this Foreman run'),
+  costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
 

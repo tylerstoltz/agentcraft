@@ -133,11 +133,36 @@ function mergeStyle(v: unknown): 'merge' | 'squash' {
 
 const EFFORTS: EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 function effort(v: unknown, d: EffortLevel): EffortLevel {
-  return typeof v === 'string' && (EFFORTS as string[]).includes(v) ? (v as EffortLevel) : d;
+  if (v === undefined) return d;
+  if (typeof v === 'string' && (EFFORTS as string[]).includes(v)) return v as EffortLevel;
+  throw new Error(`unknown effort "${String(v)}" (use ${EFFORTS.join(', ')})`);
+}
+
+/** Every flag loadConfig reads (the `no-` prefix is stripped by parseFlags). */
+export const KNOWN_FLAGS = new Set([
+  'home', 'backend', 'profile', 'repo', 'workers', 'model', 'port', 'goal', 'autostart', 'reset', 'notify',
+  'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
+  'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
+  'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
+  'ambient',
+]);
+
+/**
+ * Unknown flags and stray positionals are errors, not silently ignored: a mistyped or mangled flag
+ * (e.g. PowerShell passing `--workers,kit,--model,sonnet` as ONE argument) would otherwise start a
+ * real claude team on the expensive defaults (opus lead, medium effort, three workers).
+ */
+function checkArgs(flags: Flags, positional: string[]): void {
+  const unknown = Object.keys(flags).filter((k) => !KNOWN_FLAGS.has(k));
+  if (unknown.length) {
+    throw new Error(`unknown option${unknown.length > 1 ? 's' : ''} ${unknown.map((k) => `"--${k}"`).join(', ')} (see --help)`);
+  }
+  if (positional.length) throw new Error(`unexpected argument "${positional[0]}" (options start with --; see --help)`);
 }
 
 export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env): Config {
-  const { flags } = parseFlags(argv);
+  const { flags, positional } = parseFlags(argv);
+  checkArgs(flags, positional);
   const home = path.resolve(str(flags.home) ?? env.AGENTCRAFT_HOME ?? path.join(os.homedir(), '.agentcraft'));
   const file = readJson<Record<string, unknown>>(path.join(home, 'config.json')) ?? {};
   const fileClaude = (file.claude ?? {}) as Record<string, unknown>;

@@ -107,6 +107,9 @@ running is refused (two would both write its `state.json`).
 4. **Review** (lead): gets the diff + CI result (and the task's history: who worked on it, what you
    already answered), then `request_merge` or asks for changes.
 5. **Merge decision** (you): Merge / Request changes / Reject. Only an answered **Merge** merges.
+   If the base moved on and the merge would conflict, the worker merges the base into its branch,
+   resolves it, and the task comes back for review. That is what lets the lead plan tasks that
+   touch the same files (a new CLI case, a help line) to run in parallel instead of in a chain.
 
 A task that changed no files (a report, an investigation) has nothing to merge: `request_merge`
 closes it as done (worktree abandoned, branch kept) instead of asking you to approve an empty
@@ -237,8 +240,11 @@ spawns git with an empty environment); the policy refuses every command it can s
   commits - useful for repos that require signed commits or verified emails. Branches are kept.
 - `/repo add <path>` must name a repository root; a folder inside another repository is refused
   (instead of silently registering the enclosing repo as the merge target).
-- Merges are refused (and the decision re-opens with the reason) if they would conflict or if the
-  checkout that has the base branch checked out has uncommitted tracked changes.
+- Merges are refused (and the decision re-opens with the reason) if the checkout that has the base
+  branch checked out has uncommitted tracked changes. A merge that would conflict is not made either:
+  with the claude backend the task goes back to its worker (`git merge <base>` in its worktree,
+  resolve, test, commit), then through CI and review to a fresh merge decision; other backends
+  re-open the decision with the conflicting files.
 - If you have another branch checked out, a merge only moves the base branch ref.
 - Agent branches are kept after merge/reject; merged worktree diffs stay viewable.
 - `repo.dirty` follows your checkout: it is re-broadcast after a refused merge and polled every

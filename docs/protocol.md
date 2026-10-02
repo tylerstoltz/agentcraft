@@ -182,7 +182,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `account` | string | no | e.g. organization / plan when auth ok |
 | `speed` | number | no | sim: speed multiplier |
 | `showcase` | boolean | no | sim: holding a static showcase state (`--showcase` or `--showcase late`) |
-| `costUsd` | number | no | claude: estimated spend this Foreman run |
+| `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
 
 ### <a id="agentlogs"></a>AgentLogs
 

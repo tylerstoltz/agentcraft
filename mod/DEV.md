@@ -457,3 +457,8 @@ The module versions are listed under `.gradle-home/caches/modules-2/files-2.1/ne
 - Don't set `setReuseAddr(true)` on the WebSocket server. On Windows that would allow two games to
   bind the same port.
 - `mod/run/` is gitignored, and the server run dir is `mod/run/server`, so it is ignored too.
+- **Git Bash rewrites arguments that start with a slash.** Run from Git Bash (MSYS),
+  `node tools/devcli.mjs type "/status"` types `C:/Program Files/Git/status`, and the console sends
+  that as a new goal. Set `MSYS_NO_PATHCONV=1` for console commands, or drive the DevBridge from
+  PowerShell. This happened in the claude e2e run. The lead asked what the goal meant instead of
+  starting work on it.

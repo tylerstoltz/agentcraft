@@ -317,6 +317,10 @@ public final class ConsoleActions {
 		StringBuilder tb = new StringBuilder("tasks: ");
 		counts.forEach((k, v) -> tb.append(v).append(' ').append(k.wire()).append("  "));
 		ConsoleLog.add(Tone.INFO, tb.toString().strip());
+		String spend = spendLabel(s);
+		if (spend != null) {
+			ConsoleLog.add(Tone.INFO, "Claude spend so far: " + spend + " (estimated, this profile)");
+		}
 		for (Agent a : s.agents().values()) {
 			String st = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.state().wire().replace('_', ' ');
 			ConsoleLog.add(Tone.INFO, a.name() + " \u00b7 " + st + (a.activity().isEmpty() ? "" : " \u00b7 " + a.activity()) + (a.taskId() != null ? " ("
@@ -330,6 +334,15 @@ public final class ConsoleActions {
 				ConsoleLog.add(Tone.INFO, d.id() + " " + DecisionQueue.kindLabel(d.kind()) + ": " + ConsoleCommands.oneLine(d.question(), 80), d.agentId());
 			}
 		}
+	}
+
+	/** "$2.46" for the claude backend once something was spent, else null. */
+	static @Nullable String spendLabel(ForemanState s) {
+		var st = s.status();
+		if (st == null || st.costUsd() == null || st.costUsd() <= 0) {
+			return null;
+		}
+		return String.format(java.util.Locale.ROOT, "$%.2f", st.costUsd());
 	}
 
 	private static void repos(ForemanState s) {

@@ -204,6 +204,9 @@ export class ClaudeBackend implements Backend {
       if (!onTeam) this.fm.setAgent(a.id, { state: 'idle', station: 'lounge', activity: this.isStopped(a.id) ? 'stopped - off shift' : 'off shift' });
       else if (a.activity === 'off shift' || a.activity.startsWith('stopped')) this.fm.setAgent(a.id, { activity: 'ready' });
     }
+    // the spend survives restarts: every session's cost is persisted, so the total is their sum
+    const spent = Object.values(this.fm.store.data.sessions).reduce((sum, s) => sum + (s.costUsd || 0), 0);
+    if (spent > 0) this.fm.setStatus({ costUsd: Math.round(spent * 1000) / 1000 });
     await this.checkAuth();
     if (!this.cfg.resumeOnStart) {
       this.st.inflight = {};
@@ -832,9 +835,14 @@ export class ClaudeBackend implements Backend {
       if (goal && goal.status === 'planning') {
         const n = this.fm.tasks.forGoal(goal.id).length;
         if (n > 0) this.promoteGoal(goal, 'planned');
-        else if (failed || job.kind === 'plan') {
-          this.fm.setGoal(goal.id, { status: failed ? 'failed' : 'active' });
+        else if (failed) {
+          this.fm.setGoal(goal.id, { status: 'failed' });
           this.fm.bus.feed('error', `Marlow's planning turn ended without tasks${stats?.errors.length ? `: ${stats.errors.join('; ')}` : ''}`, { agentId: LEAD });
+        } else if (job.kind === 'plan') {
+          // nothing to do (e.g. Blendi said "ignore it"): close the goal instead of leaving it
+          // "active" at 0% forever; a task the lead adds to it later makes it active again
+          this.fm.setGoal(goal.id, { status: 'cancelled', progress: 0 });
+          this.fm.bus.feed('goal', `Marlow planned no tasks: goal closed (${truncate(goal.text, 80)})`, { agentId: LEAD });
         }
       }
       if (job.kind === 'review' && job.taskId) {
@@ -1045,6 +1053,18 @@ export class ClaudeBackend implements Backend {
         this.tick();
       }
     }
+  }
+
+  onMergeConflict(task: Task, info: { base: string; branch: string; files: string[]; reason: string }): boolean {
+    if (!task.assignee || this.isStopped(task.assignee)) return false; // Blendi decides (decision stays open)
+    const files = info.files.length ? info.files.join(', ') : '(see git status)';
+    this.sendBackToWorker(
+      task.id,
+      `Blendi approved merging ${task.id}, but ${info.branch} now conflicts with ${info.base} (other work was merged into ${info.base} after you started) in: ${files}.\n` +
+        `In your worktree run \`git merge ${info.base}\`, resolve every conflict so that both sides' changes are kept, run the tests, and commit the merge (git commit --no-edit). ` +
+        `Do not rebase, reset or check out other branches. Then update_task("${task.id}", status "review", summary).`,
+    );
+    return true;
   }
 
   onTaskAction(task: Task, action: 'reassign' | 'cancel' | 'retry' | 'prioritize'): void {
