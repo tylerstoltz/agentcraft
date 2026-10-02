@@ -1,4 +1,4 @@
-# STATUS
+﻿# STATUS
 
 ## Summary (2026-10-01, wrap-up)
 
@@ -23,7 +23,7 @@ loop, so the final pass was cut short. See "Not done" below.
   merge decisions. Merge opens a **diff review screen** (file list, line numbers, scrolling) with
   Merge / Request changes / Reject.
 - **Memory library**: the lead's plan and shared/per-agent notes in a two-pane reader.
-- **HUD**: connection/backend pill, goal progress, "N waiting · press J" badge, toasts.
+- **HUD**: connection/backend pill, goal progress, "N waiting Â· press J" badge, toasts.
 - **Foreman**: sim + claude backends, task graph, message bus, memory, decision queue, per-worker
   git worktrees, merges only on approval, persistence across restarts, reconnects, and Windows
   toasts. 465 tests. Pushes are impossible: blocked at the git level for agents, and the Foreman's
@@ -47,7 +47,7 @@ See `README.md`. The quickest try (no API usage):
   composition and legibility. Weak spots: the Task Wall is small and dim inside its bay, the night
   shot is too dark, some atrium/desk areas are muddy, Marlow's glasses read as sunglasses, and the
   oak parquet is busy at room scale.
-- No final independent ≥8-on-every-axis judge pass. No cold start from a fresh clone of the final
+- No final independent â‰¥8-on-every-axis judge pass. No cold start from a fresh clone of the final
   `main`; the Phase 2 cold-start test of launch.ps1 passed on that era's build.
 - launch.ps1 nits from the Phase 2 verifier:
   - `AGENTCRAFT_HOME` overrides the `-Dev` home default.
@@ -99,3 +99,4 @@ See `README.md`. The quickest try (no API usage):
 - 18:25 Merged HQ, agent life and displays. The integrated check looks good (orch_p3_cam_*.png).
 - 19:10 Merged review and console. Resolved the PlateLayout conflict by hand. Integrated QA run 10/10 (qa/orch-p3).
 - 19:20 Final pass (e2e / visual / practicality) started, then stopped at Blendi's request to wrap up. Cleaned up every process it left. Wrote README.md and this summary.
+
