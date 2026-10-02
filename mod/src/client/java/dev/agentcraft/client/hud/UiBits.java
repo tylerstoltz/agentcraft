@@ -27,6 +27,19 @@ import org.jspecify.annotations.Nullable;
  */
 public final class UiBits {
 	private static final DateTimeFormatter HHMM = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT);
+	/**
+	 * Check mark that the vanilla bitmap font has (U+2714, a crisp 6x7 pixel tick in
+	 * nonlatin_european). U+2713 is not in it and falls back to a thin, tiny unifont glyph.
+	 */
+	public static final String CHECK = "✔";
+	/** Cross that the vanilla bitmap font has (U+2718); U+2717 is missing too. */
+	public static final String CROSS = "✘";
+	/** Primary (clay) button bodies are tinted to Clay-dark so the cream label reads (4.7:1 instead of 3.0:1). */
+	private static final int PRIMARY_TINT = 0xFFD3B6AA;
+	/** Mouse-hover tint of a primary button: a touch lighter than {@link #PRIMARY_TINT} (cream label 4.3:1). */
+	private static final int PRIMARY_HOVER_TINT = 0xFFDEC3B6;
+	/** Pressed primary (the pressed sprite, #C96B4C, tinted to about #A04A33). */
+	private static final int PRIMARY_PRESSED_TINT = 0xFFCBB0AB;
 
 	private UiBits() {
 	}
@@ -196,13 +209,35 @@ public final class UiBits {
 	 */
 	public static void button(GuiGraphicsExtractor g, Font font, String label, int number, int x, int y, int w, boolean primary, ButtonState st,
 		boolean danger) {
-		String state = switch (st) {
-			case HOVER -> "hover";
-			case PRESSED -> "pressed";
-			case DISABLED -> "disabled";
-			default -> "normal";
-		};
-		Panels.sprite(g, Kit.button(primary, state), x, y, w, 20);
+		button(g, font, label, number, x, y, w, primary, st, danger, false);
+	}
+
+	/**
+	 * A 20 px kit button; {@code focused} = the keyboard highlight (what Enter fires): a 2 px brass
+	 * ring around the button, stronger than any fill, so it reads even next to the clay primary.
+	 * Primary bodies are drawn in Clay-dark (cream label 4.7:1); hover lightens them only slightly.
+	 */
+	public static void button(GuiGraphicsExtractor g, Font font, String label, int number, int x, int y, int w, boolean primary, ButtonState st,
+		boolean danger, boolean focused) {
+		if (focused && st != ButtonState.DISABLED) {
+			focusRing(g, x, y, w, 20);
+		}
+		if (primary) {
+			switch (st) {
+				case DISABLED -> Panels.sprite(g, Kit.button(true, "disabled"), x, y, w, 20);
+				case PRESSED -> Panels.sprite(g, Kit.button(true, "pressed"), x, y, w, 20, PRIMARY_PRESSED_TINT);
+				case HOVER -> Panels.sprite(g, Kit.button(true, "normal"), x, y, w, 20, PRIMARY_HOVER_TINT);
+				default -> Panels.sprite(g, Kit.button(true, "normal"), x, y, w, 20, PRIMARY_TINT);
+			}
+		} else {
+			String state = switch (st) {
+				case HOVER -> "hover";
+				case PRESSED -> "pressed";
+				case DISABLED -> "disabled";
+				default -> focused ? "hover" : "normal";
+			};
+			Panels.sprite(g, Kit.button(false, state), x, y, w, 20);
+		}
 		int dy = st == ButtonState.PRESSED ? 2 : 0;
 		int labelColor;
 		int numColor;
@@ -211,7 +246,7 @@ public final class UiBits {
 			numColor = labelColor;
 		} else if (primary) {
 			labelColor = panelHi();
-			numColor = UiStyle.withAlpha(panelHi(), 190);
+			numColor = UiStyle.withAlpha(panelHi(), 200);
 		} else {
 			labelColor = danger ? errorText() : ink();
 			numColor = muted();
@@ -225,6 +260,21 @@ public final class UiBits {
 			g.text(font, num, tx, y + 6 + dy, numColor, false);
 		}
 		g.text(font, l, tx + numW, y + 6 + dy, labelColor, false);
+	}
+
+	/** A 2 px brass focus ring just outside a w x h rect (corners left open, so it reads as rounded), with a walnut hairline outside it. */
+	public static void focusRing(GuiGraphicsExtractor g, int x, int y, int w, int h) {
+		int brass = UiStyle.BRASS;
+		int edge = UiStyle.withAlpha(UiStyle.WALNUT, 150);
+		// walnut hairline (outermost), then the 2 px brass band
+		g.fill(x - 2, y - 4, x + w + 2, y - 3, edge);
+		g.fill(x - 2, y + h + 3, x + w + 2, y + h + 4, edge);
+		g.fill(x - 4, y - 2, x - 3, y + h + 2, edge);
+		g.fill(x + w + 3, y - 2, x + w + 4, y + h + 2, edge);
+		g.fill(x - 2, y - 3, x + w + 2, y - 1, brass);
+		g.fill(x - 2, y + h + 1, x + w + 2, y + h + 3, brass);
+		g.fill(x - 3, y - 2, x - 1, y + h + 2, brass);
+		g.fill(x + w + 1, y - 2, x + w + 3, y + h + 2, brass);
 	}
 
 	public static int buttonWidth(Font font, String label, int number) {

@@ -207,11 +207,18 @@ public final class DecisionsFeature {
 			sc.addProperty("requestChanges", ds.requestChangesMode());
 			sc.addProperty("answerText", ds.answerText());
 			sc.addProperty("status", ds.status());
+			sc.addProperty("lastAnswer", ds.lastAnswer());
+			sc.addProperty("armed", ds.armed());
 			sc.addProperty("preview", ds.isPreview());
 			o.add("screen", sc);
 		} else {
 			o.add("screen", null);
 		}
+		// the podium bubble reserves screen space in the nameplate layout: plates overlapping it (0 when settled)
+		JsonObject pod = new JsonObject();
+		pod.addProperty("reserved", dev.agentcraft.client.agents.PlateLayout.reservedCount());
+		pod.addProperty("plateOverlaps", dev.agentcraft.client.agents.PlateLayout.reservedOverlaps());
+		o.add("podium", pod);
 		return o;
 	}
 }

@@ -109,6 +109,25 @@ public final class ConsoleLog {
 		return cached;
 	}
 
+	// ------------------------------------------------------------------ unsent draft
+
+	private static String draft = "";
+	private static int draftCursor;
+
+	/** What was typed but not sent when the console closed (restored on the next open; this session only). */
+	public static String draft() {
+		return draft;
+	}
+
+	public static int draftCursor() {
+		return Math.max(0, Math.min(draftCursor, draft.length()));
+	}
+
+	public static void keepDraft(String text, int cursor) {
+		draft = text == null ? "" : text;
+		draftCursor = cursor;
+	}
+
 	// ------------------------------------------------------------------ history
 
 	public static List<String> history() {

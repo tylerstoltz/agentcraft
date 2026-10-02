@@ -40,13 +40,32 @@ public final class Keys {
 			3));
 	}
 
-	/** Short label of the key a mapping is bound to ("J", "`", "Enter"). */
+	/**
+	 * Short label of the key a mapping is bound to ("J", "Enter", "Backtick"). Punctuation keys whose
+	 * glyph is only a pixel or two in the Minecraft font (` ' , . ; :) are spelled out, so a keycap
+	 * never looks empty.
+	 */
 	public static String label(KeyMapping k) {
 		if (k == null || k.isUnbound()) {
 			return "?";
 		}
-		String s = k.getTranslatedKeyMessage().getString();
-		return s.length() > 8 ? s.substring(0, 8) : s;
+		return readable(k.getTranslatedKeyMessage().getString());
+	}
+
+	/** Spell out tiny punctuation glyphs; cut long names to 9 characters. */
+	public static String readable(String s) {
+		String word = switch (s) {
+			case "`" -> "Backtick";
+			case "'" -> "Quote";
+			case "´" -> "Accent";
+			case "," -> "Comma";
+			case "." -> "Period";
+			case ";" -> "Semicolon";
+			case ":" -> "Colon";
+			case "|" -> "Bar";
+			default -> s;
+		};
+		return word.length() > 9 ? word.substring(0, 9) : word;
 	}
 
 	public static boolean matches(KeyMapping k, KeyEvent e) {

@@ -50,6 +50,8 @@ public class ConsoleScreen extends Screen {
 	private final TextUtil.Scroll scroll = new TextUtil.Scroll();
 	private final long openedAt = Util.getMillis();
 	private boolean openedByKey;
+	/** Save what is typed as the draft when it closes (not for QA consoles). */
+	private boolean keepDraft = true;
 	private int historyIndex = -1;
 	private String draft = "";
 	private int compSel;
@@ -115,12 +117,28 @@ public class ConsoleScreen extends Screen {
 		super(Component.literal("Console"));
 		if (prefill != null) {
 			input.set(prefill);
+		} else if (!ConsoleLog.draft().isEmpty()) {
+			// what you were typing when you closed it (Esc never throws a draft away)
+			input.set(ConsoleLog.draft());
+			input.moveTo(ConsoleLog.draftCursor(), false);
+			lastValue = input.value();
+			popupHidden = true;
 		}
 	}
 
 	public ConsoleScreen openedByKey() {
 		openedByKey = true;
 		return this;
+	}
+
+	/**
+	 * A console for QA / DevBridge shots: starts with exactly {@code prefill} (or empty), never shows
+	 * nor keeps the player's draft, so scenes are repeatable ("@ju" typed twice never becomes "@ju@ju").
+	 */
+	public static ConsoleScreen forDev(@Nullable String prefill) {
+		ConsoleScreen s = new ConsoleScreen(prefill == null ? "" : prefill);
+		s.keepDraft = false;
+		return s;
 	}
 
 	@Override
@@ -141,6 +159,9 @@ public class ConsoleScreen extends Screen {
 
 	@Override
 	public void removed() {
+		if (keepDraft) {
+			ConsoleLog.keepDraft(input.value(), input.cursor());
+		}
 		minecraft.onTextInputFocusChange(this, false);
 		super.removed();
 	}
@@ -294,6 +315,9 @@ public class ConsoleScreen extends Screen {
 				input.set(restored);
 				lastValue = input.value();
 				errorShownAt = Util.getMillis();
+			} else if (keepDraft && minecraft.gui.screen() != this && ConsoleLog.draft().isEmpty()) {
+				// closed meanwhile: the refused text waits in the next console
+				ConsoleLog.keepDraft(restored, restored.length());
 			}
 		});
 		switch (after) {
@@ -305,7 +329,14 @@ public class ConsoleScreen extends Screen {
 				scroll.toBottom();
 			}
 			case CLOSE -> {
-				// the action opened another screen (decisions, diff)
+				// the action opened another screen (decisions, diff): the command is done, keep no draft
+				input.clear();
+				lastValue = "";
+				historyIndex = -1;
+				draft = "";
+				if (keepDraft) {
+					ConsoleLog.keepDraft("", 0);
+				}
 			}
 			case KEEP -> {
 				if (ConsoleActions.feedback() != null && ConsoleActions.feedback().tone() == Tone.ERROR) {
@@ -409,7 +440,7 @@ public class ConsoleScreen extends Screen {
 				compSel = (compSel + dir + completions.size()) % completions.size();
 				return true;
 			}
-			if (input.value().indexOf('\n') >= 0 || input.layout(font, fieldW - 24).size() > 1) {
+			if (input.value().indexOf('\n') >= 0 || input.layout(font, innerFieldW()).size() > 1) {
 				if (input.vertical(font, innerFieldW(), dir, e.hasShiftDown())) {
 					return true;
 				}
@@ -436,8 +467,7 @@ public class ConsoleScreen extends Screen {
 	}
 
 	private int innerFieldW() {
-		Kit.Padding p = Kit.padding("text_field");
-		return Math.max(20, fieldW - p.left() - p.right() - font.width(">") - 4 - 1);
+		return TextFieldView.wrapWidth(font, input, fieldW, fieldStyle());
 	}
 
 	@Override
@@ -529,7 +559,11 @@ public class ConsoleScreen extends Screen {
 			hint = "new goal \u2192 " + r.name();
 		} else if (intent != null) {
 			ForemanState s = Foreman.state();
-			if (intent instanceof Invalid inv) {
+			if (s != null && s.hasData() && s.isStale() && sendsToForeman(intent)) {
+				// say it before Enter, not after
+				hint = "Foreman offline: this can't be sent yet";
+				hintColor = UiBits.errorText();
+			} else if (intent instanceof Invalid inv) {
 				hint = errorStripVisible() ? null : inv.error();
 			} else if (s != null) {
 				hint = ConsoleCommands.describe(intent, s);
@@ -537,6 +571,12 @@ public class ConsoleScreen extends Screen {
 		}
 		String placeholder = "Type a goal, @agent to message, or /help";
 		return new TextFieldView.Style(">", UiStyle.BRASS, placeholder, ghostText(), hint, hintColor, 6);
+	}
+
+	/** Intents that go to the Foreman (everything but the local commands). */
+	private static boolean sendsToForeman(Intent in) {
+		return in instanceof Goal || in instanceof ConsoleCommands.Message || in instanceof ConsoleCommands.Answer || in instanceof ConsoleCommands.RepoAdd
+			|| in instanceof ConsoleCommands.AgentAction || in instanceof ConsoleCommands.TaskAction;
 	}
 
 	@Override
@@ -614,11 +654,8 @@ public class ConsoleScreen extends Screen {
 		int textX0 = listX + 6;
 		for (int i = scroll.offset(); i < Math.min(rs.size(), scroll.offset() + view); i++) {
 			Row r = rs.get(i);
-			if (i == scroll.offset() && r.cont() && scroll.scrollable()) {
-				// never start the view with the tail of a wrapped line
-				ly += ROW;
-				continue;
-			}
+			// (a view that starts on the tail of a wrapped line just shows that tail, under its
+			// stripe, like any chat log: no blank first row)
 			if (r.sep()) {
 				int tw = font.width(r.time());
 				int mid = listX + (listW - 8) / 2;
@@ -710,14 +747,16 @@ public class ConsoleScreen extends Screen {
 		}
 		int i = 0;
 		String hovered = null;
+		boolean stale = s.isStale();
 		for (Agent a : s.agents().values()) {
 			int cx = x + i * 13;
-			boolean off = !a.isActive();
+			boolean off = !a.isActive() || stale;
 			UiBits.face(g, a.id(), cx, y + 1, 1);
 			if (off) {
 				g.fill(cx, y + 1, cx + 8, y + 9, UiStyle.withAlpha(UiStyle.CREAM, 150));
 			}
-			String fam = a.isPaused() ? "idle" : a.state().family();
+			// while the Foreman is offline nobody's state is known: no live colours
+			String fam = stale || a.isPaused() ? "idle" : a.state().family();
 			Panels.sprite(g, Kit.dot(fam, false), cx + 5, y + 6, 7, 7);
 			chipAgents.add(a.id());
 			chipHits.add(new int[] {cx - 1, y, 12, 13, chipAgents.size() - 1});
@@ -729,7 +768,8 @@ public class ConsoleScreen extends Screen {
 		if (hovered != null) {
 			Agent a = s.agent(hovered);
 			if (a != null) {
-				String st = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.activity();
+				String st = stale ? "last known: " + (a.isPaused() ? "paused" : a.activity()) : !a.isActive() ? "off shift" : a.isPaused() ? "paused"
+					: a.activity();
 				g.setTooltipForNextFrame(font, Component.literal(a.name() + " · " + st + "  (click to message)"), mouseX, mouseY);
 			}
 		}
@@ -887,7 +927,7 @@ public class ConsoleScreen extends Screen {
 				}
 			}
 			if (body.indexOf('\t') >= 0) {
-				out.add(columns(l, body, stripe, agent));
+				columns(out, l, body, stripe, agent, textW);
 				return;
 			}
 		} else {
@@ -1000,23 +1040,58 @@ public class ConsoleScreen extends Screen {
 		};
 	}
 
-	/** A local line with tab-separated columns: help (command | what it does) and diff files (path | +a | -d). */
-	private Row columns(Line l, String body, int stripe, @Nullable String agent) {
+	/**
+	 * A local line with tab-separated columns: help (command | what it does) and diff files (path | +a
+	 * | -d). Help descriptions wrap in their column (never clipped at narrow GUIs); a command too wide
+	 * for the column gets its own row with the description under it.
+	 */
+	private void columns(List<Row> out, Line l, String body, int stripe, @Nullable String agent, int textW) {
 		String[] c = body.split("\t");
+		String face = agent != null && UiBits.hasPortrait(agent) ? agent : null;
 		List<Run> runs = new ArrayList<>();
 		if (l.tone() == Tone.FILE) {
-			runs.add(new Run(c[0], UiBits.ink(), 0));
+			String path = TextUtil.ellipsize(font, c[0], Math.max(40, textW - 70));
+			runs.add(new Run(path, UiBits.ink(), 0));
 			int right = rowsWidth - 30;
 			String add = c.length > 1 ? c[1] : "";
 			String del = c.length > 2 ? " " + c[2] : "";
 			int w = font.width(add + del);
-			runs.add(new Run(add, UiStyle.color("paper.add_fg", 0xFF455746), Math.max(font.width(c[0]) + 8, right - w)));
+			runs.add(new Run(add, UiStyle.color("paper.add_fg", 0xFF455746), Math.max(font.width(path) + 8, right - w)));
 			runs.add(new Run(del, UiStyle.color("paper.del_fg", 0xFF873C2A), 0));
-		} else {
-			runs.add(new Run(c[0], UiStyle.color("paper.path", 0xFF6C5415), 0));
-			runs.add(new Run(c.length > 1 ? c[1] : "", UiBits.muted(), Math.max(font.width(c[0]) + 8, 150)));
+			out.add(new Row("", face, stripe, runs, false, false));
+			return;
 		}
-		return new Row("", agent != null && UiBits.hasPortrait(agent) ? agent : null, stripe, runs, false, false);
+		int col = helpColumn(textW);
+		int pathColor = UiStyle.color("paper.path", 0xFF6C5415);
+		String cmd = c[0];
+		String desc = c.length > 1 ? c[1] : "";
+		List<String> descLines = TextUtil.wrapPlain(font, desc, Math.max(40, textW - col));
+		if (descLines.isEmpty()) {
+			descLines = List.of("");
+		}
+		int start = 0;
+		if (font.width(cmd) + 8 > col) {
+			out.add(new Row("", face, stripe, List.of(new Run(TextUtil.ellipsize(font, cmd, textW), pathColor, 0)), false, false));
+		} else {
+			out.add(new Row("", face, stripe, List.of(new Run(cmd, pathColor, 0), new Run(descLines.get(0), UiBits.muted(), col)), false, false));
+			start = 1;
+		}
+		for (int i = start; i < descLines.size(); i++) {
+			out.add(new Row("", null, stripe, List.of(new Run(descLines.get(i), UiBits.muted(), col)), false, false, false, true));
+		}
+	}
+
+	/** x (from the text start) of the help descriptions: past the usual command widths, at most 45 % of the row. */
+	private int helpColumn(int textW) {
+		int widest = font.width("@juniper text");
+		for (ConsoleCommands.Command cmd : ConsoleCommands.COMMANDS) {
+			int w = font.width(cmd.usage());
+			// very long usages (/task <id> cancel|retry|...) wrap onto their own row instead of pushing the column
+			if (w <= 150) {
+				widest = Math.max(widest, w);
+			}
+		}
+		return Math.max(70, Math.min(widest + 10, textW * 45 / 100));
 	}
 
 	private static int identity(String agentId, @Nullable ForemanState s) {

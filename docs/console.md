@@ -8,7 +8,7 @@ Shots: `tools/scenes/console.json` (showcase busy state).
 
 | key | does |
 | --- | --- |
-| `` ` `` | open the console (again with an empty input: close it) |
+| `` ` `` (Backtick) | open the console (again with an empty input: close it) |
 | `Enter` while looking at a console terminal | open the console (a right-click on the terminal does too) |
 | `J` | open the decision queue (a right-click on the Decision Podium does too) |
 
@@ -21,9 +21,11 @@ above it: the Foreman feed merged with the console's own lines, each agent in it
 name colour, a colour stripe), time separators between minutes, "needs you" lines in clay (click
 one to open the decision queue; Esc comes back to the console). The right end of the bar always
 says what Enter will do ("message Juniper", "new goal → pocket-notes", "answer d4: Merge") or
-why it cannot ("no agent named @xyz (marlow, juniper, ...)"). After Enter the bar clears at once
-and the same spot shows the Foreman's ack ("sent to Juniper ✓"); a refusal shows a red strip above
-the bar, a line in the feed, and puts your text back so you can fix it.
+why it cannot ("no agent named @xyz (marlow, juniper, ...)", "Foreman offline: this can't be sent
+yet"). After Enter the bar clears at once and the same spot shows the Foreman's ack ("sent to
+Juniper ✔"); a refusal shows a red strip above the bar, a line in the feed, and puts your text back
+so you can fix it. Esc never loses a draft: whatever is in the bar when the console closes comes
+back the next time it opens (this session), and the console terminal shows it on its screen.
 
 | input | sends |
 | --- | --- |
@@ -51,18 +53,30 @@ options as buttons.
 | key | does |
 | --- | --- |
 | `1`-`9` | choose that option at once |
-| Enter / Space | the highlighted option (arrows move the highlight) |
+| Enter | the highlighted option (brass ring; the arrows move it). Questions start on the first (recommended) option; merges and permissions start with **no** highlight, so Enter alone never merges or grants anything |
 | typing | starts a free-text answer (questions); Enter sends it, Shift+Enter adds a line |
 | Tab / Shift+Tab | next / previous decision (also the ‹ › keys in the header) |
 | `D` | merge: review the diff |
 | Esc | later (or leave the text field) |
 
-Merges show branch → base, files, +/− and the test result, the per-file list (fetched with
-`diff.request`), the worker's summary and Rowan's review. "Request changes" opens the feedback field
-(Enter sends it to the worker), "Reject" asks for a second press (it abandons the branch). After an
-answer the chosen button stays pressed with a ✓, the next decision comes up, and the screen closes
-itself when the queue is empty. A decision answered elsewhere (console, another client) is shown as
-such and skipped.
+Space does nothing here (a reflex jump never answers). Option keys are ignored for 350 ms after the
+screen opens or a new decision comes up by itself, and key repeats or keys still held from before
+the screen (a held Enter from the console's `/decide`) are ignored; the footer says so if a press
+was dropped.
+
+Merges show whose work it is (face + name), files, +/− and the test result, the branch only when
+the question does not already name it, the per-file list (fetched with `diff.request`), the
+worker's summary and Rowan's review. "Request changes" opens the feedback field (Enter sends it to
+the worker), "Reject" asks for a second press (it abandons the branch; only then does the button
+grow into "Confirm reject").
+
+Answering never makes you wait: the next decision comes up as soon as you answer (the footer says
+"Sending d5: Merge…", then "✔ d5: Merge"). With nothing else waiting the answered decision stays
+with its button pressed until the ack, then "All caught up ✔" and the screen closes. If the
+Foreman refuses an answer, that decision comes back (with the text you typed) and the error is in
+the footer; if the screen was closed meanwhile, a toast says so. A decision answered elsewhere
+(console, another client) is shown read-only as "✔ d3 answered elsewhere: Merge" for a moment and
+skipped. The status always wins the footer: key hints step aside when it needs the room.
 
 ## Permission prompts
 
@@ -75,8 +89,12 @@ covers (tied to key 2). Buttons: Allow once (1), Always allow (2, sends the exac
 
 ## HUD
 
-- Goal bar (top centre, boss-bar style): status dot, goal text, %, progress bar, open task counts
-  by column and "n/m done". With no goal yet: "No goal yet · press ` to give the team one".
+- Goal bar (top centre, boss-bar style): status dot, goal text, %, progress bar, the open task
+  columns that have tasks and "n/m done" ("finished 2m ago" once the goal is done). With no goal
+  yet: "No goal yet · press [Backtick] to give the team one" (punctuation keys are spelled out on
+  keycaps; their glyphs are a pixel or two). It keeps clear of the connection pill using the pill's
+  real size each frame: narrower next to it, or below it when there is no room (the two-line
+  "Reconnecting to the Foreman" pill on a narrow GUI).
 - Decisions badge under it: "2 waiting · press J" with a pulsing clay dot.
 - Paper toasts for `notify` (top right, under the connection pill, below the goal bar on narrow
   screens): the agent's portrait, "Marlow needs you", two lines, the J hint; they leave early once
@@ -90,19 +108,25 @@ covers (tied to key 2). Buttons: Allow once (1), Always allow (2, sends the exac
 - Decision Podium: while decisions wait, a speech bubble over the podium shows the count, the key,
   the first decision's agent and its question (it grows with distance so it reads across the
   room), and the podium's `open` block state (lit paper, lens, bell) follows "any decision open".
-- Console terminal: the leaning screen shows a prompt with your last command, how to open the
-  console, and what is waiting.
+  The bubble reserves its screen space in the nameplate layout (`PlateLayout.reserve`), so the
+  plate of the agent waiting next to the podium lifts above it (with its leader line) instead of
+  covering it; `dev.decisions` reports `podium.plateOverlaps` (0 when settled).
+- Console terminal: the leaning screen is a small live console: a "Console" title bar with what
+  waits for you (pulsing clay "2 waiting", "all clear", "offline"), the last three feed lines with
+  the agent's colour stripe and face, and the prompt: your unsent draft, or "Enter to type".
 
 ## QA hooks (DevBridge)
 
 | command | |
 | --- | --- |
-| `dev.screen {open:"console"}` + `dev.type "@ju"` | console with the autocomplete |
-| `dev.console {prefill?, submit?, open?}` | open the console with text (and press Enter); returns value, ghost, completions, ack stats |
+| `dev.screen {open:"console"}` + `dev.type "@ju"` | console with the autocomplete (QA consoles start empty and never read or keep the player's draft, so a re-run never types "@ju@ju") |
+| `dev.console {prefill?, submit?, open?}` | open the console with text (and press Enter); returns value, ghost, completions, ack stats, the kept `draft` |
+| `dev.key {mapping:"key.agentcraft.console"}` | the real key path (restores the draft); `dev.key` modifiers are SDL bits: Shift 1, Ctrl 64 |
 | `dev.console.parse {text}` | what an input would do (intent, completions), nothing is sent |
 | `dev.screen {open:"decision"}`, `dev.decision {decisionId?\|kind?\|preview?}` | the decision screen (queue head / one decision / a sample permission marked "preview") |
 | `dev.screen {open:"permission"}` | the oldest open permission prompt, else the marked preview |
-| `dev.decisions` | the queue in HUD order and the open decision screen's state |
-| `dev.toast {text, level?, decisionId?}`, `dev.hud.state` | a toast without the Foreman; what the HUD shows (waiting, toasts, sound counters) |
+| `dev.decisions` | the queue in HUD order, the open decision screen's state (`current`, `highlight`, `armed`, `status`, `lastAnswer`) and `podium.plateOverlaps` (nameplates overlapping the podium bubble last frame) |
+| `dev.toast {text, level?, decisionId?}`, `dev.hud.state` | a toast without the Foreman; what the HUD shows (waiting, toasts, sound counters, `pillLeft/pillBottom`, `goalBarPillClash`) |
+| `dev.hud.guiScale {scale}` | GUI scale for this session (layout checks at 2 and 4) |
 
 Note: `id` is a reserved request field, hence `decisionId`.

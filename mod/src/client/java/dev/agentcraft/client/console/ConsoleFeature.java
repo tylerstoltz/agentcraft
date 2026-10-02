@@ -35,7 +35,7 @@ public final class ConsoleFeature {
 	public static void init() {
 		BlockEntityRenderers.register(ModBlockEntities.CONSOLE_TERMINAL, ctx -> new ConsoleTerminalRenderer());
 		Keys.ensureRegistered();
-		DevBridge.registerScreen("console", mc -> new ConsoleScreen());
+		DevBridge.registerScreen("console", mc -> ConsoleScreen.forDev(null));
 		dev.agentcraft.client.world.StationInteractions.onUse(ModBlocks.CONSOLE_TERMINAL, (player, pos, state, be) -> open(null, false));
 		ClientTickEvents.END_CLIENT_TICK.register(mc -> {
 			if (mc.player == null) {
@@ -84,7 +84,7 @@ public final class ConsoleFeature {
 				boolean open = f.optBool("open", true);
 				return DevBridge.onClient(mc, () -> {
 					if (open && !(mc.gui.screen() instanceof ConsoleScreen)) {
-						open(prefill, false);
+						mc.gui.setScreen(ConsoleScreen.forDev(prefill));
 					} else if (prefill != null && mc.gui.screen() instanceof ConsoleScreen cs) {
 						cs.setValue(prefill);
 					}
@@ -132,6 +132,7 @@ public final class ConsoleFeature {
 		}
 		o.add("actions", DevBridge.GSON.toJsonTree(ConsoleActions.stats()));
 		o.addProperty("historySize", ConsoleLog.history().size());
+		o.addProperty("draft", ConsoleLog.draft());
 		o.addProperty("lines", ConsoleLog.lines().size());
 		return o;
 	}

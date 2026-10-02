@@ -122,7 +122,8 @@ public final class Toasts implements HudElement {
 			return;
 		}
 		Font font = mc.font;
-		int y = 40;
+		// under the connection pill (one or two lines tall)
+		int y = Math.max(40, ConnectionBanner.pillBottom + 6);
 		// stay clear of the goal bar when the screen is narrow enough for them to meet
 		if (GoalBar.right > g.guiWidth() - 6 - W - 4) {
 			y = Math.max(y, GoalBar.bottom + 6);

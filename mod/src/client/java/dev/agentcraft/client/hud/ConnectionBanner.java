@@ -34,9 +34,19 @@ public final class ConnectionBanner implements HudElement {
 	private static final int MARGIN = 6;
 	private static final long FADE_AFTER_MS = 6000;
 
+	/**
+	 * Left / bottom edge of the pill drawn this frame (GUI px; left = gui width and bottom = 0 when
+	 * nothing was drawn). This element is registered before the goal bar and the toasts, so they read
+	 * the current frame's values and keep clear of it.
+	 */
+	public static int pillLeft = Integer.MAX_VALUE;
+	public static int pillBottom = 0;
+
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker deltaTracker) {
 		Minecraft mc = Minecraft.getInstance();
+		pillLeft = g.guiWidth();
+		pillBottom = 0;
 		if (mc.player == null || Foreman.state() == null) {
 			return;
 		}
@@ -103,6 +113,8 @@ public final class ConnectionBanner implements HudElement {
 		int h = p.top() + 9 + (detail == null ? 0 : 10) + p.bottom();
 		int x = g.guiWidth() - w - MARGIN;
 		int y = MARGIN;
+		pillLeft = x;
+		pillBottom = y + h;
 		int tint = (alpha << 24) | 0xFFFFFF;
 		Panels.sprite(g, Kit.TOOLTIP, x, y, w, h, tint);
 		int dx = x + p.left();

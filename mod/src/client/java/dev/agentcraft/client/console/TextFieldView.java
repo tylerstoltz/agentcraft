@@ -26,9 +26,27 @@ public final class TextFieldView {
 
 	private int scrollLine;
 
+	/** The wrapped lines and the wrap width; a value taller than the field wraps narrower, leaving the right edge to the "12/27" marker. */
+	private record Fit(List<TextModel.VLine> lines, int iw, boolean overflow) {
+	}
+
+	private static Fit fit(Font font, TextModel m, int w, Style st) {
+		int iw = innerW(font, w, st);
+		List<TextModel.VLine> lines = m.layout(font, iw);
+		if (lines.size() <= st.maxLines()) {
+			return new Fit(lines, iw, false);
+		}
+		int narrow = Math.max(20, iw - markerRoom(font));
+		return new Fit(m.layout(font, narrow), narrow, true);
+	}
+
+	private static int markerRoom(Font font) {
+		return font.width("999/999") + 8;
+	}
+
 	/** Height the field will take for this model and width. */
 	public int height(Font font, TextModel m, int w, Style st) {
-		int lines = Math.min(st.maxLines(), m.layout(font, innerW(font, w, st)).size());
+		int lines = Math.min(st.maxLines(), fit(font, m, w, st).lines().size());
 		return BASE_H + (Math.max(1, lines) - 1) * LINE;
 	}
 
@@ -41,10 +59,16 @@ public final class TextFieldView {
 		return Math.max(20, w - p.left() - p.right() - prefixW(font, st) - 1);
 	}
 
+	/** The width the text wraps at for this value (callers moving the caret by visual lines use it). */
+	public static int wrapWidth(Font font, TextModel m, int w, Style st) {
+		return fit(font, m, w, st).iw();
+	}
+
 	public int draw(GuiGraphicsExtractor g, Font font, TextModel m, int x, int y, int w, boolean focused, Style st) {
 		Kit.Padding p = Kit.padding("text_field");
-		int iw = innerW(font, w, st);
-		List<TextModel.VLine> lines = m.layout(font, iw);
+		Fit f = fit(font, m, w, st);
+		int iw = f.iw();
+		List<TextModel.VLine> lines = f.lines();
 		int vis = Math.max(1, Math.min(st.maxLines(), lines.size()));
 		int h = BASE_H + (vis - 1) * LINE;
 		Panels.sprite(g, focused ? Kit.TEXT_FIELD_FOCUSED : Kit.TEXT_FIELD, x, y, w, h);
@@ -117,10 +141,10 @@ public final class TextFieldView {
 		if (focused) {
 			Minecraft.getInstance().textInputManager().setTextInputArea(caretX, caretY, caretX + 1, caretY + LINE);
 		}
-		// a small "more lines" marker when scrolled
+		// a small "more lines" marker when scrolled, in the right-hand strip the text no longer uses
 		if (lines.size() > vis) {
 			String more = (scrollLine + vis) + "/" + lines.size();
-			g.text(font, more, x + w - p.right() - font.width(more) - 1, y + 2, UiBits.muted(), false);
+			g.text(font, more, x + w - p.right() - font.width(more) - 1, ty, UiBits.muted(), false);
 		}
 		return h;
 	}
@@ -128,8 +152,7 @@ public final class TextFieldView {
 	/** Character index under the mouse (for click-to-place), or -1 outside. */
 	public int hit(Font font, TextModel m, int x, int y, int w, Style st, double mx, double my) {
 		Kit.Padding p = Kit.padding("text_field");
-		int iw = innerW(font, w, st);
-		List<TextModel.VLine> lines = m.layout(font, iw);
+		List<TextModel.VLine> lines = fit(font, m, w, st).lines();
 		int vis = Math.max(1, Math.min(st.maxLines(), lines.size()));
 		int h = BASE_H + (vis - 1) * LINE;
 		if (mx < x || mx > x + w || my < y || my > y + h) {

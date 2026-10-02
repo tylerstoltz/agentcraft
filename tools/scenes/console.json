@@ -52,6 +52,13 @@
       "waitMs": 1500
     },
     {
+      "name": "console_terminal",
+      "title": "Console terminal screen: waiting count + key, the newest feed item (face, name, two lines), the prompt",
+      "anchor": ["cam_console_terminal", "cam_terminal"],
+      "camera": { "x": 10.2, "y": 66.2, "z": -4.6, "lookAt": { "x": 11.5, "y": 65.85, "z": -4.6 } },
+      "waitMs": 400
+    },
+    {
       "name": "console_hud",
       "title": "HUD: goal bar with task counts, decisions badge, a 'needs you' toast, connection pill",
       "anchor": ["cam_wide_interior", "cam_room"],

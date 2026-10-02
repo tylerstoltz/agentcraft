@@ -30,6 +30,7 @@ import dev.agentcraft.client.foreman.Protocol.Repo;
 import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.hud.HudSounds;
+import dev.agentcraft.client.hud.UiBits;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -182,19 +183,21 @@ public final class ConsoleActions {
 			case Goal g -> track(Foreman.submitGoal(g.text(), g.repoId()), raw, restore, ack -> {
 				String gid = ack.result() != null && ack.result().has("goalId") ? ack.result().get("goalId").getAsString() : null;
 				return "goal " + (gid != null ? gid + " " : "") + "sent to Marlow" + (g.repoId() != null && s.repos().size() > 1 ? " \u2192 "
-					+ ConsoleCommands.repoName(g.repoId(), s) : "") + " \u2713";
+					+ ConsoleCommands.repoName(g.repoId(), s) : "") + " " + UiBits.CHECK;
 			}, "sending the goal\u2026");
 			case Message m -> track(Foreman.message(m.to(), m.text()), raw, restore,
-				ack -> "sent to " + ConsoleCommands.displayName(m.to(), s) + " \u2713", "sending to " + ConsoleCommands.displayName(m.to(), s) + "\u2026");
+				ack -> "sent to " + ConsoleCommands.displayName(m.to(), s) + " " + UiBits.CHECK, "sending to " + ConsoleCommands.displayName(m.to(), s) + "\u2026");
 			case Answer a -> {
-				DecisionsFeature.markAnswering(a.decision().id());
-				track(Foreman.answer(a.decision().id(), a.option(), a.text()), raw, restore,
-					ack -> "answered " + a.decision().id() + (a.option() != null ? ": " + a.option() : "") + " \u2713", "answering " + a.decision().id()
-						+ "\u2026");
+				String did = a.decision().id();
+				DecisionsFeature.markAnswering(did);
+				// a refused answer must show up again on the HUD badge and the podium at once
+				track(Foreman.answer(did, a.option(), a.text()), raw, restore,
+					ack -> "answered " + did + (a.option() != null ? ": " + a.option() : "") + " " + UiBits.CHECK, "answering " + did + "\u2026",
+					() -> DecisionsFeature.unmarkAnswering(did));
 			}
 			case RepoAdd r -> track(Foreman.addRepo(r.path()), raw, restore, ack -> {
 				String rid = ack.result() != null && ack.result().has("repoId") ? ack.result().get("repoId").getAsString() : null;
-				return "repo " + (rid != null ? rid + " " : "") + "added \u2713";
+				return "repo " + (rid != null ? rid + " " : "") + "added " + UiBits.CHECK;
 			}, "adding the repo\u2026");
 			case AgentAction a -> {
 				List<CompletableFuture<Ack>> all = new ArrayList<>();
@@ -211,11 +214,11 @@ public final class ConsoleActions {
 					return all.get(0).join();
 				});
 				String who = a.agentIds().size() == 1 ? ConsoleCommands.displayName(a.agentIds().get(0), s) : a.agentIds().size() + " agents";
-				track(combined, raw, restore, ack -> pastTense(a.action()) + " " + who + (a.arg() != null ? " on " + a.arg() : "") + " \u2713",
+				track(combined, raw, restore, ack -> pastTense(a.action()) + " " + who + (a.arg() != null ? " on " + a.arg() : "") + " " + UiBits.CHECK,
 					a.action() + " " + who + "\u2026");
 			}
 			case TaskAction t -> track(Foreman.taskAction(t.taskId(), t.action(), t.arg()), raw, restore,
-				ack -> t.taskId() + " " + pastTense(t.action()) + (t.arg() != null ? " \u2192 " + t.arg() : "") + " \u2713", t.action() + " "
+				ack -> t.taskId() + " " + pastTense(t.action()) + (t.arg() != null ? " \u2192 " + t.arg() : "") + " " + UiBits.CHECK, t.action() + " "
 					+ t.taskId() + "\u2026");
 			default -> {
 				return After.KEEP;
@@ -243,6 +246,11 @@ public final class ConsoleActions {
 	}
 
 	private static void track(CompletableFuture<Ack> f, String raw, Consumer<String> restore, OkText ok, String pending) {
+		track(f, raw, restore, ok, pending, null);
+	}
+
+	/** {@code onError} runs (client thread) when the send fails or the Foreman refuses it. */
+	private static void track(CompletableFuture<Ack> f, String raw, Consumer<String> restore, OkText ok, String pending, @Nullable Runnable onError) {
 		sentCount++;
 		setFeedback(pending, Tone.INFO, true);
 		f.whenComplete((ack, err) -> {
@@ -260,7 +268,10 @@ public final class ConsoleActions {
 				msg = ack == null ? "no answer from the Foreman" : ack.error() != null ? ack.error() : "the Foreman refused it";
 			}
 			setFeedback(msg, Tone.ERROR, false);
-			ConsoleLog.add(Tone.ERROR, "\u2717 " + ConsoleCommands.oneLine(raw, 60) + ": " + msg);
+			ConsoleLog.add(Tone.ERROR, UiBits.CROSS + " " + ConsoleCommands.oneLine(raw, 60) + ": " + msg);
+			if (onError != null) {
+				onError.run();
+			}
 			restore.accept(raw);
 		});
 	}
@@ -276,7 +287,8 @@ public final class ConsoleActions {
 				ConsoleLog.add(Tone.HELP, c.usage() + "\t" + c.help());
 			}
 		}
-		ConsoleLog.add(Tone.INFO, "Enter send \u00b7 Shift+Enter new line \u00b7 \u2191\u2193 history \u00b7 Tab complete \u00b7 J decisions \u00b7 Esc close");
+		ConsoleLog.add(Tone.INFO, "Enter send \u00b7 Shift+Enter new line \u00b7 \u2191\u2193 history \u00b7 Tab complete \u00b7 "
+			+ dev.agentcraft.client.hud.Keys.label(dev.agentcraft.client.hud.Keys.decisions) + " decisions \u00b7 Esc close (your draft is kept)");
 	}
 
 	private static void status(ForemanState s) {

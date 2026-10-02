@@ -70,6 +70,11 @@ public final class HudFeature {
 		o.addProperty("toastsActive", Toasts.active());
 		o.addProperty("toastsShown", Toasts.shown());
 		o.addProperty("goalBarBottom", GoalBar.bottom);
+		o.addProperty("goalBarRight", GoalBar.right);
+		o.addProperty("pillLeft", ConnectionBanner.pillLeft);
+		o.addProperty("pillBottom", ConnectionBanner.pillBottom);
+		// something the goal bar drew last frame intersected the connection pill (should never be true)
+		o.addProperty("goalBarPillClash", GoalBar.pillClash);
 		o.addProperty("soundsEnabled", HudSounds.enabled());
 		o.addProperty("forcedMute", HudSounds.forcedMute());
 		o.addProperty("bells", HudSounds.bells());

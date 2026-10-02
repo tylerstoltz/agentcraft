@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.agentcraft.AgentCraft;
 import dev.agentcraft.Cast;
 import dev.agentcraft.block.entity.DecisionPodiumBlockEntity;
+import dev.agentcraft.client.agents.PlateLayout;
 import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.hud.Keys;
@@ -24,6 +25,7 @@ import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -39,6 +41,8 @@ public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockE
 	private static final float TAIL_TIP_Y = 1.32f;
 	private static final float GROW_FROM = 6f;
 	private static final float GROW_MAX = 2.2f;
+	/** The bubble is drawn this much nearer to the camera than the podium (depth only; see submit). */
+	private static final double NUDGE_BLOCKS = 2.0;
 
 	public static class State extends StationRenderState {
 		public int count;
@@ -51,6 +55,13 @@ public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockE
 		public List<FormattedCharSequence> lines = List.of();
 		public int width = W;
 		public boolean stale;
+		/** Size factor for the camera distance (constant screen size past {@link #GROW_FROM} blocks). */
+		public float grow = 1f;
+	}
+
+	/** Bubble height in its own px for {@code lines} question lines (without the tail). */
+	private static int height(int lines) {
+		return 6 + 10 + 3 + 10 + lines * 10 + 4;
 	}
 
 	private record Cache(long revision, String decisionId, int count, String header, FormattedCharSequence name, FormattedCharSequence kind, int nameWidth,
@@ -116,6 +127,17 @@ public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockE
 		s.nameWidth = c.nameWidth();
 		s.lines = c.lines();
 		s.width = c.width();
+
+		// world size up to GROW_FROM blocks away, then it grows with the distance (constant screen size,
+		// at most GROW_MAX) so the waiting count still reads from across the room
+		double bx = s.blockPos.getX() + 0.5;
+		double by = s.blockPos.getY() + TAIL_TIP_Y;
+		double bz = s.blockPos.getZ() + 0.5;
+		Vec3 cam = Minecraft.getInstance().gameRenderer.mainCamera().position();
+		float dist = (float) Math.sqrt(cam.distanceToSqr(bx, by, bz));
+		s.grow = Math.max(1f, Math.min(GROW_MAX, dist / GROW_FROM));
+		// nameplates (the agent waiting next to the podium) lift to clear the bubble instead of covering it
+		PlateLayout.reserve(bx, by, bz, s.width + 4, height(s.lines.size()) + 4 + 3, WorldUi.PX * SCALE * s.grow);
 	}
 
 	@Override
@@ -126,17 +148,17 @@ public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockE
 		Font font = Minecraft.getInstance().font;
 		int light = WorldUi.uiLight();
 		int w = s.width;
-		int h = 6 + 10 + 3 + 10 + s.lines.size() * 10 + 4;
+		int h = height(s.lines.size());
 		poseStack.pushPose();
-		// world size up to GROW_FROM blocks away, then it grows with the distance (constant screen size,
-		// at most GROW_MAX) so the waiting count still reads from across the room
-		double dx = s.blockPos.getX() + 0.5 - camera.pos.x;
-		double dy = s.blockPos.getY() + TAIL_TIP_Y - camera.pos.y;
-		double dz = s.blockPos.getZ() + 0.5 - camera.pos.z;
-		float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-		float grow = Math.max(1f, Math.min(GROW_MAX, dist / GROW_FROM));
-		WorldUi.billboard(poseStack, camera, 0.5, TAIL_TIP_Y, 0.5);
-		poseStack.scale(SCALE * grow, SCALE * grow, SCALE * grow);
+		float grow = s.grow;
+		// pulled up to NUDGE_BLOCKS towards the camera (same place and size on screen): the agent waiting
+		// right next to the podium can't hide the bubble's lower lines with its head
+		double ox = s.blockPos.getX() - camera.pos.x;
+		double oy = s.blockPos.getY() - camera.pos.y;
+		double oz = s.blockPos.getZ() - camera.pos.z;
+		double dist = Math.sqrt((ox + 0.5) * (ox + 0.5) + (oy + TAIL_TIP_Y) * (oy + TAIL_TIP_Y) + (oz + 0.5) * (oz + 0.5));
+		float nudge = (float) Math.min(0.5, NUDGE_BLOCKS / Math.max(0.1, dist));
+		WorldUi.billboard(poseStack, camera, 0.5, TAIL_TIP_Y, 0.5, SCALE * grow, nudge, ox, oy, oz);
 		float x0 = -w / 2f;
 		float y0 = -h - 4;
 		WorldUi.submitNineSlice(poseStack, collector, WorldUi.Layer.SOLID, Kit.BUBBLE, x0, y0, w, h, 0xFFFFFFFF, light);
