@@ -23,6 +23,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.SlabType;
 
@@ -137,6 +138,8 @@ public final class TestRoomBuilder implements HqBuilder {
 			panels.add(m);
 			bind(level, m, id);
 			a.put(AnchorNames.desk(id), mx + 0.5, FEET, -5.4, 180, 0);
+			// a desk chair at the desk spot (agents sit on a seat block at desk_<id>; its back faces away from the desk)
+			set(level, mx, FEET, -6, Blocks.DARK_OAK_STAIRS.defaultBlockState().setValue(StairBlock.FACING, Direction.SOUTH));
 			a.put(AnchorNames.monitor(id), mx + 0.5, FEET + 1.5, -6.75, 0, 0);
 			a.cameraLookAt("desk_" + id, mx + 0.5, FEET + 1.75, -2.6, mx + 0.5, FEET + 1.4, -6.75);
 		}

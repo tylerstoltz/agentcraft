@@ -274,8 +274,8 @@ AgentHooks.onSubmit((state, poseStack, collector, camera) -> ...); // extra geom
 AgentsFeature.onClick((player, agent) -> ...);                  // right-click an agent (never sent to the server)
 ```
 
-Poses: `AgentPose.SIT` maps to the vanilla riding pose, `LEAN` to crouch (stubs; Phase 3 adds seats
-and offsets).
+Poses: `AgentView.pose` is the coarse pose (WALK, SIT, LEAN, STAND); the detailed posture lives in
+`AgentLife` (see "Agent life" below).
 
 **Nameplates** (`Nameplate` + `PlateLayout`): an opaque kit pill with status dot + name (agent
 colour) + activity, visible within 40 blocks (also with the HUD hidden), never overlapping another
@@ -303,6 +303,87 @@ plate on screen once settled:
 rank, rect, ...}`); `settle:true` snaps walkers to their targets and plates to their final layout
 before a shot. `dev.state.agents.plateOverlaps` counts overlapping plates in the last frame (0 when
 settled).
+
+### Agent life (Phase 3, `client.agents`: `AgentLife`, `AgentModel`, `AgentParticles`, `SpeechBubble`, `PlateStack`, `Seats`, `AgentCardScreen`)
+
+Every `ClientAgentEntity` has an `AgentLife` (`entity.life()`), simulated per client tick
+(deterministic per agent, seeded by its id) and interpolated per frame; nothing allocates per frame
+except the submit nodes themselves.
+- **Postures** (`AgentLife.posture()`), picked from state family + station + seat: seated typing
+  (hands reach the desk top in front of the seat), seated / standing thinking (hand at the chin),
+  reading an open vanilla book (library), standing typing (terminal, desk without a seat), leaning
+  on the bench (test bench), reviewing (merge station), waiting (hands clasped, faces you),
+  scratching its head (error/blocked), relaxing (done, in the lounge, not all at once), talking
+  (hand gestures while its bubble shows), idle with occasional stretches (lounge). Walking uses the
+  vanilla swing with eased starts and a slow last step; turning to the spot's yaw on arrival.
+  `AgentModel` (a `PlayerModel`) applies the pose channels and a hip-pivot forward lean.
+- **Seats come from the world at the anchor** (`Seats`): if the block at a station anchor's feet
+  position (`desk_<id>`, a lounge sofa, a meeting chair; never `user`) is a bottom-half stairs block
+  (its back facing away from the desk), a bottom slab, or any block whose collision top is 0.3-0.7
+  high, the agent walks to a free neighbour cell, steps onto the seat and sits facing the anchor
+  yaw (getting up first when it leaves). **HQ builders: put a seat block at each `desk_<id>`** (the
+  test room uses dark oak stairs facing away from the desks), **or** publish the chair as
+  `seat_<id>` (feet or seat-top position + facing yaw): it is used when the block right in front of
+  the chair is the desk (so the typing hands reach it); a chair further back is ignored and the agent
+  stands at `desk_<id>`. Without a seat the agent stands and types.
+- **Head**: looks where it walks; at the monitor (`monitor_<id>`) when seated at its desk; at whoever
+  it talks to (`agent.say.to`: an agent, or you for `user`) and at an agent talking to it; at you when
+  you are within ~4 blocks (busy agents only glance up briefly, and never at a spectating camera);
+  waiting agents face you within 24 blocks; idle glances at neighbours or around every few seconds.
+- **Waiting on you**: a `waiting_user` agent walks to the `user` spot by the podium, or, when you are
+  inside the HQ bounds and not spectating, to a free spot ~3.2 blocks from you (conversation
+  distance: agent, plate and "!" fit on screen; several fan out) and waits there facing you; it
+  follows when you move more than ~2.6 blocks.
+- **Who needs you: one owner per decision** (`AgentManager.owner(state, decision)`): a merge belongs
+  to the worker whose task it merges (the lead files it), a question or permission prompt to the
+  agent that asked. The owner gets `AgentView.awaitingUser` / `awaitingDecision` (`awaitingCount`
+  when it owns several) and the pulsing clay "!" (`AgentView.needsYou()`: owns an open decision or
+  is `waiting_user`), so the number of "!" in the HQ is the number of decisions waiting on Blendi.
+- **Status family** (`AgentView.family`): the family to show everywhere. An idle/done agent that
+  owns an open decision is `waiting` (clay), e.g. the showcase's "t4 awaiting your merge"; an
+  off-shift agent or any agent while the Foreman is offline is `idle`. **Lamps and monitors: read
+  `entity.view().family`** (not `state.family()`) to agree with the nameplate. `liveFamily` is the
+  family without the off-shift/offline override (for effects).
+- **Paused** agents (by you) show a pause glyph instead of the dot, on the full plate and on the
+  name-only pill, and keep their full plate ("paused · ...", weight 3) when plates compete.
+- **Particles** (vanilla particle sprites tinted with the status palette): thinking = brass twinkles
+  round the head, working = teal motes from the hands, error = red "steam" puffing out of both ears
+  (a burst on entering, then a small puff every ~2-3 s), done = a confetti burst on task done (stays
+  below the plate). Reactions fire only for transitions seen live (not when the Foreman reconnects
+  or an agent comes back on shift).
+- **Plate stack** (`PlateStack`, plate space): the speech bubble (kit `bubble`, 3 lines max, "@Name"
+  addressee in that agent's paper colour, pops in, 3.5-11 s by length, fades out) and the pulsing
+  clay "!" for agents that need you. `AgentRenderState.stackHeight/stackWidth` are reserved by
+  `PlateLayout`, so neighbouring plates lift clear of a bubble; a speaking agent's plate gets weight 5.
+- **Plate placement on screen** (`PlateLayout`): near plates stop growing at ~1.1x the GUI text size
+  (they shrink in the world below ~6 blocks), a plate and its stack never go past the top edge of the
+  screen (one that does not fit above may come down over its own head, nudged in front of it), a
+  plate that cannot find a free spot on screen overlaps cleanly by rank instead of flying off screen,
+  a slide never runs through a plate placed before it (it jumps), and leader lines pass behind other
+  plates and bubbles (gaps cut where they cross: `AgentRenderState.leaderGaps`).
+- **Agent card** (`AgentCardScreen`, right-click an agent): name/title/role, state, activity, task,
+  **the decision it owns with a way to act on it**, decisions it filed that wait on you through
+  another agent ("Filed d3 for you: merge of t4 (Wren's work)"), the last log lines, Message /
+  Pause|Resume / Stop|Spawn. The decision block opens the decision's review screen when one is
+  registered (**decisions / diff / permissions features: `AgentsFeature.registerDecisionScreen(kind,
+  (mc, decision) -> screen)`**; without it the no-argument DevBridge screen `"diff"` / `"permission"` /
+  `"decision"` is used when it would show exactly this decision, i.e. it is the oldest open one),
+  otherwise it lists the decision's options as rows: press a row (click or 1-4) twice to answer;
+  "Request changes" asks for the feedback text. Message opens the screen registered as `"console"`
+  and types `@<id> ` into it (`AgentCardScreen.openConsole(mc, prefill)`; the console must accept
+  `charTyped` right after `setScreen`, like `dev.type`); without a console it opens a message line in
+  the card: a vanilla `EditBox` in kit style (focus starts SDL text input, so a real keyboard types
+  into it; scrolls to the caret, clipboard, selection). Offline / off shift: no brass frame, no pulse,
+  buttons disabled, "Foreman offline: read only". DevBridge screen `"agent"` (last clicked agent, else
+  whoever needs you) and `dev.agents.card {agent}`.
+- QA: `dev.agents.look {agent?}` (posture, seat, sit, head yaw/pitch, bubble, particles, family,
+  needsYou, awaitingDecision; top level `exclaims`, the open card's `input`, `textInputActive`),
+  `dev.agents.fx {agent, fx: confetti|puff|sparkle|say, text?, to?}` (preview an effect),
+  `dev.state.agents.exclaims` / `plateOverlapPairs`, with `AGENTCRAFT_DEV_TEST=1` also
+  `dev.agents.keys {keys}` (queues SDL key events for the game window: Minecraft's real keyboard
+  path, text only while SDL text input is on, unlike `dev.type`; `tools/agents-typing.mjs` uses it), `tools/scenes/agents.json` (busy showcase) and
+  `tools/scenes/agents-late.json` (late showcase) in the test room, `tools/agents-live.mjs` (live sim
+  observer: shots + per-agent log, optional auto-answer).
 
 ## UI kit (`client.ui`)
 

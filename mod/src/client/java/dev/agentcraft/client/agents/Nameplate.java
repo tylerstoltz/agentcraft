@@ -28,7 +28,7 @@ import net.minecraft.util.FormattedCharSequence;
  * {@code poseStack.pushPose(); Nameplate.plateSpace(state, poseStack, camera); ... y < Nameplate.top(state) ...; poseStack.popPose();}
  */
 public final class Nameplate {
-	/** Bottom of the plate above the feet, in blocks (before any declutter lift). */
+	/** Bottom of the plate above the feet of a standing agent, in blocks (before any declutter lift; seated agents: {@link AgentRenderState#plateBase}). */
 	public static final double HEIGHT = 2.12;
 	public static final int MAX_ACTIVITY_PX = 116;
 	/** Plates keep their world size up to this distance, then grow with it (constant screen size) ... */
@@ -41,10 +41,10 @@ public final class Nameplate {
 	private static final float LEADER_MIN = 3f;
 
 	/** A laid-out plate (pixel units). {@code compact}: name only. */
-	public record Data(String name, int nameColor, String family, String activity, boolean stale, boolean compact, FormattedCharSequence nameSeq,
-		FormattedCharSequence activitySeq, int width, int height, int innerWidth, int row1Width, int row2Width) {
-		boolean sameText(String n, int c, String f, String a, boolean s) {
-			return name.equals(n) && nameColor == c && family.equals(f) && activity.equals(a) && stale == s;
+	public record Data(String name, int nameColor, String family, String activity, boolean stale, boolean paused, boolean compact,
+		FormattedCharSequence nameSeq, FormattedCharSequence activitySeq, int width, int height, int innerWidth, int row1Width, int row2Width) {
+		boolean sameText(String n, int c, String f, String a, boolean s, boolean p) {
+			return name.equals(n) && nameColor == c && family.equals(f) && activity.equals(a) && stale == s && paused == p;
 		}
 	}
 
@@ -56,7 +56,7 @@ public final class Nameplate {
 		String act = v.activityLine();
 		String fam = v.dotFamily();
 		Data d = v.plateCache;
-		if (d != null && d.sameText(v.name, v.nameColor, fam, act, v.stale)) {
+		if (d != null && d.sameText(v.name, v.nameColor, fam, act, v.stale, v.showsPaused())) {
 			return d;
 		}
 		d = layout(v, fam, act, false);
@@ -71,7 +71,7 @@ public final class Nameplate {
 			return full;
 		}
 		Data d = v.compactCache;
-		if (d != null && d.sameText(v.name, v.nameColor, full.family(), full.activity(), v.stale)) {
+		if (d != null && d.sameText(v.name, v.nameColor, full.family(), full.activity(), v.stale, full.paused())) {
 			return d;
 		}
 		d = layout(v, full.family(), full.activity(), true);
@@ -88,7 +88,7 @@ public final class Nameplate {
 		int innerW = Math.max(row1, row2);
 		int w = innerW + pad.left() + pad.right() + 2;
 		int h = pad.top() + 9 + (activity.isEmpty() ? 0 : 10) + pad.bottom() + 1;
-		return new Data(v.name, v.nameColor, fam, act, v.stale, compact, Component.literal(v.name).getVisualOrderText(),
+		return new Data(v.name, v.nameColor, fam, act, v.stale, v.showsPaused(), compact, Component.literal(v.name).getVisualOrderText(),
 			Component.literal(activity).getVisualOrderText(), w, h, innerW, row1, row2);
 	}
 
@@ -103,7 +103,7 @@ public final class Nameplate {
 	 * Includes the distance scale and the depth nudge, so anything drawn here lines up with the plate.
 	 */
 	public static void plateSpace(AgentRenderState s, PoseStack poseStack, CameraRenderState camera) {
-		WorldUi.billboard(poseStack, camera, 0, HEIGHT, 0, s.plateScale, s.plateNudge, s.x - camera.pos.x, s.y - camera.pos.y, s.z - camera.pos.z);
+		WorldUi.billboard(poseStack, camera, 0, s.plateBase, 0, s.plateScale, s.plateNudge, s.x - camera.pos.x, s.y - camera.pos.y, s.z - camera.pos.z);
 	}
 
 	/** Top edge of the drawn plate in plate space (negative = above the origin); 0 when there is no plate. */
@@ -113,7 +113,7 @@ public final class Nameplate {
 
 	public static void submit(AgentRenderState s, Data d, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
 		Kit.Padding pad = Kit.padding("nameplate");
-		float lift = Math.max(0f, s.plateLift);
+		float lift = s.plateLift; // negative: pulled down to stay on screen (PlateLayout)
 		float x0 = -d.width() / 2f;
 		float y0 = -d.height() - lift;
 		int light = WorldUi.uiLight();
@@ -121,19 +121,42 @@ public final class Nameplate {
 		poseStack.pushPose();
 		plateSpace(s, poseStack, camera);
 		if (lift > LEADER_MIN) {
-			// a hairline from the plate down to just above the head, in the agent's colour
+			// a hairline from the plate down to just above the head, in the agent's colour; it passes
+			// behind other plates and bubbles on its way (PlateLayout cuts gaps where they are)
 			int line = UiStyle.withAlpha(d.nameColor(), 0xFF);
-			WorldUi.submitFill(poseStack, collector, -0.5f, -lift, 0.5f, -1f, line, light);
+			float top = -lift;
+			float[] gaps = s.leaderGaps;
+			for (int i = 0; gaps != null && i < s.leaderGapCount; i++) {
+				float g0 = gaps[2 * i];
+				float g1 = gaps[2 * i + 1];
+				if (g0 > top) {
+					WorldUi.submitFill(poseStack, collector, -0.5f, top, 0.5f, Math.min(g0, -1f), line, light);
+				}
+				top = Math.max(top, g1);
+			}
+			if (top < -1f) {
+				WorldUi.submitFill(poseStack, collector, -0.5f, top, 0.5f, -1f, line, light);
+			}
 		}
 		WorldUi.submitNineSlice(poseStack, collector, WorldUi.Layer.SOLID, Kit.NAMEPLATE, x0, y0, d.width(), d.height(), 0xFFFFFFFF, light);
 		float cx = x0 + pad.left() + 1 + (d.innerWidth() - d.row1Width()) / 2f;
 		float ty = y0 + pad.top() + 1;
-		if ("waiting".equals(d.family())) {
-			float pulse = 0.5f + 0.5f * (float) Math.sin(s.timeSeconds * Math.PI * 2 / (UiStyle.metric("metrics.pulse_ms", 1200) / 1000.0));
-			int a = (int) (90 + 165 * pulse);
-			WorldUi.submitSprite(poseStack, collector, Kit.dot("waiting", true), cx - 2, ty - 1, 11, 11, (a << 24) | 0xFFFFFF, light);
+		if (d.paused()) {
+			// paused by you: a pause glyph instead of the dot (also on the compact pill)
+			poseStack.pushPose();
+			poseStack.translate(0f, 0f, 0.3f);
+			int bar = UiStyle.color("ink_ui.activity", 0xFFC4BDB2);
+			WorldUi.submitFill(poseStack, collector, cx + 0.5f, ty + 1, cx + 2.5f, ty + 1 + DOT, bar, light);
+			WorldUi.submitFill(poseStack, collector, cx + 4.5f, ty + 1, cx + 6.5f, ty + 1 + DOT, bar, light);
+			poseStack.popPose();
+		} else {
+			if ("waiting".equals(d.family())) {
+				float pulse = 0.5f + 0.5f * (float) Math.sin(s.timeSeconds * Math.PI * 2 / (UiStyle.metric("metrics.pulse_ms", 1200) / 1000.0));
+				int a = (int) (90 + 165 * pulse);
+				WorldUi.submitSprite(poseStack, collector, Kit.dot("waiting", true), cx - 2, ty - 1, 11, 11, (a << 24) | 0xFFFFFF, light);
+			}
+			WorldUi.submitSprite(poseStack, collector, WorldUi.Layer.OVERLAY, Kit.dot(d.family(), false), cx, ty + 1, DOT, DOT, 0.15f, 0xFFFFFFFF, light);
 		}
-		WorldUi.submitSprite(poseStack, collector, WorldUi.Layer.OVERLAY, Kit.dot(d.family(), false), cx, ty + 1, DOT, DOT, 0.15f, 0xFFFFFFFF, light);
 		WorldUi.submitText(poseStack, collector, d.nameSeq(), cx + DOT + GAP, ty, d.stale() ? UiStyle.withAlpha(d.nameColor(), 0xB0) : d.nameColor(),
 			light);
 		if (d.row2Width() > 0) {
