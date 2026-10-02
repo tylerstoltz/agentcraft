@@ -7,6 +7,41 @@ in-game, with both the sim backend and **real Claude agents**: the e2e run went 
 game UI. A cold start from a fresh clone works in 43 s. Blendi asked to finish rather than run the
 visual polish and judge loop, so those were skipped. See "Not done" below.
 
+### SPEC v1 definition of done, line by line
+| DoD line | Status | Evidence |
+|---|---|---|
+| `tools/launch.ps1` → game opens into the HQ, Foreman connected, banner shows backend status | ✅ verified | launch output (connected, "Foreman · sim/claude" pill); cold start from a fresh clone in 43 s: docs/img/coldstart_atrium.png |
+| Goal via console, claude backend, sandbox repo: lead plans, ≥2 workers in worktrees, ask_user answered in-world, tasks move on the Task Wall, monitors stream logs, merge reviewed in-game | ✅ verified | docs/img/e2e/: e2e_05 decision GUI (Marlow's real question), e2e_08 task wall, e2e_10 diff review, e2e_19 monitor streaming; sandbox/demo-app main has 6 merged agentcraft/* branches, 49 tests pass |
+| Same flow fully works with the `sim` backend | ✅ verified | artifacts/shots/qa/orch-p3/ (all 10 QA shots from the sim showcase); live sim runs in Phase 2/3 verifier logs |
+| Screenshot QA suite passes the visual bar review | ❌ not met | qa.mjs run orch-p3: 10/10 shots captured. Two independent judges: **no shot scores ≥8 on every axis** (table below) |
+| Restart the game mid-run → state restored; kill the Foreman → "disconnected" gracefully, reconnects | ✅ verified | real-claude run: game relaunch restored state; e2e_21 Foreman offline, e2e_23 reconnected ("Foreman · claude"), agents resumed |
+
+### Independent judge scores (run orch-p3, before any polish; full notes and fixes in docs/qa-judges-orch-p3.json)
+Axes: cohesion / composition / lighting / character / legibility / aliveness / clarity.
+
+| Shot | Judge 1 (art director) | Judge 2 (product designer) |
+|---|---|---|
+| qa01 exterior hero | 7 7 5 5 5 4 3 | 6 6 5 3 5 3 3 |
+| qa02 entrance atrium | 7 7 7 7 7 6 8 | 7 7 6 6 7 5 8 |
+| qa03 task wall | 7 6 5 3 8 4 7 | 6 5 5 4 8 4 7 |
+| qa04 agent desk | 7 6 7 6 6 7 7 | 7 6 6 6 6 7 7 |
+| qa05 wide interior | 8 6 8 6 6 7 6 | 7 5 7 5 5 6 5 |
+| qa06 decision podium | 6 6 6 7 7 7 6 | 7 6 6 7 7 6 7 |
+| qa07 console | 7 6 7 6 8 7 8 | 7 6 6 6 8 6 8 |
+| qa08 diff review | 9 8 8 6 8 6 9 | 9 8 8 6 9 7 9 |
+| qa09 library | 9 8 8 5 8 6 7 | 9 8 8 6 9 6 8 |
+| qa10 night | 7 7 6 4 5 5 3 | 6 6 6 3 4 4 3 |
+
+Verdict: the diff review and library screens are near ship quality. The in-world shots are held back by:
+- flat vanilla lighting (no golden-hour raking light, no hidden warm light),
+- no life or status signal on the exterior and night shots,
+- truncated key text (the goal, Marlow's question),
+- nameplates colliding with monitors,
+- the small, dim task wall,
+- inconsistent status colours (t4 shows grey on the wall, clay on the nameplate).
+
+Reaching ≥8 everywhere needs the polish pass that was skipped at Blendi's request (about 2–3 h). The judges' concrete fixes per shot are in the JSON.
+
 ### What works (verified in-game, screenshots in `artifacts/shots/qa/orch-p3/`)
 - **One-command launch**: `tools\launch.ps1` starts or reuses the Foreman, builds, and opens the game
   straight into the HQ world. `tools\stop.ps1` stops only what it started. `README.md` documents it.
