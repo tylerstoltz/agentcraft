@@ -1,16 +1,63 @@
 package dev.agentcraft.client.decisions;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.agentcraft.AgentCraft;
+import dev.agentcraft.Cast;
 import dev.agentcraft.block.entity.DecisionPodiumBlockEntity;
+import dev.agentcraft.client.foreman.Foreman;
+import dev.agentcraft.client.foreman.Protocol.Decision;
+import dev.agentcraft.client.hud.Keys;
+import dev.agentcraft.client.hud.UiBits;
+import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
 import dev.agentcraft.client.world.StationRenderer;
+import java.util.ArrayList;
+import java.util.List;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.FormattedCharSequence;
+import org.jspecify.annotations.Nullable;
 
-/** Decision Podium BER (Phase 3: the open decision as a floating card / hologram, bell + beacon glow). */
+/**
+ * Decision Podium BER: while decisions wait, a speech bubble rises from the podium (billboard, kit
+ * {@code bubble} drawn opaque): the waiting count with a pulsing clay dot and the key hint, the first
+ * decision's agent (face + name) and its question, two lines at most. It also keeps the podium's
+ * {@code open} block state in sync (lit paper, lens and bell).
+ */
 public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockEntity, DecisionPodiumRenderer.State> {
+	/** Bubble pixel scale relative to vanilla name tags (1/40 block per px): 1/72 block per px. */
+	private static final float SCALE = 40f / 72f;
+	private static final int W = 156;
+	private static final float TAIL_TIP_Y = 1.32f;
+	private static final float GROW_FROM = 6f;
+	private static final float GROW_MAX = 2.2f;
+
 	public static class State extends StationRenderState {
+		public int count;
+		public @Nullable String agentId;
+		public String header = "";
+		public FormattedCharSequence nameSeq = FormattedCharSequence.EMPTY;
+		public FormattedCharSequence kindSeq = FormattedCharSequence.EMPTY;
+		public int nameColor;
+		public int nameWidth;
+		public List<FormattedCharSequence> lines = List.of();
+		public int width = W;
+		public boolean stale;
 	}
+
+	private record Cache(long revision, String decisionId, int count, String header, FormattedCharSequence name, FormattedCharSequence kind, int nameWidth,
+		List<FormattedCharSequence> lines, int width) {
+	}
+
+	private @Nullable Cache cache;
 
 	@Override
 	public State createRenderState() {
@@ -18,12 +65,112 @@ public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockE
 	}
 
 	@Override
+	public boolean shouldRenderOffScreen() {
+		// the bubble extends well above the block
+		return true;
+	}
+
+	@Override
 	protected void extractStation(DecisionPodiumBlockEntity be, State s, float partialTicks) {
-		// Phase 3: copy what submit needs from Foreman.state() into State here (client thread).
+		List<Decision> open = new ArrayList<>();
+		for (Decision d : DecisionQueue.open()) {
+			if (!DecisionsFeature.isAnswering(d.id())) {
+				open.add(d);
+			}
+		}
+		s.count = open.size();
+		s.stale = Foreman.state() == null || Foreman.state().isStale();
+		DecisionsFeature.syncPodium(be.getBlockPos(), be.getBlockState(), !open.isEmpty());
+		if (open.isEmpty()) {
+			s.agentId = null;
+			return;
+		}
+		Decision d = open.get(0);
+		s.agentId = d.agentId();
+		s.nameColor = UiBits.nameOnLight(d.agentId());
+		Cache c = cache;
+		if (c == null || c.revision() != s.foremanRevision || !c.decisionId().equals(d.id()) || c.count() != s.count) {
+			Font font = Minecraft.getInstance().font;
+			String header = s.count == 1 ? "1 decision waiting" : s.count + " decisions waiting";
+			String name = UiBits.agentName(d.agentId());
+			String kind = " · " + DecisionQueue.kindLabel(d.kind());
+			int inner = W - 16;
+			List<FormattedCharSequence> wrapped = TextUtil.wrap(font, UiBits.oneLine(d.question()), inner);
+			List<FormattedCharSequence> lines = new ArrayList<>(wrapped.subList(0, Math.min(2, wrapped.size())));
+			if (wrapped.size() > 2) {
+				// ellipsize the second line
+				String second = TextUtil.wrapPlain(font, UiBits.oneLine(d.question()), inner).get(1);
+				lines.set(1, Component.literal(TextUtil.ellipsize(font, second + " …", inner)).getVisualOrderText());
+			}
+			c = new Cache(s.foremanRevision, d.id(), s.count, header, Component.literal(name).getVisualOrderText(), Component.literal(kind)
+				.getVisualOrderText(), font.width(name), List.copyOf(lines), W);
+			cache = c;
+		}
+		s.header = c.header();
+		s.nameSeq = c.name();
+		s.kindSeq = c.kind();
+		s.nameWidth = c.nameWidth();
+		s.lines = c.lines();
+		s.width = c.width();
 	}
 
 	@Override
 	public void submit(State s, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera) {
-		// Phase 3: draw it. Use StationRenderer.toFace(...) + WorldUi / font text in pixel space.
+		if (s.count <= 0 || s.agentId == null) {
+			return;
+		}
+		Font font = Minecraft.getInstance().font;
+		int light = WorldUi.uiLight();
+		int w = s.width;
+		int h = 6 + 10 + 3 + 10 + s.lines.size() * 10 + 4;
+		poseStack.pushPose();
+		// world size up to GROW_FROM blocks away, then it grows with the distance (constant screen size,
+		// at most GROW_MAX) so the waiting count still reads from across the room
+		double dx = s.blockPos.getX() + 0.5 - camera.pos.x;
+		double dy = s.blockPos.getY() + TAIL_TIP_Y - camera.pos.y;
+		double dz = s.blockPos.getZ() + 0.5 - camera.pos.z;
+		float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+		float grow = Math.max(1f, Math.min(GROW_MAX, dist / GROW_FROM));
+		WorldUi.billboard(poseStack, camera, 0.5, TAIL_TIP_Y, 0.5);
+		poseStack.scale(SCALE * grow, SCALE * grow, SCALE * grow);
+		float x0 = -w / 2f;
+		float y0 = -h - 4;
+		WorldUi.submitNineSlice(poseStack, collector, WorldUi.Layer.SOLID, Kit.BUBBLE, x0, y0, w, h, 0xFFFFFFFF, light);
+		WorldUi.submitSprite(poseStack, collector, WorldUi.Layer.SOLID, Kit.BUBBLE_TAIL, -4.5f, -5f, 9, 5, 0xFFFFFFFF, light);
+
+		float tx = x0 + 8;
+		float ty = y0 + 6;
+		// header: pulsing clay dot + count, key hint on the right
+		float pulse = 0.5f - 0.5f * (float) Math.cos((s.timeSeconds % 1.2f) / 1.2f * Math.PI * 2);
+		int haloA = (int) (40 + 110 * pulse);
+		WorldUi.submitSprite(poseStack, collector, WorldUi.Layer.OVERLAY, Kit.dot("waiting", true), tx - 2, ty - 2, 11, 11, (haloA << 24) | 0xFFFFFF,
+			light);
+		WorldUi.submitSprite(poseStack, collector, WorldUi.Layer.OVERLAY, Kit.dot("waiting", false), tx, ty, 7, 7, 0.15f, 0xFFFFFFFF, light);
+		WorldUi.submitText(poseStack, collector, s.header, tx + 11, ty, s.stale ? UiBits.muted() : UiStyle.CLAY_DARK, light);
+		String key = Keys.decisions == null ? "J" : Keys.label(Keys.decisions);
+		int kw = font.width(key);
+		float kx = x0 + w - 8 - kw - 8;
+		WorldUi.submitNineSlice(poseStack, collector, WorldUi.Layer.SOLID, Kit.KEYCAP, kx, ty - 2, kw + 8, 12, 0xFFFFFFFF, light);
+		WorldUi.submitText(poseStack, collector, key, kx + 4, ty, UiStyle.color("palette.ui.text", 0xFF34312E), light);
+		ty += 10 + 3;
+		// divider
+		WorldUi.submitFill(poseStack, collector, tx, ty - 2, x0 + w - 8, ty - 1, UiStyle.color("palette.ui.edge", 0xFFC9BBA3), light);
+		// agent face + name + kind
+		if (Cast.get(s.agentId) != null) {
+			Identifier tex = AgentCraft.id("textures/gui/portrait/" + s.agentId + ".png");
+			float fx = tx;
+			float fy = ty + 1;
+			collector.order(1).submitCustomGeometry(poseStack, RenderTypes.textPolygonOffset(tex), (pose, vc) -> WorldUi.quad(pose, vc, fx, fy, fx + 8,
+				fy + 8, 0.2f, 0, 0, 1, 1, 0xFFFFFFFF, light));
+		}
+		float nx = tx + 11;
+		WorldUi.submitText(poseStack, collector, s.nameSeq, nx, ty + 1, s.nameColor, light);
+		WorldUi.submitText(poseStack, collector, s.kindSeq, nx + s.nameWidth, ty + 1, UiBits.muted(), light);
+		ty += 11;
+		for (FormattedCharSequence line : s.lines) {
+			WorldUi.submitText(poseStack, collector, line, tx, ty, UiBits.ink(), light);
+			ty += 10;
+		}
+		poseStack.popPose();
 	}
 }
