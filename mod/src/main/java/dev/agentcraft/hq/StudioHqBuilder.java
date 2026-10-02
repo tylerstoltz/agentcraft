@@ -81,8 +81,12 @@ public final class StudioHqBuilder implements HqBuilder {
 	 * Cast members not listed here (a changed cast) fill the remaining bays in cast order.
 	 */
 	static final List<String> DESK_ORDER = List.of("tove", "juniper", "marlow", "wren", "rowan", "kit");
-	/** Chair column of a desk relative to the bay centre. */
-	static final int CHAIR_DX = 0;
+	/**
+	 * Chair column of a desk relative to the bay centre: the agent sits at the left third of its
+	 * 3-wide screen, so a camera from the right sees the agent, its nameplate and the whole log side
+	 * by side instead of the plate covering the screen.
+	 */
+	static final int CHAIR_DX = -1;
 
 	static final Direction N = Direction.NORTH;
 	static final Direction S = Direction.SOUTH;
@@ -147,8 +151,6 @@ public final class StudioHqBuilder implements HqBuilder {
 	@Override
 	public @Nullable String build(ServerLevel level, Anchors.Builder a, Options options) {
 		long t0 = System.nanoTime();
-		HqTweaks.load(level.getServer());
-		tweaks();
 		Plan p = new Plan(SITE[0], SITE[1], SITE[2], SITE[3], SITE[4], SITE[5], GROUND, y -> y > GROUND ? AIR
 			: y == GROUND ? Blocks.GRASS_BLOCK.defaultBlockState() : y >= GROUND - 3 ? Blocks.DIRT.defaultBlockState() : Blocks.STONE.defaultBlockState());
 		long tPlan0 = System.nanoTime();
@@ -245,13 +247,6 @@ public final class StudioHqBuilder implements HqBuilder {
 		int ax = Math.abs(dx);
 		int az = Math.abs(dz);
 		return Math.max(Math.max(ax, az), ax + az - 4);
-	}
-
-	/** Continuous radius in the atrium's chamfered-square metric (9 = the wall footprint's edge cells). */
-	static double octMetric(int dx, int dz) {
-		int ax = Math.abs(dx);
-		int az = Math.abs(dz);
-		return Math.max(Math.max(ax, az), (ax + az) * 9.0 / 14.0);
 	}
 
 	/** Octagon of "size" a around the atrium centre (a = 9 is the wall's outer footprint). */
@@ -576,36 +571,31 @@ public final class StudioHqBuilder implements HqBuilder {
 		return y == 71 ? PLASTER_FRAME : PLASTER;
 	}
 
-	static double DOME_R = 9.7;
-	static double DOME_H = 7.4;
-	static double DOME_RI = 8.5;
-	static double DOME_HI = 6.0;
-	static double DOME_P = 2.0;
-	static String DOME_STYLE = "slab";
-	static String DOME_MAT = "copper";
-	static String DOME_METRIC = "oct";
-	static String DOME_STEP = "half";
+	/*
+	 * The dome (chosen side by side in game from 16 variants, artifacts/shots/hq9_sheet_dome*.png:
+	 * round and chamfered-square height fields looked lumpy or notched at the hips; the octagonal-ring
+	 * field below gives eight clean facets with straight horizontal courses, and walnut ribs on the hips).
+	 */
+	/** Outer and inner (vault) radius and height of the dome, in octagonal rings ({@link #octR}). */
+	static final double DOME_R = 10.6;
+	static final double DOME_H = 9.0;
+	static final double DOME_RI = 8.8;
+	static final double DOME_HI = 7.0;
+	/** Profile exponent: 2 = elliptical, larger = fuller shoulders. */
+	static final double DOME_P = 2.2;
+	static final BlockState DOME_SKIN = Blocks.COPPER_BLOCK.waxed().unaffected().defaultBlockState();
 
-	static void tweaks() {
-		DOME_R = HqTweaks.d("dome.r", 9.7);
-		DOME_H = HqTweaks.d("dome.h", 8.5);
-		DOME_RI = HqTweaks.d("dome.ri", 8.5);
-		DOME_HI = HqTweaks.d("dome.hi", 7.0);
-		DOME_P = HqTweaks.d("dome.p", 2.4);
-		DOME_STYLE = HqTweaks.s("dome.style", "slab");
-		DOME_MAT = HqTweaks.s("dome.mat", "plain");
-		DOME_METRIC = HqTweaks.s("dome.metric", "round");
-		DOME_STEP = HqTweaks.s("dome.step", "full");
-	}
-
-	/** Radius of a dome column: round (circle contours) or the atrium's chamfered-square metric. */
-	static double domeMetric(int dx, int dz) {
-		return DOME_METRIC.equals("round") ? Math.sqrt(dx * dx + dz * dz) : octMetric(dx, dz);
+	/** A hip cell of the dome: where an orthogonal facet meets a diagonal one (the walnut ribs). */
+	static boolean hip(int dx, int dz) {
+		int ax = Math.abs(dx);
+		int az = Math.abs(dz);
+		int r = octR(dx, dz);
+		return r >= 4 && ax + az - 4 == r && (ax == r || az == r);
 	}
 
 	/** Columns the dome covers. */
 	static boolean domeFoot(int dx, int dz) {
-		return octFoot(dx, dz) && domeMetric(dx, dz) < DOME_R - 0.05;
+		return octFoot(dx, dz) && octR(dx, dz) < DOME_R - 0.05;
 	}
 
 	static double profile(double r, double rad, double h) {
@@ -613,63 +603,23 @@ public final class StudioHqBuilder implements HqBuilder {
 		return h * Math.sqrt(Math.max(0, 1 - q));
 	}
 
-	static BlockState domeFull() {
-		return switch (DOME_MAT) {
-			case "slate" -> ROOF_FULL;
-			case "verdigris" -> Blocks.CUT_COPPER.waxed().oxidized().defaultBlockState();
-			case "plain" -> Blocks.COPPER_BLOCK.waxed().unaffected().defaultBlockState();
-			default -> COPPER;
-		};
-	}
-
-	static Block domeSlab() {
-		return switch (DOME_MAT) {
-			case "slate" -> ROOF_SLAB;
-			case "verdigris" -> Blocks.CUT_COPPER_SLAB.waxed().oxidized();
-			default -> COPPER_SLAB;
-		};
-	}
-
-	static Block domeStairs() {
-		return switch (DOME_MAT) {
-			case "slate" -> ROOF_STAIRS;
-			case "verdigris" -> Blocks.CUT_COPPER_STAIRS.waxed().oxidized();
-			default -> COPPER_STAIRS;
-		};
-	}
-
-	/** Facet of a dome column: the direction the surface rises towards (null on a diagonal facet). */
-	static @Nullable Direction facetUp(int dx, int dz) {
-		int ax = Math.abs(dx);
-		int az = Math.abs(dz);
-		double diag = DOME_METRIC.equals("round") ? Math.max(ax, az) * 0.9 : (ax + az) * 9.0 / 14.0;
-		if (ax > az && ax > diag + 0.01) {
-			return dx > 0 ? W : E;
-		}
-		if (az > ax && az > diag + 0.01) {
-			return dz > 0 ? N : S;
-		}
-		return null;
-	}
-	/** Columns closer than this to the centre are the oculus under the lantern. */
-	static final double OCULUS_R = 2.2;
-
+	/** Outer surface height of a dome column, in half blocks. */
 	private static int domeTop2(int dx, int dz) {
-		double r = domeMetric(dx, dz);
 		if (!domeFoot(dx, dz)) {
 			return 2 * SPRING;
 		}
-		double h = profile(r, DOME_R, DOME_H);
-		return DOME_STEP.equals("full") ? 2 * (int) Math.round(SPRING + h) : (int) Math.round(2 * (SPRING + h));
+		return (int) Math.round(2 * (SPRING + profile(octR(dx, dz), DOME_R, DOME_H)));
 	}
 
+	/** Vault (inner) surface height of a dome column, in half blocks. */
 	private static int domeIn2(int dx, int dz) {
-		double r = domeMetric(dx, dz);
+		int r = octR(dx, dz);
 		if (!domeFoot(dx, dz) || r >= DOME_RI) {
 			return 2 * SPRING;
 		}
-		double h = profile(r, DOME_RI, DOME_HI);
-		return DOME_STEP.equals("full") ? 2 * (int) Math.round(SPRING + h) : (int) Math.round(2 * (SPRING + h));
+		int i2 = (int) Math.round(2 * (SPRING + profile(r, DOME_RI, DOME_HI)));
+		// at least two blocks of shell, so no cell is both the copper skin and the vault lining
+		return Math.min(i2, domeTop2(dx, dz) - 4);
 	}
 
 	private static boolean oculus(int dx, int dz) {
@@ -677,10 +627,10 @@ public final class StudioHqBuilder implements HqBuilder {
 	}
 
 	/**
-	 * The copper dome: a smooth shell from a height field (half-block steps, so every course is a
-	 * slab or a block and the eight facets keep straight hips), copper outside, a pale-oak vault
-	 * with eight walnut ribs inside, an oculus, and a glazed octagonal lantern (glass on all eight
-	 * sides) with a stepped copper cap and finial.
+	 * The copper dome: a shell from a height field over octagonal rings (half-block steps, so every
+	 * course is a slab or a block and the eight facets keep straight courses), copper outside with
+	 * walnut ribs on the hips, a plaster vault with walnut ribs inside, an oculus, and a glazed
+	 * octagonal lantern (glass on all eight sides) with a stepped copper cap and finial.
 	 */
 	private static void dome(Plan p) {
 		int topY = SPRING + (int) Math.ceil(DOME_H) + 1;
@@ -691,7 +641,7 @@ public final class StudioHqBuilder implements HqBuilder {
 				}
 				int t2 = domeTop2(dx, dz);
 				int i2 = domeIn2(dx, dz);
-				boolean rib = dx == 0 || dz == 0 || Math.abs(dx) == Math.abs(dz);
+				boolean rib = dx == 0 || dz == 0;
 				for (int y = SPRING; y <= topY; y++) {
 					boolean lo = 2 * y >= i2 && 2 * y < t2;
 					boolean hi = 2 * y + 1 >= i2 && 2 * y + 1 < t2;
@@ -701,23 +651,13 @@ public final class StudioHqBuilder implements HqBuilder {
 					boolean exterior = 2 * y + 2 >= t2 || exposedOut(dx, dz, y);
 					boolean interior = (i2 > 2 * SPRING && 2 * y <= i2 && i2 < 2 * y + 2) || exposedIn(dx, dz, y);
 					BlockState s;
-					if (exterior) {
-						Direction up = facetUp(dx, dz);
-						Direction in = Math.abs(dx) >= Math.abs(dz) ? (dx > 0 ? W : E) : (dz > 0 ? N : S);
-						boolean topCell = 2 * y + 2 >= t2;
-						boolean rimStep = topCell && domeTop2(dx - in.getStepX(), dz - in.getStepZ()) < t2;
-						if (lo && hi && DOME_STYLE.equals("bevel") && rimStep && (dx != 0 || dz != 0)) {
-							s = St.stairs(domeStairs(), in, false);
-						} else if (lo && hi) {
-							s = domeFull();
-						} else if (lo && DOME_STYLE.equals("stairs") && up != null) {
-							s = St.stairs(domeStairs(), up, false);
-						} else {
-							s = lo ? St.slab(domeSlab(), false) : St.slab(domeSlab(), true);
-						}
+					if (exterior && hip(dx, dz)) {
+						s = lo && hi ? DARK_PLANKS : St.slab(Blocks.DARK_OAK_SLAB, !lo);
+					} else if (exterior) {
+						s = lo && hi ? DOME_SKIN : St.slab(COPPER_SLAB, !lo);
 					} else if (interior) {
 						Block slab = rib ? Blocks.DARK_OAK_SLAB : Blocks.PALE_OAK_SLAB;
-						BlockState full = rib ? DARK_PLANKS : CEIL_FULL;
+						BlockState full = rib ? DARK_PLANKS : PLASTER;
 						s = lo && hi ? full : lo ? St.slab(slab, false) : St.slab(slab, true);
 					} else {
 						s = COPPER;
@@ -919,7 +859,7 @@ public final class StudioHqBuilder implements HqBuilder {
 			a.put(AnchorNames.desk(id), cx + 0.5, FEET, zd + 1.5, 180, 0);
 			a.put("seat_" + id, cx + 0.5, FEET, zd + 1.5, 180, 0);
 			a.put(AnchorNames.monitor(id), bx + 0.5, FEET + 2.0, zd + 0.25 + 0.002, 0, 0);
-			a.cameraLookAt("desk_" + id, bx + 3.1, FEET + 2.05, zd + 4.6, bx + 0.15, FEET + 1.85, zd + 0.25);
+			a.cameraLookAt("desk_" + id, bx + 2.0, FEET + 2.3, zd + 5.2, bx + 0.4, FEET + 1.9, zd + 0.25);
 		}
 		// between the bays: walnut cabinets with a desk lantern (light pools between the desks at
 		// night) and plants at the ends
@@ -1223,11 +1163,21 @@ public final class StudioHqBuilder implements HqBuilder {
 			}
 		}
 		chandelier(p);
+		// hidden light in the vault, so the pale coffers glow instead of fading to grey under the dome
+		for (int dx = -5; dx <= 5; dx += 5) {
+			for (int dz = -5; dz <= 5; dz += 5) {
+				if (dx != 0 || dz != 0) {
+					p.setIfAir(AX + dx, SPRING + 3, AZ + dz, St.light(13));
+				}
+			}
+		}
+		p.setIfAir(AX + 2, SPRING + 5, AZ + 2, St.light(12));
+		p.setIfAir(AX - 2, SPRING + 5, AZ - 2, St.light(12));
 		// hidden fill light (invisible light blocks), kept low so the lanterns make pools of light
 		for (int dx = -8; dx <= 8; dx += 4) {
 			for (int dz = -8; dz <= 8; dz += 4) {
 				if (octIn(dx, dz) && (dx != 0 || dz != 0)) {
-					p.setIfAir(AX + dx, FEET + 1, AZ + dz, St.light(10));
+					p.setIfAir(AX + dx, FEET + 1, AZ + dz, St.light(12));
 					p.setIfAir(AX + dx, FEET + 6, AZ + dz, St.light(10));
 				}
 			}
@@ -1272,6 +1222,9 @@ public final class StudioHqBuilder implements HqBuilder {
 				continue;
 			}
 			for (int z : new int[] {-5, 1}) {
+				if (Math.abs(x) == 5 && z == 1) {
+					continue; // keeps the view from the atrium opening across the lounge clear
+				}
 				p.set(x, FRIEZE - 1, z, St.chain(Blocks.IRON_CHAIN, Direction.Axis.Y));
 				p.set(x, FRIEZE - 2, z, LANTERN_HANGING);
 			}
@@ -1295,8 +1248,8 @@ public final class StudioHqBuilder implements HqBuilder {
 		// invisible fill light (light blocks: no model, no collision) one block above the floor, kept
 		// low so the lanterns, screens and the fire make the pools of light at night
 		for (int x = -22; x <= 22; x += 4) {
-			for (int z = -7; z <= 4; z += 4) {
-				p.setIfAir(x, FEET + 1, z, St.light(10));
+			for (int z : new int[] {-7, -3, 1, 4}) {
+				p.setIfAir(x, FEET + 1, z, St.light(z == 4 ? 11 : 12));
 			}
 		}
 	}
@@ -1306,19 +1259,19 @@ public final class StudioHqBuilder implements HqBuilder {
 	private static void cameras(Anchors.Builder a) {
 		int az = AZ;
 		a.cameraLookAt("exterior_hero", 27, 77, 42, -2, 72, 6);
-		a.cameraLookAt("night", 16, 69.5, 39, -4, 71, 10);
+		a.cameraLookAt("night", 22, 72.5, 37, -2, 73, 8);
 		a.cameraLookAt("entrance_atrium", AX + 0.5, FEET + 1.7, az + 7.6, AX + 0.5, FEET + 3.6, az - 2);
 		a.cameraLookAt("task_wall", AX - 2.2, FEET + 2.9, az + 0.5, AX - 7.9, FEET + 2.9, az + 0.5);
-		a.cameraLookAt("decision_podium", AX + 1.2, FEET + 1.75, az + 4.6, AX + 7.0, FEET + 2.2, az - 0.6);
-		a.cameraLookAt("wide_interior", -1.0, FEET + 3.8, 3.6, -15.5, FEET + 0.8, -5.5);
+		a.cameraLookAt("decision_podium", AX + 2.6, FEET + 1.3, az + 3.2, AX + 7.8, FEET + 1.8, az - 0.4);
+		a.cameraLookAt("wide_interior", -5.0, FEET + 3.2, 3.8, -17.5, FEET + 0.6, -6.0);
 		a.cameraLookAt("library", -14.0, FEET + 2.8, 4.0, -21.5, FEET + 1.2, -1.5);
 		a.cameraLookAt("console", AX + 2.5, FEET + 2.2, az + 6.5, AX + 7.5, FEET + 1.0, az + 2.5);
-		a.cameraLookAt("merge_station", 16.5, FEET + 2.4, 3.5, 23.5, FEET + 1.2, -0.2);
+		a.cameraLookAt("merge_station", 19.5, FEET + 1.6, 2.6, 24.0, FEET + 1.8, -0.2);
 		a.cameraLookAt("testbench", 16.0, FEET + 2.6, -0.5, 23, FEET + 1.0, -4.5);
 		a.cameraLookAt("lounge", -4.0, FEET + 3.0, -5.5, -11, FEET + 0.5, 1.0);
 		a.cameraLookAt("hall", 0.5, FEET + 2.2, HZS + 2.0, 0.5, FEET + 2.0, HZN);
 		// QA: the editing agent's desk in the showcase is Juniper's
 		int jx = DESK_X[Math.max(0, deskIds().indexOf("juniper"))];
-		a.cameraLookAt("agent_desk", jx + 3.1, FEET + 2.05, HZN + 5.6, jx + 0.15, FEET + 1.85, HZN + 1.25);
+		a.cameraLookAt("agent_desk", jx + 2.6, FEET + 2.1, HZN + 4.6, jx + 0.5, FEET + 1.95, HZN + 1.25);
 	}
 }

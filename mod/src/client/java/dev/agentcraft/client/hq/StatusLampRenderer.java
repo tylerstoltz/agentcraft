@@ -17,6 +17,7 @@ import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
 import dev.agentcraft.client.world.StationRenderer;
+import dev.agentcraft.layout.Anchors;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
@@ -94,10 +95,19 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		s.frameFace = null;
 		if (s.status == LampStatus.WAITING && !s.stale && (DECISIONS_BINDING.equals(s.binding) || MERGE_BINDING.equals(s.binding))
 			&& be.getLevel() != null) {
+			// the open face towards the middle of the HQ (a lamp set into an outer wall also has air outside)
+			double best = Double.MAX_VALUE;
+			Anchors.Bounds b = Anchors.current().bounds();
+			double cx = b == null ? 0 : (b.minX() + b.maxX()) / 2.0;
+			double cz = b == null ? 0 : (b.minZ() + b.maxZ()) / 2.0;
 			for (Direction d : Direction.Plane.HORIZONTAL) {
-				if (be.getLevel().getBlockState(be.getBlockPos().relative(d)).isAir()) {
-					s.frameFace = d;
-					break;
+				net.minecraft.core.BlockPos n = be.getBlockPos().relative(d);
+				if (be.getLevel().getBlockState(n).isAir()) {
+					double dist = Math.hypot(n.getX() + 0.5 - cx, n.getZ() + 0.5 - cz);
+					if (dist < best) {
+						best = dist;
+						s.frameFace = d;
+					}
 				}
 			}
 			s.frameHalf = DECISIONS_BINDING.equals(s.binding) ? 2.5f : 1.5f;

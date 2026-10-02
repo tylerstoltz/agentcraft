@@ -75,7 +75,8 @@ final class HqLandscape {
 	static int terrainHeight(int x, int z) {
 		double e = edge(x, z);
 		double crest = 5.2 + 1.8 * Math.sin(x * 0.15 + z * 0.07) + 1.4 * Math.cos(z * 0.19 - x * 0.11) + 0.8 * Math.sin((x + z) * 0.31);
-		double berm = e >= 6 ? crest * smooth(18, 6, e) : crest * (0.25 + 0.75 * smooth(0, 6, e));
+		// rises from the plain at the box edge (no step where the site meets the world), crests ~7 in
+		double berm = e >= 7 ? crest * smooth(19, 7, e) : crest * smooth(-1, 7, e);
 		return (int) Math.round(berm * smooth(0, 7, flatDistance(x, z)));
 	}
 
@@ -515,7 +516,7 @@ final class HqLandscape {
 	}
 
 	/** Camera spots (x, z) no tree may crowd (the hero and night cameras stand on the meadow). */
-	private static final int[][] CAMERA_SPOTS = {{27, 42}, {16, 39}};
+	private static final int[][] CAMERA_SPOTS = {{27, 42}, {22, 37}};
 
 	/** Trees along the box edge at inset {@code inset}, about {@code step} apart. */
 	private static void ring(Plan p, List<int[]> placed, int inset, double step, int phase, int seed) {
