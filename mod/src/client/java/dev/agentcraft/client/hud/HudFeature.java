@@ -29,6 +29,8 @@ public final class HudFeature {
 		HudElementRegistry.addLast(AgentCraft.id("hud/toasts"), new Toasts());
 		Toasts.init();
 		HudSounds.init();
+		// QA: the vanilla key binds screen, to check the AgentCraft category (dev.screen {open:"keybinds"})
+		DevBridge.registerScreen("keybinds", mc -> new net.minecraft.client.gui.screens.options.controls.KeyBindsScreen(null, mc.options));
 		DevBridge.register("dev.toast", 10_000, "{text, level?: info|warn|need_user, decisionId?} - show an in-game toast (no Foreman needed)",
 			(req, mc) -> {
 				Fields f = Fields.of(req);
@@ -76,6 +78,14 @@ public final class HudFeature {
 		o.addProperty("consoleKey", Keys.label(Keys.console));
 		o.addProperty("decisionsKey", Keys.label(Keys.decisions));
 		o.addProperty("terminalKey", Keys.label(Keys.terminal));
+		// what Options > Controls shows for them (proves the lang keys resolve)
+		JsonObject names = new JsonObject();
+		for (var k : new net.minecraft.client.KeyMapping[] {Keys.console, Keys.terminal, Keys.decisions}) {
+			if (k != null) {
+				names.addProperty(k.getName(), net.minecraft.client.resources.language.I18n.get(k.getName()) + " [" + k.getCategory().label().getString() + "]");
+			}
+		}
+		o.add("keyNames", names);
 		return o;
 	}
 }
