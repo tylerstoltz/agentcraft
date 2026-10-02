@@ -181,7 +181,11 @@ changes while the Foreman link is down): `agent:<id>` (the agent's status family
 nameplate: an idle/done agent with a decision waiting on you is `waiting`; off when off shift or
 gone), `ci:<repoId>` or `ci:#<n>` (n-th repo in Foreman order; unused slots idle), `goal` and
 `goal:atrium` (planning thinking, active working, done, failed error), `decisions` (waiting while
-any decision is open), `merge` (waiting while a merge decision is open). Also driven: podium `open`
+any decision is open), `merge` (waiting while a merge decision is open), `beacon` (the band of lamps
+in the dome's lantern: the whole studio at a glance from outside, most urgent first: waiting on you,
+error, working, thinking, done, idle; the BER adds a status-colour halo, breathing while waiting).
+Waiting `decisions`/`merge` niches get a breathing clay pool of light on the floor in front (the
+earlier glowing outline read as a debug box). Also driven: podium `open`
 (any open decision), merge station `active` (an open merge decision), monitor `lit` (its agent is
 on shift), and **signal bulbs**: vanilla copper bulbs within 3 blocks of the `decision_podium`
 anchor or a `mergestation` slot are lit while that station needs you. Waiting `decisions`/`merge`

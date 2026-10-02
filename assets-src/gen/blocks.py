@@ -94,14 +94,16 @@ def oak_parquet():
             slat = b // 4
             bb = b % 4
             sid = hsh(cx, cy, slat)
+            # alternate slats a tone lighter/darker (judges: the parquet read as one flat beige)
+            base = O[1] if (cx + cy + slat) % 2 == 0 else O[2]
             if bb == 3:
-                c = O[3]                           # seam between slats
+                c = O[4]                           # seam between slats
             elif bb == 0:
-                c = O[1]                           # lit edge of the slat (top/left)
+                c = mix(base, O[0], 0.5)           # lit edge of the slat (top/left)
             else:
                 # one calm grain streak per slat (3 px, one tone darker), like vanilla plank grain
                 g0, row = sid % 4, 1 + (sid >> 3) % 2
-                c = mix(O[2], O[3], 0.55) if (bb == row and g0 <= a < g0 + 3) else O[2]
+                c = mix(base, O[3], 0.55) if (bb == row and g0 <= a < g0 + 3) else base
             # end-grain joints between cells darken the last pixel of each slat
             if a == 7 and bb != 3:
                 c = mix(c, O[3], 0.5)
@@ -261,8 +263,12 @@ def pinboard():
     (cream linen, task_board_linen) after a side-by-side test in game: cream cards on linen had too
     little contrast to read the board's structure from across the room. The Task Wall BER tiles
     this same sprite under its cards, so near and far views match."""
-    deep = {"a": W[2], "b": W[3], "c": W[4], "d": W[5], "e": W[1]}
-    return reg("task_board_surface", from_grid(WALNUT_ROWS, deep))
+    # Phase 3 QA (judges, orch-p3): the deep walnut read as "noisy dark bark" and made the Task Wall the
+    # darkest shot. Now pale birch boards (the same calm grain), two tones under the cream cards so the
+    # cards still stand off the board, with darker seams so the board keeps its structure from afar.
+    BI = tones("birch")
+    birch = {"a": BI[2], "b": mix(BI[1], BI[2], 0.55), "c": BI[2], "d": BI[3], "e": BI[1]}
+    return reg("task_board_surface", from_grid(WALNUT_ROWS, birch))
 
 
 def task_board_textures():

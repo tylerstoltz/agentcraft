@@ -49,6 +49,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class StudioHqBuilder implements HqBuilder {
 	public static final String ID = "studio";
+	/** Binding of the cupola's status beacon lamps (driven by the client's HqWorldDriver). */
+	public static final String BEACON = "beacon";
 
 	// ------------------------------------------------------------------ dimensions
 	static final int GROUND = 64;
@@ -106,9 +108,14 @@ public final class StudioHqBuilder implements HqBuilder {
 	static final BlockState FLOOR_WOOD = Blocks.BIRCH_PLANKS.defaultBlockState();
 	static final BlockState DARK_PLANKS = Blocks.DARK_OAK_PLANKS.defaultBlockState();
 	static final BlockState GLASS_PANE = Blocks.GLASS_PANE.defaultBlockState();
-	static final Block ROOF_STAIRS = Blocks.DEEPSLATE_TILE_STAIRS;
-	static final Block ROOF_SLAB = Blocks.DEEPSLATE_TILE_SLAB;
-	static final BlockState ROOF_FULL = Blocks.DEEPSLATE_TILES.defaultBlockState();
+	/**
+	 * One roof language with the dome and the portico (judges: the blue-black deepslate wing roof was
+	 * off-palette): cut-copper tiles framed by a walnut ridge, verges and eaves, like the dome's ribs.
+	 */
+	static final Block ROOF_STAIRS = Blocks.CUT_COPPER_STAIRS.waxed().unaffected();
+	static final Block ROOF_SLAB = Blocks.CUT_COPPER_SLAB.waxed().unaffected();
+	static final BlockState ROOF_FULL = Blocks.DARK_OAK_PLANKS.defaultBlockState();
+	static final Block ROOF_TRIM = Blocks.DARK_OAK_STAIRS;
 	static final Block CEIL_STAIRS = Blocks.PALE_OAK_STAIRS;
 	static final BlockState CEIL_FULL = Blocks.PALE_OAK_PLANKS.defaultBlockState();
 	static final BlockState COPPER = Blocks.CUT_COPPER.waxed().unaffected().defaultBlockState();
@@ -396,9 +403,10 @@ public final class StudioHqBuilder implements HqBuilder {
 				int y = roofY(z);
 				if (z == RIDGE_Z) {
 					p.set(x, y, z, ROOF_FULL);
-					p.set(x, y + 1, z, St.slab(COPPER_SLAB, false));
+					p.set(x, y + 1, z, St.slab(Blocks.DARK_OAK_SLAB, false));
 				} else {
-					p.set(x, y, z, St.stairs(ROOF_STAIRS, z < RIDGE_Z ? S : N, false));
+					boolean trim = Math.abs(x) == HX + 1 || z == HZN - 1 || z == HZS + 1;
+					p.set(x, y, z, St.stairs(trim ? ROOF_TRIM : ROOF_STAIRS, z < RIDGE_Z ? S : N, false));
 				}
 				// sloped timber ceiling underneath (inside the walls only)
 				if (Math.abs(x) < HX && z > HZN && z < HZS) {
@@ -440,7 +448,7 @@ public final class StudioHqBuilder implements HqBuilder {
 				}
 				p.set(x, hd, z, k == 0 ? ROOF_FULL : St.stairs(ROOF_STAIRS, k < 0 ? E : W, false));
 				if (k == 0) {
-					p.set(x, hd + 1, z, St.slab(COPPER_SLAB, false));
+					p.set(x, hd + 1, z, St.slab(Blocks.DARK_OAK_SLAB, false));
 				}
 				if (z == zf || z == zf + out) {
 					continue;
@@ -751,8 +759,16 @@ public final class StudioHqBuilder implements HqBuilder {
 				if (ring) {
 					p.set(x, b, z, COPPER);
 					boolean postCell = (ax == 3 && az == 2) || (ax == 2 && az == 3);
-					for (int y = b + 1; y <= b + 3; y++) {
+					for (int y = b + 1; y <= b + 2; y++) {
 						p.set(x, y, z, postCell ? COPPER : GLASS_PANE);
+					}
+					// the status beacon: a band of lamps under the cap, bound to the whole studio's state
+					// (clay + breathing while anything waits on you), readable from across the meadow
+					if (postCell) {
+						p.set(x, b + 3, z, COPPER);
+					} else {
+						p.set(x, b + 3, z, ModBlocks.STATUS_LAMP.defaultBlockState().setValue(StatusLampBlock.STATUS, LampStatus.IDLE));
+						p.bind(x, b + 3, z, BEACON);
 					}
 				} else if (inner) {
 					for (int y = b - 2; y <= b + 3; y++) {
@@ -873,7 +889,10 @@ public final class StudioHqBuilder implements HqBuilder {
 				continue;
 			}
 			p.set(x, FEET, zd, Blocks.CHISELED_BOOKSHELF.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, S));
-			p.set(x, FEET + 1, zd, ax == 17 ? St.of(Blocks.POTTED_FERN) : LANTERN);
+			// the cabinets next to the aisle stay clear: the desk close-up looks past them
+			if (ax != 9) {
+				p.set(x, FEET + 1, zd, ax == 17 ? St.of(Blocks.POTTED_FERN) : LANTERN);
+			}
 		}
 		// window seat + planters in the centre bay under the big north window
 		for (int x = -3; x <= 3; x++) {
@@ -921,8 +940,9 @@ public final class StudioHqBuilder implements HqBuilder {
 		p.set(-18, FEET, -2, ModBlocks.MEMORY_CATALOG.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, W));
 		p.set(-18, FEET, 2, ModBlocks.MEMORY_CATALOG.defaultBlockState().setValue(HorizontalDirectionalBlock.FACING, W));
 		p.set(-18, FEET + 1, -2, St.of(Blocks.POTTED_FLOWERING_AZALEA));
-		// lecterns (readers stand east of them, facing west)
-		p.set(-20, FEET, -4, St.facing(Blocks.LECTERN, E));
+		// lecterns: the first reader stands west of hers facing the hall (her face and book read from
+		// the hall cameras instead of her back), the second east of his, facing the shelves
+		p.set(-19, FEET, -4, St.facing(Blocks.LECTERN, W));
 		p.set(-20, FEET, 3, St.facing(Blocks.LECTERN, E));
 		// parquet "rug" for the library floor
 		for (int x = -22; x <= -19; x++) {
@@ -932,10 +952,10 @@ public final class StudioHqBuilder implements HqBuilder {
 		}
 		// slots: two at the archive wall (far enough out that a full nameplate never pokes into the
 		// shelves), two at the lecterns
-		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 1), -20.4, FEET, -2.5, 90, 0);
+		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 1), -19.6, FEET, -3.5, -90, 0);
 		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 2), -20.4, FEET, 1.5, 90, 0);
-		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 3), -18.6, FEET, -3.5, 90, 0);
-		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 4), -18.6, FEET, 3.5, 90, 0);
+		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 3), -18.6, FEET, 3.5, 90, 0);
+		a.put(AnchorNames.slot(AnchorNames.LIBRARY, 4), -20.6, FEET, -0.8, 90, 0);
 	}
 
 	private static void workshop(Plan p, Anchors.Builder a) {
@@ -1040,10 +1060,11 @@ public final class StudioHqBuilder implements HqBuilder {
 		}
 		p.set(-11, FEET + 1, 0, St.candle(Blocks.CANDLE, 3, true));
 		p.set(-10, FEET + 1, 1, St.of(Blocks.POTTED_FLOWERING_AZALEA));
+		// the aisle-side lamp stands at the fire end, so the wide shot down the aisle has no lamp post
+		// in its foreground
 		floorLamp(p, -14, -3);
-		floorLamp(p, -7, -3);
+		floorLamp(p, -7, 3);
 		p.set(-14, FEET, 3, St.of(Blocks.POTTED_FERN));
-		p.set(-7, FEET, 3, St.of(Blocks.POTTED_FERN));
 	}
 
 	private static void meeting(Plan p, Anchors.Builder a) {
@@ -1103,9 +1124,19 @@ public final class StudioHqBuilder implements HqBuilder {
 			p.set(xb, y, AZ + 4, post());
 		}
 		a.put(AnchorNames.TASK_WALL, xb + 1 - 0.875 + 0.002, FEET + 3.0, AZ + 0.5, -90, 0);
-		p.setIfAir(xb + 2, FEET + 4, AZ - 2, St.light(12));
-		p.setIfAir(xb + 2, FEET + 4, AZ + 2, St.light(12));
-		p.setIfAir(xb + 2, FEET + 1, AZ, St.light(11));
+		// warm wash: a hidden light bar under the hood along the whole board, plus a lower fill, so the
+		// board is the brightest surface of the bay (judges: "darkest interior shot, no light on the board")
+		for (int z = AZ - 3; z <= AZ + 3; z++) {
+			p.setIfAir(xb + 1, FEET + 4, z, St.light(15));
+			if ((z - AZ) % 2 == 0) {
+				p.setIfAir(xb + 1, FEET + 2, z, St.light(14));
+			}
+		}
+		// pale hood and sill instead of dark walnut: the bay reads as part of the cream atrium
+		for (int z = AZ - 3; z <= AZ + 3; z++) {
+			p.set(xb + 1, FEET + 5, z, St.slab(Blocks.PALE_OAK_SLAB, true));
+			p.set(xb, FEET + 5, z, PLASTER_FRAME);
+		}
 
 		// --- decision podium: east side, facing west; a framed walnut niche behind it with the
 		// `decisions` lamp, the bell and three signal bulbs that light while a decision waits for you
@@ -1117,10 +1148,15 @@ public final class StudioHqBuilder implements HqBuilder {
 		for (int z = AZ - 2; z <= AZ + 2; z++) {
 			for (int y = FEET; y <= FEET + 5; y++) {
 				boolean side = Math.abs(z - AZ) == 2;
-				p.set(xa, y, z, side ? post() : y == FEET ? WALNUT_TRIM : WALNUT);
+				// cut-copper pilasters frame the niche (real trim, not a glowing outline)
+				p.set(xa, y, z, side ? COPPER : y == FEET ? WALNUT_TRIM : WALNUT);
 			}
 			p.set(xa, FEET + 6, z, beam(Direction.Axis.Z));
 		}
+		// hidden warm light in the niche, so the podium pops from the walnut instead of sitting in shadow
+		p.setIfAir(xa - 1, FEET + 4, AZ, St.light(14));
+		p.setIfAir(xa - 2, FEET + 1, AZ - 1, St.light(13));
+		p.setIfAir(xa - 2, FEET + 1, AZ + 1, St.light(13));
 		p.set(xa, FEET + 3, AZ, ModBlocks.STATUS_LAMP.defaultBlockState().setValue(StatusLampBlock.STATUS, LampStatus.OFF));
 		p.bind(xa, FEET + 3, AZ, "decisions");
 		for (int z = AZ - 1; z <= AZ + 1; z++) {
@@ -1267,12 +1303,18 @@ public final class StudioHqBuilder implements HqBuilder {
 
 	private static void cameras(Anchors.Builder a) {
 		int az = AZ;
-		a.cameraLookAt("exterior_hero", 27, 77, 42, -2, 72, 6);
-		a.cameraLookAt("night", 22, 72.5, 37, -2, 73, 8);
-		a.cameraLookAt("entrance_atrium", AX + 0.5, FEET + 1.7, az + 7.6, AX + 0.5, FEET + 3.6, az - 2);
-		a.cameraLookAt("task_wall", AX - 2.2, FEET + 2.9, az + 0.5, AX - 7.9, FEET + 2.9, az + 0.5);
-		a.cameraLookAt("decision_podium", AX + 2.6, FEET + 1.3, az + 3.2, AX + 7.8, FEET + 1.8, az - 0.4);
-		a.cameraLookAt("wide_interior", -5.0, FEET + 3.2, 3.8, -17.5, FEET + 0.6, -6.0);
+		// low 3/4 view from the south-south-east at golden hour: the sunset glows behind the west wing
+		// with the sun itself out of frame, the garden is the foreground, the beacon cupola on top
+		a.cameraLookAt("exterior_hero", 18, 72.5, 46, -3, 75.5, 10);
+		a.cameraLookAt("night", 16.5, 71.5, 45.5, -2, 75.5, 11);
+		// from inside the door, turned toward the podium: the hologram centred, Marlow waiting at the
+		// right, the task wall out of frame (it was a sliced sliver at the left edge)
+		a.cameraLookAt("entrance_atrium", AX - 1.5, FEET + 2.2, az + 6.8, AX + 2.0, FEET + 3.8, az - 2);
+		// straight on and close: the board fills the frame
+		a.cameraLookAt("task_wall", AX - 4.6, FEET + 3.0, az + 0.5, AX - 7.9, FEET + 3.0, az + 0.5);
+		a.cameraLookAt("decision_podium", AX + 3.0, FEET + 1.5, az + 2.3, AX + 6.8, FEET + 1.9, az - 0.8);
+		// standing height over the lounge toward the west end: desks, lounge, library each with its agent
+		a.cameraLookAt("wide_interior", -5.0, FEET + 1.7, -4.6, -18.0, FEET + 1.0, -2.8);
 		a.cameraLookAt("library", -14.0, FEET + 2.8, 4.0, -21.5, FEET + 1.2, -1.5);
 		a.cameraLookAt("console", AX + 2.5, FEET + 2.2, az + 6.5, AX + 7.5, FEET + 1.0, az + 2.5);
 		a.cameraLookAt("merge_station", 19.5, FEET + 1.6, 2.6, 24.0, FEET + 1.8, -0.2);
@@ -1281,6 +1323,8 @@ public final class StudioHqBuilder implements HqBuilder {
 		a.cameraLookAt("hall", 0.5, FEET + 2.2, HZS + 2.0, 0.5, FEET + 2.0, HZN);
 		// QA: the editing agent's desk in the showcase is Juniper's
 		int jx = DESK_X[Math.max(0, deskIds().indexOf("juniper"))];
-		a.cameraLookAt("agent_desk", jx + 2.0, FEET + 2.2, HZN + 4.8, jx + 0.2, FEET + 1.8, HZN + 1.25);
+		// 3/4 front from beside the monitor (east of it, in front of the screen plane): Juniper's face,
+		// turned to her screen, and the screen itself, both at about 45 degrees
+		a.cameraLookAt("agent_desk", jx + 3.0, FEET + 1.9, HZN + 3.0, jx - 0.2, FEET + 1.6, HZN + 1.6);
 	}
 }
