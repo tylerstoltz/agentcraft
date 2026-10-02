@@ -3,8 +3,9 @@
 ## Summary (2026-10-01, wrap-up)
 
 **State:** v1 is functionally complete and merged on `main`. Every major system works together
-in-game with the sim backend. Blendi asked to wrap up faster rather than finish the full polish
-loop, so the final pass was cut short. See "Not done" below.
+in-game, with both the sim backend and **real Claude agents**: the e2e run went fully through the
+game UI. A cold start from a fresh clone works in 43 s. Blendi asked to finish rather than run the
+visual polish and judge loop, so those were skipped. See "Not done" below.
 
 ### What works (verified in-game, screenshots in `artifacts/shots/qa/orch-p3/`)
 - **One-command launch**: `tools\launch.ps1` starts or reuses the Foreman, builds, and opens the game
@@ -38,12 +39,15 @@ See `README.md`. The quickest try (no API usage):
 `console.png` and `diff.png`.
 
 ### Not done / known issues (honest)
-- **The real claude backend has not been driven end to end through the game UI.** It was verified
-  at the Foreman level in Phase 1: real SDK runs, lead plus workers, ask_user answered via the
-  terminal client, worktree diffs, restart and resume. The in-game e2e run (Phase 4) was started
-  and then stopped at wrap-up. **First thing to try:** `tools\launch.ps1 -Repo
-  C:\Projects\agentcraft\sandbox\demo-app` (after `node sandbox/create-demo.mjs --force`).
-- **Polish loop not run to completion.** Feature verifiers scored most shots 8-9, with some 7s on
+- **Real claude e2e through the game UI: done (20:00).** Goals were typed in the console, ask_user
+  was answered in the decision GUI, permissions were answered in the permission GUI, and merges
+  were reviewed and approved in the diff screen. That includes merge conflicts sent back to the
+  worker and resolved. The game was relaunched mid-run with state restored, and the Foreman went
+  offline and reconnected. Six features were merged into sandbox/demo-app main, and its 49 tests
+  pass. About $6 for three goals with sonnet at low effort. Fixes from the run are merged: unknown
+  Foreman flags are now errors, the conflict hand-back, empty-plan handling, and spend shown in
+  `/status` and the console header. Evidence: docs/img/e2e/. Foreman: 474 tests green.
+- **Polish loop not run to completion** (skipped at Blendi's request). Feature verifiers scored most shots 8-9, with some 7s on
   composition and legibility. Weak spots: the Task Wall is small and dim inside its bay, the night
   shot is too dark, some atrium/desk areas are muddy, Marlow's glasses read as sunglasses, and the
   oak parquet is busy at room scale.
@@ -51,8 +55,8 @@ See `README.md`. The quickest try (no API usage):
   `launch.ps1 -Dev -Backend sim -Showcase busy` ran npm ci for tools and the Foreman, built the mod,
   auto-built the studio HQ, and connected to the world in **43 s** (Gradle caches shared). Evidence:
   docs/img/coldstart_atrium.png.
-- Final independent judge pass (≥8 on every axis): running now in workflow wf_87293b55-eb8,
-  together with the in-game real-claude e2e and targeted visual fixes.
+- **No final independent judge pass** (≥8 on every axis). It was skipped along with the visual fixes
+  at Blendi's request, so the weak spots above remain.
 - launch.ps1 nits from the Phase 2 verifier:
   - `AGENTCRAFT_HOME` overrides the `-Dev` home default.
   - `-Dev` without `-Backend` uses the claude backend.
@@ -103,4 +107,6 @@ See `README.md`. The quickest try (no API usage):
 - 18:25 Merged HQ, agent life and displays. The integrated check looks good (orch_p3_cam_*.png).
 - 19:10 Merged review and console. Resolved the PlateLayout conflict by hand. Integrated QA run 10/10 (qa/orch-p3).
 - 19:20 Final pass (e2e / visual / practicality) started, then stopped at Blendi's request to wrap up. Cleaned up every process it left. Wrote README.md and this summary.
+- 19:40 Cold start from a fresh clone verified (43 s).
+- 20:00 The in-game real-claude e2e finished its flow. Visual fixes were skipped at Blendi's request. The orchestrator verified the e2e fixes (tsc, 474 tests, mod build, demo-app tests), merged them (5222584), and passed a final smoke launch (artifacts/shots/final_smoke.png).
 
