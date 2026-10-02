@@ -72,20 +72,24 @@ public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockE
 
 	@Override
 	protected void extractStation(DecisionPodiumBlockEntity be, State s, float partialTicks) {
-		List<Decision> open = new ArrayList<>();
-		for (Decision d : DecisionQueue.open()) {
-			if (!DecisionsFeature.isAnswering(d.id())) {
-				open.add(d);
+		// no allocation per frame: count the waiting ones and keep the first
+		Decision d = null;
+		int count = 0;
+		for (Decision x : DecisionQueue.open()) {
+			if (!DecisionsFeature.isAnswering(x.id())) {
+				if (d == null) {
+					d = x;
+				}
+				count++;
 			}
 		}
-		s.count = open.size();
+		s.count = count;
 		s.stale = Foreman.state() == null || Foreman.state().isStale();
-		DecisionsFeature.syncPodium(be.getBlockPos(), be.getBlockState(), !open.isEmpty());
-		if (open.isEmpty()) {
+		DecisionsFeature.syncPodium(be.getBlockPos(), be.getBlockState(), count > 0);
+		if (d == null) {
 			s.agentId = null;
 			return;
 		}
-		Decision d = open.get(0);
 		s.agentId = d.agentId();
 		s.nameColor = UiBits.nameOnLight(d.agentId());
 		Cache c = cache;

@@ -48,6 +48,18 @@ public final class HudFeature {
 			});
 		DevBridge.register("dev.hud.state", 10_000, "{} - what the AgentCraft HUD shows: decisions waiting, toasts, sounds", (req, mc) -> DevBridge
 			.onClient(mc, HudFeature::hudState));
+		DevBridge.register("dev.hud.guiScale", 10_000, "{scale: 0 (auto) - 6} - change the GUI scale for this session (layout checks; not saved)",
+			(req, mc) -> {
+				int scale = Fields.of(req).optInt("scale", 3, 0, 6);
+				return DevBridge.onClient(mc, () -> {
+					mc.options.guiScale().set(scale);
+					JsonObject o = new JsonObject();
+					o.addProperty("guiScale", mc.getWindow().getGuiScale());
+					o.addProperty("guiWidth", mc.getWindow().getGuiScaledWidth());
+					o.addProperty("guiHeight", mc.getWindow().getGuiScaledHeight());
+					return o;
+				});
+			});
 	}
 
 	static JsonObject hudState() {

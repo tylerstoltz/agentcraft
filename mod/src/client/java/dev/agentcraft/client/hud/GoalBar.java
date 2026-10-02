@@ -110,7 +110,8 @@ public final class GoalBar implements HudElement {
 
 	private int drawGoal(GuiGraphicsExtractor g, Font font, ForemanState s, Goal goal, int y, int alpha, boolean stale) {
 		recount(s, goal);
-		int w = Math.min(MAX_W, g.guiWidth() - 180);
+		// leave room for the connection pill (top right) on narrow GUIs (GUI scale 4 at 1080p = 480 px)
+		int w = Math.min(MAX_W, g.guiWidth() - 224);
 		int x = (g.guiWidth() - w) / 2;
 		right = Math.max(right, x + w);
 		Kit.Padding p = Kit.padding("tooltip");

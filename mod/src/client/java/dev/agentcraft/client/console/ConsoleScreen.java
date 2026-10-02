@@ -100,9 +100,10 @@ public class ConsoleScreen extends Screen {
 	}
 
 	/** A feed row; {@code sep} rows are time separators ("23:55") between minutes. */
-	private record Row(String time, @Nullable String faceAgent, int stripe, List<Run> runs, boolean header, boolean sep, boolean opensDecisions) {
+	private record Row(String time, @Nullable String faceAgent, int stripe, List<Run> runs, boolean header, boolean sep, boolean opensDecisions,
+		boolean cont) {
 		Row(String time, @Nullable String faceAgent, int stripe, List<Run> runs, boolean header, boolean sep) {
-			this(time, faceAgent, stripe, runs, header, sep, false);
+			this(time, faceAgent, stripe, runs, header, sep, false, false);
 		}
 	}
 
@@ -613,6 +614,11 @@ public class ConsoleScreen extends Screen {
 		int textX0 = listX + 6;
 		for (int i = scroll.offset(); i < Math.min(rs.size(), scroll.offset() + view); i++) {
 			Row r = rs.get(i);
+			if (i == scroll.offset() && r.cont() && scroll.scrollable()) {
+				// never start the view with the tail of a wrapped line
+				ly += ROW;
+				continue;
+			}
 			if (r.sep()) {
 				int tw = font.width(r.time());
 				int mid = listX + (listW - 8) / 2;
@@ -968,7 +974,7 @@ public class ConsoleScreen extends Screen {
 		r0.add(new Run(first.get(0), header ? ink : bodyColor));
 		String faceAgent = agent != null && (UiBits.hasPortrait(agent)) ? agent : null;
 		boolean opens = !l.local() && l.kind() == FeedKind.DECISION && l.text().contains("needs you");
-		out.add(new Row(time, faceAgent, stripe, r0, header, false, opens));
+		out.add(new Row(time, faceAgent, stripe, r0, header, false, opens, false));
 		if (first.size() > 1) {
 			String rest = text.substring(Math.min(text.length(), first.get(0).length())).stripLeading();
 			List<String> more = TextUtil.wrapPlain(font, rest, textW);
@@ -978,7 +984,7 @@ public class ConsoleScreen extends Screen {
 				if (i == max - 1 && more.size() > max) {
 					seg = TextUtil.ellipsize(font, seg + " …", textW);
 				}
-				out.add(new Row("", null, stripe, List.of(new Run(seg, bodyColor)), false, false, opens));
+				out.add(new Row("", null, stripe, List.of(new Run(seg, bodyColor)), false, false, opens, true));
 			}
 		}
 	}

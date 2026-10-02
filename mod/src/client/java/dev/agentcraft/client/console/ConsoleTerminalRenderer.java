@@ -31,6 +31,9 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 	private static final int SW = 72;
 	private static final int SH = 42;
 
+	private @org.jspecify.annotations.Nullable String cachedLastRaw;
+	private String cachedLast = "";
+
 	public static class State extends StationRenderState {
 		public String last = "";
 		public int waiting;
@@ -72,8 +75,11 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 		if (last == null && !ConsoleLog.history().isEmpty()) {
 			last = ConsoleLog.history().get(ConsoleLog.history().size() - 1);
 		}
-		Font font = Minecraft.getInstance().font;
-		s.last = last == null ? "" : TextUtil.ellipsize(font, last.replace('\n', ' '), SW - 22);
+		if (last != null && !last.equals(cachedLastRaw)) {
+			cachedLastRaw = last;
+			cachedLast = TextUtil.ellipsize(Minecraft.getInstance().font, last.replace('\n', ' '), SW - 22);
+		}
+		s.last = last == null ? "" : cachedLast;
 		s.key = Keys.console == null ? "`" : Keys.label(Keys.console);
 	}
 
