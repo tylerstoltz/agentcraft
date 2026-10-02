@@ -11,9 +11,11 @@
 - Phase 3 (features) launched as wf_08436cd8-0fa: HQ / agent life / in-world displays / console+decisions+permissions+HUD / diff+library, each in a worktree (max 3 concurrent MC clients, RAM), verify + 1 fix, then merge + QA judge run.
 - 2026-10-01 18:20 Blendi asked to go faster, accepting less than absolute polish. Decision: merge finished features right away, skip extra verify rounds, and fold Phases 4+5 into one shorter pass (a single QA judge run, one fix wave on the top problems, the real-claude e2e, README + cold start). No repeated polish loops.
 - 18:25 Merged HQ (78cdebd), agent life (99b391b), in-world displays (b8d0a6d). Each got 2 verify rounds and was just under the bar (mostly 7s on composition/legibility). Orchestrator check of the integrated build: artifacts/shots/orch_p3_cam_*.png (exterior hero, desk monitor log with diff tinting, task wall kanban); all look good. Known: the task wall panel is small for its bay.
+- 19:10 Merged review (diff/merge + library) and console (console + decisions + permissions + HUD). Resolved the PlateLayout conflict by hand (two-sided lift search + reserved billboards). Stopped Phase 3's remaining verify rounds (speed). Integrated QA run, 10/10 shots: artifacts/shots/qa/orch-p3/contact_sheet.png. Orchestrator review: console autocomplete, diff review and library screens are product-quality; weak spots are the task wall (small and dim in its bay), the night shot (too dark), and the atrium luma.
 
 ## Known blockers
 - (resolved 2026-10-01) claude CLI re-authenticated; headless `claude -p` verified working.
+
 
 
 
