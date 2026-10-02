@@ -213,8 +213,78 @@ public final class PlateLayout {
 	/** Client thread, once per frame, after entity extraction. */
 	public static void layout(LevelRenderState level) {
 		long start = System.nanoTime();
-		run(level, start);
+		try {
+			run(level, start);
+		} finally {
+			RESERVED.clear();
+		}
 		layoutMicros += ((System.nanoTime() - start) / 1000f - layoutMicros) * 0.05f;
+	}
+
+	// ------------------------------------------------------------------ reserved screen space
+	// (additive, Phase 3 console/decisions fix round: other billboards that plates must clear)
+
+	/** A camera-facing billboard that is not a nameplate; see {@link #reserve}. */
+	private record Reservation(double x, double y, double z, float width, float height, float blocksPerPx) {
+	}
+
+	private static final List<Reservation> RESERVED = new ArrayList<>();
+	/** Screen rects (x0, y0, x1, y1) of this frame's reservations. */
+	private static float[] reservedRects = new float[16];
+	private static int reservedCount;
+	private static int reservedOverlaps;
+
+	/**
+	 * Reserve screen space for a camera-facing billboard that is not a nameplate (the decision
+	 * podium's speech bubble), so plates lift to clear it exactly as they clear each other (with a
+	 * leader line to the head). Call it every frame the billboard shows, during level extraction (a
+	 * block entity renderer's extract step runs before {@code END_EXTRACTION}); it holds for that frame
+	 * only. {@code x, y, z}: world position of the billboard's bottom centre (it extends upwards);
+	 * {@code width, height}: its size in its own pixels; {@code blocksPerPx}: the world size of one of
+	 * those pixels at that position.
+	 */
+	public static void reserve(double x, double y, double z, float width, float height, float blocksPerPx) {
+		if (RESERVED.size() < 32) {
+			RESERVED.add(new Reservation(x, y, z, width, height, blocksPerPx));
+		}
+	}
+
+	/** Reserved billboards laid out in the last frame (QA). */
+	public static int reservedCount() {
+		return reservedCount;
+	}
+
+	/** Drawn plates that overlapped a reserved billboard on screen in the last frame (QA; 0 when settled). */
+	public static int reservedOverlaps() {
+		return reservedOverlaps;
+	}
+
+	private static void projectReservations(CameraRenderState cam, float f, int w, int h) {
+		reservedCount = 0;
+		for (Reservation r : RESERVED) {
+			V.set((float) (r.x() - cam.pos.x), (float) (r.y() - cam.pos.y), (float) (r.z() - cam.pos.z), 1f);
+			cam.viewRotationMatrix.transform(V);
+			float depth = -V.z;
+			if (depth < 0.05f) {
+				continue;
+			}
+			cam.projectionMatrix.transform(V);
+			if (V.w <= 1e-6f) {
+				continue;
+			}
+			float sx = (V.x / V.w * 0.5f + 0.5f) * w;
+			float sy = (0.5f - V.y / V.w * 0.5f) * h;
+			float k = r.blocksPerPx() * f / depth;
+			if (reservedRects.length < (reservedCount + 1) * 4) {
+				reservedRects = java.util.Arrays.copyOf(reservedRects, reservedRects.length * 2);
+			}
+			int o = reservedCount * 4;
+			reservedRects[o] = sx - r.width() * k / 2f;
+			reservedRects[o + 1] = sy - r.height() * k;
+			reservedRects[o + 2] = sx + r.width() * k / 2f;
+			reservedRects[o + 3] = sy;
+			reservedCount++;
+		}
 	}
 
 	private static void run(LevelRenderState level, long now) {
@@ -228,6 +298,8 @@ public final class PlateLayout {
 		overlaps = 0;
 		laidOut = 0;
 		overlapPairs = "";
+		reservedCount = 0;
+		reservedOverlaps = 0;
 		ClientLevel lvl = mc.level;
 		int w = mc.getWindow().getWidth();
 		int h = mc.getWindow().getHeight();
@@ -237,6 +309,7 @@ public final class PlateLayout {
 		}
 		float f = cam.projectionMatrix.m11() * h * 0.5f;
 		float kMax = (float) mc.getWindow().getGuiScale() * NEAR_MAX_GUI;
+		projectReservations(cam, f, w, h);
 		if (lastCamPos == null || lastCamPos.distanceToSqr(cam.pos) > CUT_DISTANCE * CUT_DISTANCE
 			|| Math.abs(Mth.wrapDegrees(cam.yRot - lastCamYaw)) > CUT_DEGREES || Math.abs(cam.xRot - lastCamPitch) > CUT_DEGREES) {
 			snap = true; // camera cut (dev.camera, teleport): lay out from scratch, no slide from the old view
@@ -441,6 +514,12 @@ public final class PlateLayout {
 					}
 				}
 			}
+			for (int r = 0; r < reservedCount; r++) {
+				int o = r * 4;
+				if (overlap(p.rx0, p.ry0, p.rx1, p.ry1, reservedRects[o], reservedRects[o + 1], reservedRects[o + 2], reservedRects[o + 3], -0.5f)) {
+					reservedOverlaps++;
+				}
+			}
 			leaderGaps(ai, i, n);
 		}
 		if (!pairs.isEmpty()) {
@@ -493,8 +572,8 @@ public final class PlateLayout {
 		if (hi < lo) {
 			return Float.NaN;
 		}
-		if (candidates.length < 2 * placed + 1) {
-			candidates = new float[2 * placed + 8];
+		if (candidates.length < 2 * placed + reservedCount + 1) {
+			candidates = new float[2 * placed + reservedCount + 8];
 		}
 		int m = 0;
 		candidates[m++] = key(Math.max(lo, Math.min(hi, 0f)));
@@ -508,6 +587,15 @@ public final class PlateLayout {
 				}
 				if (below >= lo && below <= hi) {
 					candidates[m++] = key(below);
+				}
+			}
+		}
+		for (int r = 0; r < reservedCount; r++) {
+			int o = r * 4;
+			if (a.x0 < reservedRects[o + 2] + GAP && a.x1 > reservedRects[o] - GAP) {
+				float l = a.y1 - (reservedRects[o + 1] - GAP);
+				if (l >= lo && l <= hi) {
+					candidates[m++] = key(l);
 				}
 			}
 		}
@@ -589,6 +677,12 @@ public final class PlateLayout {
 		for (int j = 0; j < placed; j++) {
 			Item p = ITEMS.get(j);
 			if (!p.hidden && overlap(x0, y0, x1, y1, p.x0, p.y0, p.x1, p.y1, GAP)) {
+				return false;
+			}
+		}
+		for (int r = 0; r < reservedCount; r++) {
+			int o = r * 4;
+			if (overlap(x0, y0, x1, y1, reservedRects[o], reservedRects[o + 1], reservedRects[o + 2], reservedRects[o + 3], GAP)) {
 				return false;
 			}
 		}

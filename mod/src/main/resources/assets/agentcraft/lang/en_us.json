@@ -31,5 +31,9 @@
   "item.agentcraft.oak_parquet": "Oak Parquet",
   "item.agentcraft.glow_panel": "Glow Panel",
   "item.agentcraft.glow_strip": "Glow Strip",
-  "itemGroup.agentcraft": "AgentCraft Studio"
+  "itemGroup.agentcraft": "AgentCraft Studio",
+  "key.category.agentcraft.agentcraft": "AgentCraft",
+  "key.agentcraft.console": "Open the console",
+  "key.agentcraft.console_terminal": "Console (looking at a terminal)",
+  "key.agentcraft.decisions": "Answer decisions"
 }

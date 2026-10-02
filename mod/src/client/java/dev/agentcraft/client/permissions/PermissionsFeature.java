@@ -1,17 +1,44 @@
 package dev.agentcraft.client.permissions;
 
+import dev.agentcraft.client.decisions.DecisionQueue;
+import dev.agentcraft.client.decisions.DecisionScreen;
+import dev.agentcraft.client.dev.DevBridge;
+import dev.agentcraft.client.foreman.Protocol;
+import dev.agentcraft.client.foreman.Protocol.Decision;
+import dev.agentcraft.client.foreman.Protocol.DecisionKind;
+import dev.agentcraft.client.foreman.Protocol.DecisionStatus;
+import java.util.List;
+
 /**
- * Permission prompts (Phase 3 owner: permissions specialist). Open decisions with
- * {@code kind == PERMISSION} (tool, context with the cwd and the "Always allow for this agent"
- * scope line) need a clear, fast in-world UX: {@code Allow once} / {@code Always allow for this agent}
- * / {@code Deny} (exact labels in {@code Protocol}), answered with {@code Foreman.answer}. Listen with
- * {@code Foreman.addListener(new ForemanListener() { onDecision(...) })}; the HUD feature shows toasts.
+ * Permission prompts. A permission decision (an agent's risky tool call, held until Blendi answers)
+ * is shown by the decision screen with {@link PermissionBody}: the tool and exact command, the
+ * Foreman's reason with a colour-coded risk chip ({@link PermissionInfo#classify}), the working
+ * directory and what "Always allow for this agent" covers; buttons Allow once / Always allow /
+ * Deny (keys 1-3). Permission prompts go first in the queue (the agent is blocked mid-call), the HUD
+ * rings the bell and shows a toast, and {@code J} opens it.
+ *
+ * <p>QA: {@code dev.screen {open:"permission"}} opens the oldest open permission decision; when none
+ * is open it shows a clearly marked preview of a sample prompt (nothing is sent).
  */
 public final class PermissionsFeature {
 	private PermissionsFeature() {
 	}
 
 	public static void init() {
-		// Phase 3
+		DevBridge.registerScreen("permission", mc -> {
+			Decision d = DecisionQueue.firstOfKind(DecisionKind.PERMISSION);
+			return d != null ? new DecisionScreen(d.id(), null) : DecisionScreen.preview(sample());
+		});
+	}
+
+	/** A representative permission prompt (the sim's "npm install" one), for previews. */
+	public static Decision sample() {
+		String ctx = "npm install downloads packages (network) and changes dependencies\n"
+			+ "cwd: C:\\Users\\you\\.agentcraft\\claude\\worktrees\\pocket-notes\\wren-t4\n"
+			+ "\"" + Protocol.ALWAYS_ALLOW + "\" covers: `npm install` inside this agent's worktree (paths outside still ask); network access to "
+			+ "registry.npmjs.org";
+		return new Decision("preview-permission", "wren", DecisionKind.PERMISSION, "Wren wants to run Bash: npm install chalk@5", List.of(
+			Protocol.ALLOW_ONCE, Protocol.ALWAYS_ALLOW, Protocol.DENY), ctx, DecisionStatus.OPEN, null, "t4", null, null, "Bash", System
+				.currentTimeMillis() - 40_000);
 	}
 }
