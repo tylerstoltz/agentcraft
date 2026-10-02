@@ -20,4 +20,21 @@ public interface HqBuilder {
 
 	/** Runs on the server thread. */
 	void build(ServerLevel level, Anchors.Builder anchors);
+
+	/**
+	 * How a build was asked for: {@code force} = reset every cell of the site to the plan, even the
+	 * ones the player changed since the last build (builders that keep such cells honour it).
+	 */
+	record Options(boolean force) {
+		public static final Options DEFAULT = new Options(false);
+	}
+
+	/**
+	 * Builds with options and returns a one-line report for the player (null = nothing to say).
+	 * The default ignores the options.
+	 */
+	default @org.jspecify.annotations.Nullable String build(ServerLevel level, Anchors.Builder anchors, Options options) {
+		build(level, anchors);
+		return null;
+	}
 }
