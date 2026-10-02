@@ -318,8 +318,11 @@ final class Plan {
 							BlockState cur = chunk.getBlockState(m);
 							if (cur != want && !sameDesign(cur, want)) {
 								if (guard && !sameDesign(cur, previous[i])) {
-									// the player changed this cell after the last build: leave it
-									kept++;
+									// the player changed this cell after the last build: leave it (terrain that only
+									// reacted to a player's block, e.g. grass turned to dirt under it, is kept silently)
+									if (!(natural(cur) && natural(previous[i]))) {
+										kept++;
+									}
 									keptCells.set(i);
 									if (keptSample.size() < 8) {
 										keptSample.add(m.toShortString() + " " + cur.getBlock().getDescriptionId().replace("block.minecraft.", ""));

@@ -101,6 +101,7 @@ public final class StudioHqBuilder implements HqBuilder {
 	static final BlockState WALNUT_TRIM = ModBlocks.WALNUT_TRIM.defaultBlockState();
 	static final BlockState TILE = ModBlocks.TERRACOTTA_TILE.defaultBlockState();
 	static final BlockState PARQUET = ModBlocks.OAK_PARQUET.defaultBlockState();
+	static final BlockState GLOW_PANEL = ModBlocks.GLOW_PANEL.defaultBlockState();
 	static final BlockState PLINTH = Blocks.MUD_BRICKS.defaultBlockState();
 	static final BlockState FLOOR_WOOD = Blocks.BIRCH_PLANKS.defaultBlockState();
 	static final BlockState DARK_PLANKS = Blocks.DARK_OAK_PLANKS.defaultBlockState();
@@ -194,7 +195,7 @@ public final class StudioHqBuilder implements HqBuilder {
 		}
 		if (st.foreign() > 0) {
 			r.append(String.format(Locale.ROOT, "; replaced %d block%s that were not part of the HQ%s", st.foreign(), st.foreign() == 1 ? "" : "s",
-				options.force() ? " (force)" : " (no record of an earlier studio build)"));
+				options.force() ? " (force)" : " (first studio build here, or another HQ builder ran since the last one)"));
 		}
 		if (st.items() > 0) {
 			r.append(String.format(Locale.ROOT, "; removed %d dropped item%s", st.items(), st.items() == 1 ? "" : "s"));
@@ -762,7 +763,8 @@ public final class StudioHqBuilder implements HqBuilder {
 				if (octInside(dx, dz, 4) && !octInside(dx, dz, 3)) {
 					p.set(x, b + 4, z, St.slab(COPPER_SLAB, false));
 				} else if (octInside(dx, dz, 3)) {
-					p.set(x, b + 4, z, COPPER);
+					// the lantern's ceiling: a glowing skylight panel, seen from the atrium through the oculus
+					p.set(x, b + 4, z, octInside(dx, dz, 1) ? GLOW_PANEL : COPPER);
 				}
 				if (octInside(dx, dz, 3) && !octInside(dx, dz, 2)) {
 					p.set(x, b + 5, z, St.slab(COPPER_SLAB, false));
@@ -859,7 +861,8 @@ public final class StudioHqBuilder implements HqBuilder {
 			a.put(AnchorNames.desk(id), cx + 0.5, FEET, zd + 1.5, 180, 0);
 			a.put("seat_" + id, cx + 0.5, FEET, zd + 1.5, 180, 0);
 			a.put(AnchorNames.monitor(id), bx + 0.5, FEET + 2.0, zd + 0.25 + 0.002, 0, 0);
-			a.cameraLookAt("desk_" + id, bx + 2.0, FEET + 2.3, zd + 5.2, bx + 0.4, FEET + 1.9, zd + 0.25);
+			// over the agent's right shoulder: plate beside the log, not on it (seat at the left third)
+			a.cameraLookAt("desk_" + id, bx + 2.0, FEET + 2.2, zd + 3.8, bx + 0.2, FEET + 1.8, zd + 0.25);
 		}
 		// between the bays: walnut cabinets with a desk lantern (light pools between the desks at
 		// night) and plants at the ends
@@ -1238,12 +1241,18 @@ public final class StudioHqBuilder implements HqBuilder {
 				p.setIfAir(x, roofY(RIDGE_Z) - 2, RIDGE_Z, St.light(10));
 			}
 		}
-		// hidden cove light above the pelmets: a warm wash on the sloped ceiling, no visible tube
+		// hidden cove light above the pelmets: a warm wash on the sloped ceiling. Invisible light
+		// blocks, not glow strips: a strip lying on the pelmet still shows its 2 px edge above the lip
+		// from across the hall (tried in game: a hairline along every wall, hq9_p6_hall.png)
 		for (int x = -HX + 1; x <= HX - 1; x += 2) {
 			p.setIfAir(x, FRIEZE, HZN + 1, St.light(12));
 			if (!octFoot(x - AX, HZS - AZ) && !fireplaceX(x)) {
 				p.setIfAir(x, FRIEZE, HZS - 1, St.light(12));
 			}
+		}
+		// ceiling lights along the ridge between the trusses (the glow panel's plaster frame + panes)
+		for (int x : new int[] {-19, -11, -7, -3, 3, 7, 11, 19}) {
+			p.set(x, roofY(RIDGE_Z) - 1, RIDGE_Z, GLOW_PANEL);
 		}
 		// invisible fill light (light blocks: no model, no collision) one block above the floor, kept
 		// low so the lanterns, screens and the fire make the pools of light at night
@@ -1272,6 +1281,6 @@ public final class StudioHqBuilder implements HqBuilder {
 		a.cameraLookAt("hall", 0.5, FEET + 2.2, HZS + 2.0, 0.5, FEET + 2.0, HZN);
 		// QA: the editing agent's desk in the showcase is Juniper's
 		int jx = DESK_X[Math.max(0, deskIds().indexOf("juniper"))];
-		a.cameraLookAt("agent_desk", jx + 2.6, FEET + 2.1, HZN + 4.6, jx + 0.5, FEET + 1.95, HZN + 1.25);
+		a.cameraLookAt("agent_desk", jx + 2.0, FEET + 2.2, HZN + 4.8, jx + 0.2, FEET + 1.8, HZN + 1.25);
 	}
 }
