@@ -150,7 +150,7 @@ public final class DiffFeature {
 
 	private static void registerDev() {
 		DevBridge.register("dev.diff", 10_000,
-			"{decisionId? | repoId?+worktree?, open?, fixture?, file?, scroll?, wrap?, syntax?, mode?: browse|feedback|confirm_reject, feedback?} ->"
+			"{decisionId? | repoId?+worktree?, open?, fixture?, file?, scroll?, wrap?, syntax?, mode?: browse|feedback|confirm_merge|confirm_reject, feedback?} ->"
 				+ " opens (or drives the open) diff review screen and returns its state; fixture:true shows a synthetic worst-case diff (QA)",
 			(req, mc) -> {
 				Fields f = Fields.of(req);
@@ -162,7 +162,11 @@ public final class DiffFeature {
 				String mode = f.has("mode") ? f.nonBlank("mode") : null;
 				String feedback = f.has("feedback") ? f.str("feedback") : null;
 				boolean fixture = f.optBool("fixture", false);
+				Boolean blur = f.has("blur") ? f.bool("blur") : null;
 				return DevBridge.onClient(mc, () -> {
+					if (blur != null) {
+						ReviewKit.blurBehind = blur;
+					}
 					DiffScreen.Target t = targetFrom(f);
 					Screen cur = mc.gui.screen();
 					DiffScreen screen;

@@ -160,7 +160,7 @@ public class MergeStationRenderer extends StationRenderer<MergeStationBlockEntit
 		s.name = ReviewKit.agentName(s.worker);
 		s.nameColor = ReviewKit.agentInk(s.worker);
 		s.taskId = t != null ? t.id() : d.worktree() == null ? "" : d.worktree();
-		s.title = t != null ? t.title() : d.question();
+		s.title = ReviewKit.plain(t != null ? t.title() : d.question());
 		if (w != null) {
 			s.adds = "+" + w.additions();
 			s.dels = "-" + w.deletions();
@@ -187,7 +187,7 @@ public class MergeStationRenderer extends StationRenderer<MergeStationBlockEntit
 		}
 		Font font = Minecraft.getInstance().font;
 		int h = s.empty ? EMPTY_H : CARD_H;
-		int w = s.empty ? 70 : CARD_W;
+		int w = s.empty ? Math.min(CARD_W, 17 + Math.max(font.width("All merged"), font.width("nothing waits")) + 7) : CARD_W;
 		int light = LightCoordsUtil.pack(Math.max(LightCoordsUtil.block(s.light), 11), LightCoordsUtil.sky(s.light));
 		ps.pushPose();
 		// north-facing model frame: the viewer stands at -Z; the card stands on the top face, leaning back

@@ -128,6 +128,36 @@ public final class MemoryIndex {
 		return out;
 	}
 
+	/**
+	 * Shelf order of a scope: the plan first, then the Foreman's order (creation order), so a note
+	 * keeps its place on the archive shelf when it is updated.
+	 */
+	public static List<MemoryEntry> shelf(@Nullable String scope) {
+		ForemanState s = Foreman.state();
+		if (s == null) {
+			return List.of();
+		}
+		if (s.revision() != shelfRevision) {
+			SHELVES.clear();
+			shelfRevision = s.revision();
+		}
+		return SHELVES.computeIfAbsent(scope == null ? "" : scope, k -> buildShelf(s, k));
+	}
+
+	private static final Map<String, List<MemoryEntry>> SHELVES = new java.util.HashMap<>();
+	private static long shelfRevision = -1;
+
+	private static List<MemoryEntry> buildShelf(ForemanState s, String scope) {
+		List<MemoryEntry> out = new ArrayList<>();
+		for (MemoryEntry e : s.memory().values()) {
+			if (scope.isEmpty() || scope.equals(e.scope())) {
+				out.add(e);
+			}
+		}
+		out.sort(Comparator.comparingInt((MemoryEntry e) -> isPlan(e) ? 0 : 1));
+		return List.copyOf(out);
+	}
+
 	/** Scopes that have entries: shared first, then agents in cast order, then anything else. */
 	public static List<String> scopes() {
 		refresh();

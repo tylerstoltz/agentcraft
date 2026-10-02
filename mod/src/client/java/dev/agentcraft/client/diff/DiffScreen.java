@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.agentcraft.client.diff.DiffDoc.FileInfo;
-import dev.agentcraft.client.diff.DiffDoc.Kind;
 import dev.agentcraft.client.diff.DiffDoc.Row;
 import dev.agentcraft.client.diff.ReviewKit.ButtonKind;
 import dev.agentcraft.client.foreman.Foreman;
@@ -34,14 +33,18 @@ import org.jspecify.annotations.Nullable;
 /**
  * Diff / merge review. Shows the structured diff of a worktree (from {@code diff.request}) as file
  * cards on paper: a file list with A/M/D badges and +/- counts, a unified diff with both line
- * numbers, hunk headers, tinted add/del rows and a syntax-ish tint, smooth scrolling and keyboard
- * navigation. Opened from a merge decision it answers it ({@code Merge} / {@code Request changes}
- * with feedback / {@code Reject} after a confirm). "Copy path" puts the selected file's absolute
- * path in the worktree on the clipboard (open it in your editor).
+ * numbers, hunk headers (with the unchanged lines they skip), tinted add/del rows, a syntax-ish
+ * tint, smooth scrolling and keyboard navigation. Opened from a merge decision it answers it:
+ * {@code Merge} (click, then "Confirm merge"; Ctrl+Enter merges at once), {@code Request changes}
+ * (with feedback text), {@code Reject} (after a confirm). "Copy path" puts the selected file's
+ * absolute path in the worktree on the clipboard (open it in your editor; Shift+c: the worktree).
+ * Text is ink with a syntax tint on the add/del row tints (more readable than coloured text; the
+ * ui-style colour-text variant is still one key away: t).
  *
  * <pre>
  * keys: j k / arrows scroll · space PgDn PgUp · g G Home End · n p Tab file · ] [ hunk · w wrap
- *       c copy path · r request changes · x reject · Ctrl+Enter merge · F5 refresh · Esc close
+ *       h l / Shift+wheel side-scroll (no wrap) · c copy path · r request changes · x reject
+ *       Ctrl+Enter merge · F5 / u refresh · t text colours · Esc close
  * </pre>
  */
 public final class DiffScreen extends Screen {
@@ -57,7 +60,7 @@ public final class DiffScreen extends Screen {
 	}
 
 	private enum Mode {
-		BROWSE, FEEDBACK, CONFIRM_REJECT, SENDING, DONE
+		BROWSE, FEEDBACK, CONFIRM_MERGE, CONFIRM_REJECT, SENDING, DONE
 	}
 
 	private record Btn(String id, int x, int y, int w, int h, boolean enabled, String tip) {
@@ -389,7 +392,7 @@ public final class DiffScreen extends Screen {
 		if (mode == Mode.DONE && System.currentTimeMillis() - doneAt > DONE_CLOSE_MS) {
 			onClose();
 		}
-		if (mode == Mode.CONFIRM_REJECT && System.currentTimeMillis() - rejectArmedAt > 6000) {
+		if ((mode == Mode.CONFIRM_REJECT || mode == Mode.CONFIRM_MERGE) && System.currentTimeMillis() - rejectArmedAt > 6000) {
 			mode = Mode.BROWSE;
 		}
 	}
@@ -402,6 +405,9 @@ public final class DiffScreen extends Screen {
 
 	@Override
 	public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float a) {
+		if (ReviewKit.blurBehind) {
+			extractBlurredBackground(g);
+		}
 		g.fill(0, 0, width, height, UiStyle.withAlpha(UiStyle.WALNUT, 0x7A));
 	}
 
@@ -472,7 +478,7 @@ public final class DiffScreen extends Screen {
 		} else {
 			String opt = d.answer() != null && d.answer().option() != null ? d.answer().option() : "Answered";
 			stateText = opt + (d.answer() != null ? " · " + ReviewKit.ago(d.answer().ts()) : "");
-			fam = "done";
+			fam = answerFamily(opt);
 		}
 		String idText = d != null ? d.id() : "";
 		if (!idText.isEmpty()) {
@@ -495,7 +501,7 @@ public final class DiffScreen extends Screen {
 			}
 			rx -= 6;
 		}
-		String title = t != null ? t.id() + "  " + t.title() : w != null ? w.branch() : target.worktree() == null ? "" : target.worktree();
+		String title = t != null ? t.id() + "  " + ReviewKit.plain(t.title()) : w != null ? w.branch() : target.worktree() == null ? "" : target.worktree();
 		g.text(font, TextUtil.ellipsize(font, title, rx - tx - 4), tx, iy + 3, ink, false);
 
 		// meta row: who, branch -> base, asked by, CI, stats
@@ -693,7 +699,7 @@ public final class DiffScreen extends Screen {
 				g.text(font, "NOTES", sideX + 2, ny, muted, false);
 				ny += 12;
 				for (Note note : notes) {
-					List<String> lines = TextUtil.wrapPlain(font, note.text(), sideW - 11);
+					List<String> lines = TextUtil.wrapPlain(font, ReviewKit.plain(note.text()), sideW - 11);
 					int room = (bottom - ny - 18) / 10;
 					if (room < 1) {
 						break;
@@ -1174,6 +1180,20 @@ public final class DiffScreen extends Screen {
 				button(g, "cancel", cancel, bx + sw + 4, y, kw, ButtonKind.NORMAL, true, mx, my, "Esc");
 				leftEnd = cx;
 			}
+			case CONFIRM_MERGE -> {
+				Worktree w = worktreeInfo();
+				String base = w != null ? w.base() : diff != null && diff.base() != null ? diff.base() : "the base branch";
+				String q = "Merge " + (target.worktree() == null ? "this branch" : target.worktree()) + " into " + base + "?";
+				String yes = "Confirm merge";
+				String no = "Cancel";
+				int yw = ReviewKit.buttonWidth(font, yes);
+				int nw = ReviewKit.buttonWidth(font, no);
+				button(g, "merge_confirm", yes, x, y, yw, ButtonKind.PRIMARY, load == Load.READY && !offline, mx, my, "Enter");
+				button(g, "cancel", no, x + yw + 4, y, nw, ButtonKind.NORMAL, true, mx, my, "Esc");
+				int qx = x + yw + nw + 12;
+				g.text(font, TextUtil.ellipsize(font, q, cx - 8 - qx), qx, y + 6, ReviewKit.ink(), false);
+				leftEnd = cx;
+			}
 			case CONFIRM_REJECT -> {
 				String q = "Reject abandons " + (target.worktree() == null ? "the branch" : target.worktree()) + ".";
 				String yes = "Reject branch";
@@ -1189,9 +1209,9 @@ public final class DiffScreen extends Screen {
 			case SENDING, DONE -> {
 				String msg = mode == Mode.SENDING ? "Sending \"" + sentOption + "\" to the Foreman" + TextUtil.ELLIPSIS
 					: doneText();
-				int c = mode == Mode.DONE ? UiStyle.color("paper.add_fg") : ReviewKit.muted();
+				int c = mode == Mode.DONE && Protocol.MERGE.equals(sentOption) ? UiStyle.color("paper.add_fg") : ReviewKit.muted();
 				if (mode == Mode.DONE) {
-					Panels.dot(g, "done", x, y + 6, false);
+					Panels.dot(g, answerFamily(sentOption), x, y + 6, false);
 					x += 11;
 				}
 				g.text(font, TextUtil.ellipsize(font, msg, cx - 8 - x), x, y + 6, c, false);
@@ -1259,6 +1279,14 @@ public final class DiffScreen extends Screen {
 		}
 	}
 
+	/** Dot family of an answer: merged = done, changes requested = thinking (work goes on), rejected = idle. */
+	private static String answerFamily(@Nullable String option) {
+		if (Protocol.MERGE.equals(option)) {
+			return "done";
+		}
+		return Protocol.REQUEST_CHANGES.equals(option) ? "thinking" : "idle";
+	}
+
 	private String doneText() {
 		String who = ReviewKit.agentName(worker());
 		if (Protocol.MERGE.equals(sentOption)) {
@@ -1300,7 +1328,12 @@ public final class DiffScreen extends Screen {
 
 	private void act(String id) {
 		switch (id) {
-			case "merge" -> send(Protocol.MERGE, null);
+			case "merge" -> {
+				// two steps like a merge button on a code host: a stray click never merges
+				mode = Mode.CONFIRM_MERGE;
+				rejectArmedAt = System.currentTimeMillis();
+			}
+			case "merge_confirm" -> send(Protocol.MERGE, null);
 			case "request" -> openFeedback("", true);
 			case "reject" -> {
 				mode = Mode.CONFIRM_REJECT;
@@ -1475,7 +1508,7 @@ public final class DiffScreen extends Screen {
 			return true;
 		}
 		if (e.isEscape()) {
-			if (mode == Mode.CONFIRM_REJECT) {
+			if (mode == Mode.CONFIRM_REJECT || mode == Mode.CONFIRM_MERGE) {
 				mode = Mode.BROWSE;
 			} else {
 				onClose();
@@ -1484,6 +1517,10 @@ public final class DiffScreen extends Screen {
 		}
 		boolean shift = e.hasShiftDown();
 		boolean ctrl = e.hasControlDown();
+		if (mode == Mode.CONFIRM_MERGE && (k == InputConstants.KEY_RETURN || k == InputConstants.KEY_NUMPADENTER)) {
+			act("merge_confirm");
+			return true;
+		}
 		if (mode == Mode.CONFIRM_REJECT && (k == InputConstants.KEY_X || k == InputConstants.KEY_RETURN)) {
 			act("reject_confirm");
 			return true;
@@ -1710,6 +1747,10 @@ public final class DiffScreen extends Screen {
 				}
 				case "confirm_reject" -> {
 					mode = Mode.CONFIRM_REJECT;
+					rejectArmedAt = System.currentTimeMillis();
+				}
+				case "confirm_merge" -> {
+					mode = Mode.CONFIRM_MERGE;
 					rejectArmedAt = System.currentTimeMillis();
 				}
 				default -> cancelMode();

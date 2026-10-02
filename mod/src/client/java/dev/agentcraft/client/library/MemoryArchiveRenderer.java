@@ -29,16 +29,15 @@ import org.jspecify.annotations.Nullable;
 /**
  * Memory archive BER: shelf labels on the board between the two shelves. A row of archives (same
  * facing, same binding = scope, side by side) is one shelf section: its first block (viewer's left)
- * carries a brass-rimmed plate with the scope and the number of notes (a clay dot while something
- * was written in the last minute); each further block labels one note, plan first then newest,
- * with an author-coloured tab. Right-click opens the library at that scope / note.
+ * carries a brass-rimmed plate with the scope and the number of notes; each further block labels
+ * one note (the plan first, then the order they were written) with an author-coloured tab. A quill
+ * marks notes you have not read yet in the library. Right-click opens the library at that scope / note.
  */
 public class MemoryArchiveRenderer extends StationRenderer<MemoryArchiveBlockEntity, MemoryArchiveRenderer.State> {
 	static final float PX_PER_BLOCK = 96f;
 	/** The board between the shelves is texel rows 7-8 of the 16 px front: 42..54 at 96 px per block. */
 	static final int LABEL_Y = 40;
 	static final int LABEL_H = 16;
-	static final long FRESH_MS = 60_000;
 	static final float LIFT = 0.0015f;
 
 	public static class State extends StationRenderState {
@@ -83,7 +82,7 @@ public class MemoryArchiveRenderer extends StationRenderer<MemoryArchiveBlockEnt
 
 	/** The note an archive block labels (null for the section's plate block or past the last note). */
 	public static @Nullable MemoryEntry entryAt(int index, String scope) {
-		List<MemoryEntry> list = MemoryIndex.entries(scope);
+		List<MemoryEntry> list = MemoryIndex.shelf(scope);
 		int i = index - 1;
 		return i >= 0 && i < list.size() ? list.get(i) : null;
 	}
@@ -104,7 +103,7 @@ public class MemoryArchiveRenderer extends StationRenderer<MemoryArchiveBlockEnt
 			s.label = scope.isEmpty() ? "Memory" : MemoryIndex.scopeLabel(scope);
 			int n = MemoryIndex.count(scope);
 			s.count = String.valueOf(n);
-			s.fresh = n > 0 && System.currentTimeMillis() - MemoryIndex.newest(scope) < FRESH_MS;
+			s.fresh = MemoryIndex.unread(scope) > 0;
 			return;
 		}
 		MemoryEntry e = entryAt(k, scope);
@@ -117,7 +116,7 @@ public class MemoryArchiveRenderer extends StationRenderer<MemoryArchiveBlockEnt
 		s.plan = MemoryIndex.isPlan(e);
 		String author = e.author() != null ? e.author() : e.scope();
 		s.tabColor = s.plan ? UiStyle.BRASS : ReviewKit.agentIdentity(author);
-		s.fresh = System.currentTimeMillis() - e.updated() < FRESH_MS;
+		s.fresh = MemoryIndex.isUnread(e);
 	}
 
 	@Override

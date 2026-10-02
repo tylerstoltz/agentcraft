@@ -26,6 +26,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ReviewKit {
 	private static final Map<String, Boolean> HAS_PORTRAIT = new HashMap<>();
+	/** Blur the world behind the review screens (vanilla menu blur) under their walnut wash. */
+	public static boolean blurBehind = true;
 
 	private ReviewKit() {
 	}
@@ -65,6 +67,14 @@ public final class ReviewKit {
 
 	public static int boldWidth(Font font, String s) {
 		return font.width(Component.literal(s).withStyle(Style.EMPTY.withBold(true)));
+	}
+
+	/** A one-line title without inline markdown marks (`code`, **bold**), for headers and cards. */
+	public static String plain(@Nullable String s) {
+		if (s == null) {
+			return "";
+		}
+		return s.replace("`", "").replace("**", "").replace("__", "");
 	}
 
 	/** Ellipsize from the left ("…/src/tags.ts"), for paths. */

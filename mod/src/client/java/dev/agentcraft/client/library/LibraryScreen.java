@@ -258,6 +258,9 @@ public final class LibraryScreen extends Screen {
 
 	@Override
 	public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float a) {
+		if (ReviewKit.blurBehind) {
+			extractBlurredBackground(g);
+		}
 		g.fill(0, 0, width, height, UiStyle.withAlpha(UiStyle.WALNUT, 0x7A));
 	}
 
@@ -343,7 +346,6 @@ public final class LibraryScreen extends Screen {
 			return;
 		}
 		g.enableScissor(x, top, x + w, top + h);
-		long now = System.currentTimeMillis();
 		for (int i = 0; i < entries.size(); i++) {
 			MemoryEntry e = entries.get(i);
 			int y = top + i * ROW_H - Math.round(listScroll);
@@ -490,7 +492,7 @@ public final class LibraryScreen extends Screen {
 			case REVIEW -> "thinking";
 			case DONE -> "done";
 			case BLOCKED -> "error";
-			case CANCELLED -> null;
+			case CANCELLED -> "cancelled";
 			default -> "idle";
 		};
 	}

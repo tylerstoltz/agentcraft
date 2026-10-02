@@ -506,7 +506,10 @@ final class MdLayout {
 				case SPRITE -> g.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, o.sprite, x, yy, o.w, o.h);
 				case TASKDOT -> {
 					String fam = status.family(o.taskId);
-					if (fam != null) {
+					if ("cancelled".equals(fam)) {
+						// cancelled: a faded idle dot (kept for history, like the task wall hides it)
+						g.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, Kit.dot("idle", false), x, yy, 7, 7, 0x60FFFFFF);
+					} else if (fam != null) {
 						g.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, Kit.dot(fam, false), x, yy, 7, 7);
 					}
 				}
