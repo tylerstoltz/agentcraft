@@ -39,6 +39,12 @@ export interface Backend {
   onUserMessage(to: string, text: string): void;
   /** After a decision was answered and its side effects (merge etc.) applied. */
   onDecisionSettled(d: Decision): void;
+  /**
+   * An approved merge conflicts with the base branch (another task merged first). Return true when
+   * the backend sent the task back to its worker to merge the base and resolve it; false (or no
+   * method) leaves the merge decision open with the reason, for Blendi to handle.
+   */
+  onMergeConflict?(task: Task, info: { base: string; branch: string; files: string[]; reason: string }): boolean;
   onTaskAction(task: Task, action: 'reassign' | 'cancel' | 'retry' | 'prioritize', arg?: string): void;
   onAgentAction(agentId: string, action: 'pause' | 'resume' | 'stop' | 'spawn', arg?: string): Promise<void> | void;
 }
@@ -396,6 +402,24 @@ export class Foreman {
           return;
         }
         const reason = e instanceof RepoError ? e.message : `merge failed: ${(e as Error).message}`;
+        if (e instanceof RepoError && e.code === 'conflict' && task?.assignee && d.repoId && d.worktree && this.backend?.onMergeConflict) {
+          // parallel tasks touched the same lines: the branch's worker merges the base and resolves
+          // it, then the task comes back through review with a fresh merge decision
+          const wt = this.repos.findWorktree(d.repoId, d.worktree);
+          const info = { base: wt?.base ?? 'main', branch: wt?.branch ?? d.worktree, files: e.files, reason };
+          let handled = false;
+          try {
+            handled = this.backend.onMergeConflict(task, info);
+          } catch (err) {
+            this.log.error(`backend.onMergeConflict: ${(err as Error).message}`);
+          }
+          if (handled) {
+            this.log.info(`merge for ${d.id} conflicts with ${info.base} (${e.files.join(', ')}): sent back to ${task.assignee}`);
+            this.bus.feed('merge', `${task.id} conflicts with ${info.base} in ${e.files.join(', ') || 'some files'}: ${this.nameOf(task.assignee)} merges ${info.base} and resolves it`, { agentId: task.assignee });
+            this.notify('info', `${task.id} conflicts with ${info.base}: sent back to ${this.nameOf(task.assignee)} to resolve`);
+            return;
+          }
+        }
         this.log.warn(`merge for ${d.id} refused: ${reason}`);
         const base = (d.context ?? '').replace(/\n*Merge refused: [\s\S]*$/, '');
         this.decisions.reopen(d.id, `${base}${base ? '\n\n' : ''}Merge refused: ${reason}`);

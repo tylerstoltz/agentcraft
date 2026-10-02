@@ -69,8 +69,9 @@ When an agent needs you, a clay "!" appears over its head, it walks to the podiu
 ## Safety model
 
 - Every worker gets its own git worktree on branch `agentcraft/<agent>/<task>`. Your checked-out
-  branch is only touched by a merge **you** approve. A merge is refused if your checkout is dirty
-  or the merge would conflict.
+  branch is only touched by a merge **you** approve. A merge is refused if your checkout is dirty. If it
+  would conflict (parallel tasks touched the same lines), the branch goes back to its worker, who
+  merges your branch into it and resolves the conflict; you then get a fresh merge review.
 - **Nothing ever pushes.** Agents have no git network access at all (blocked at the git level, not
   only by the permission policy), and the Foreman's own git calls run no repository hooks.
 - Reads and edits inside the worktree are auto-allowed. Anything else risky (writing outside the
@@ -82,7 +83,12 @@ When an agent needs you, a clay "!" appears over its head, it walks to the podiu
 
 The claude backend defaults to lead = Opus and workers = Sonnet at medium effort, with at most 3
 workers at once and a lead review per task. A small goal costs a few dollars. Cheaper:
-`-ForemanArgs '--model','sonnet','--effort','low'`. The `sim` backend costs nothing.
+`-ForemanArgs '--model','sonnet','--effort','low'`. Measured with that (and `'--workers','juniper,kit'`)
+on the demo repo: three two-task goals, including two merge conflicts the workers resolved, took
+2-10 minutes each and about $6 in total. The console header and `/status` show the running total.
+Pass `-ForemanArgs` from a PowerShell prompt (an array). Through `powershell -File` it arrives as one
+comma-joined string, which the Foreman now refuses as an unknown option rather than ignoring it.
+The `sim` backend costs nothing.
 
 ## Troubleshooting
 

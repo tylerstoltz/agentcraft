@@ -28,6 +28,8 @@ export class RepoError extends Error {
   constructor(
     message: string,
     readonly code: 'not_found' | 'not_git' | 'no_commits' | 'refused' | 'conflict' | 'dirty' | 'empty' | 'failed' = 'failed',
+    /** code 'conflict': the files that would conflict */
+    readonly files: string[] = [],
   ) {
     super(message);
     this.name = 'RepoError';
@@ -524,7 +526,7 @@ export class RepoManager {
   }
 
   /** Check a merge without performing it. */
-  async canMerge(repoId: string, worktreeId: string): Promise<{ ok: true } | { ok: false; reason: string; code: RepoError['code'] }> {
+  async canMerge(repoId: string, worktreeId: string): Promise<{ ok: true } | { ok: false; reason: string; code: RepoError['code']; files?: string[] }> {
     const r = this.require(repoId);
     const w = this.requireWorktree(repoId, worktreeId);
     if (w.status !== 'active') return { ok: false, reason: `worktree ${w.id} is ${w.status}`, code: 'refused' };
@@ -535,7 +537,7 @@ export class RepoManager {
     const mt = await git(r.path, ['merge-tree', '--write-tree', '--name-only', '--no-messages', w.base, w.branch], { allowFail: true });
     if (mt.code === 1) {
       const files = mt.stdout.trim().split('\n').slice(1).filter(Boolean);
-      return { ok: false, reason: `merge would conflict in: ${files.join(', ') || '(unknown files)'}`, code: 'conflict' };
+      return { ok: false, reason: `merge would conflict in: ${files.join(', ') || '(unknown files)'}`, code: 'conflict', files };
     }
     if (mt.code !== 0) return { ok: false, reason: `merge-tree failed: ${mt.stderr.trim()}`, code: 'failed' };
     return { ok: true };
@@ -568,7 +570,7 @@ export class RepoManager {
 
     // 2. safety checks: conflicts + dirty target checkout
     const check = await this.canMerge(r.id, w.id);
-    if (!check.ok) throw new RepoError(check.reason, check.code);
+    if (!check.ok) throw new RepoError(check.reason, check.code, check.files);
 
     // 3. build the merge commit off-tree, as Blendi (he approved it): his git identity, and
     //    signed if his git config signs commits (commit-tree ignores commit.gpgsign by itself)
