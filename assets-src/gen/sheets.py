@@ -199,7 +199,7 @@ OURS = [
     ("monitor_off", {"block": "agentcraft:monitor", "props": {"facing": "north", "lit": "false", "up": "false", "down": "false", "left": "false", "right": "false"}},
      ["monitor_screen_off", "monitor_screen_off_glint", "monitor_side"], "Monitor (off)", "smoked glass, one glint per pane"),
     ("task_board", {"block": "agentcraft:task_board", "props": {"facing": "north", "up": "false", "down": "false", "left": "false", "right": "false"}},
-     ["task_board_linen", "task_board_frame"], "Task Board", "linen panel, brass trim, connectable"),
+     ["task_board_surface", "task_board_frame"], "Task Board", "walnut pinboard, brass trim, connectable"),
     ("decision_podium_open", {"block": "agentcraft:decision_podium", "props": {"facing": "north", "open": "true"}},
      ["decision_podium_front_lit", "decision_podium_top_lit", "decision_podium_column"], "Decision Podium (open)", "desk glows, bell + lens lit"),
     ("decision_podium_closed", {"block": "agentcraft:decision_podium", "props": {"facing": "north", "open": "false"}},

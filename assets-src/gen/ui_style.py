@@ -45,6 +45,33 @@ MONITOR_RECIPES = {
     "diff_del": ("ramps.clay[3]", 5.5, "diff_del_bg"),
     "diff_ctx": ("ui.text_muted", 4.5, None),
 }
+MONITOR_RECIPES["attention"] = ("ramps.clay[2]", 5.5, None)   # "waiting for you" footer
+
+# The lit desk monitor is warm charcoal glass (chosen over the paper take by a side-by-side test in
+# game, see gen/blocks.py monitor_textures): the BER draws a soft top glow (top -> bg) with the
+# block texture's scanlines, and the log in light tones nudged toward cream until they reach their
+# minimum contrast on every tone of the glass.
+MDARK_TOP = pal_hex("ramps.screen_glow[1]")
+MDARK_BG = pal_hex("ramps.screen_glow[2]")      # = monitor_screen_on even rows
+MDARK_SCAN = pal_hex("ramps.screen_glow[3]")    # odd rows (scanlines)
+MDARK_ROW_BG = {
+    "diff_add_bg": rgba2hex(mix(hex2rgba(MDARK_BG), hex2rgba(pal_hex("ramps.sage[3]")), 0.45)),
+    "diff_del_bg": rgba2hex(mix(hex2rgba(MDARK_BG), hex2rgba(pal_hex("ramps.clay[3]")), 0.40)),
+}
+MDARK_RECIPES = {
+    "text": ("ramps.screen_on[1]", 9.0, None),       # paper-coloured prose on the glass
+    "muted": ("ramps.stone[2]", 4.5, None),
+    "tool": ("ramps.brass[1]", 6.0, None),
+    "tool_arg": ("ramps.screen_on[1]", 9.0, None),
+    "result": ("ramps.sage[0]", 5.5, None),
+    "error": ("status_ramps.error[0]", 5.5, None),
+    "path": ("ramps.oak[1]", 5.5, None),
+    "diff_hunk": ("ramps.teal[0]", 5.5, None),
+    "diff_add": ("ramps.sage[0]", 5.5, "diff_add_bg"),
+    "diff_del": ("status_ramps.waiting[0]", 5.5, "diff_del_bg"),
+    "diff_ctx": ("ramps.stone[2]", 4.5, None),
+    "attention": ("status_ramps.waiting[0]", 5.5, None),
+}
 PAPER_ROW_BG = {
     "add_bg": _blend("ui.panel", "ramps.sage[0]", 0.5),
     "del_bg": _blend("ui.panel", "ramps.clay[0]", 0.3),
@@ -87,6 +114,24 @@ def build():
     for k, (src, ratio, bgk) in MONITOR_RECIPES.items():
         bgs = [MONITOR_ROW_BG[bgk]] if bgk else [MONITOR_BG, MONITOR_SCAN]
         contrast_table[k] = round(min(contrast(monitor[k], b) for b in bgs), 1)
+    glass = [MDARK_TOP, MDARK_BG, MDARK_SCAN]
+    mdark = {"bg_top": MDARK_TOP, "bg": MDARK_BG, "scanline": MDARK_SCAN, "header_bg": MDARK_TOP,
+             "rule": pal_hex("ramps.screen_glow[0]"), "badge_bg": pal_hex("ui.panel"), "badge_text": pal_hex("ui.text")}
+    mdark.update(_derive(MDARK_RECIPES, MDARK_ROW_BG, glass, LIFT))
+    mdark.update(MDARK_ROW_BG)
+    mdark["caret"] = mdark["text"]
+    mdark_contrast = {}
+    for k, (src, ratio, bgk) in MDARK_RECIPES.items():
+        bgs = [MDARK_ROW_BG[bgk]] if bgk else glass
+        mdark_contrast[k] = round(min(contrast(mdark[k], b) for b in bgs), 1)
+    cast_agents = json.load(open(ROOT / "cast.json", encoding="utf-8"))["agents"]
+    mdark_names = round(min(contrast(a["text_on_dark"], b) for a in cast_agents for b in glass), 2)
+    if mdark_names < 4.5:
+        raise SystemExit(f"agent text_on_dark only reaches {mdark_names}:1 on the dark monitor glass")
+    # Task Wall (in-world kanban on the walnut pinboard, gen/blocks.py pinboard): brass hairlines
+    # between the columns, paper column labels, a quiet paper "+N more" chip.
+    board = {"rule": pal_hex("colors.brass"), "label": pal_hex("ui.panel"), "chip": pal_hex("ui.inset"),
+             "chip_edge": pal_hex("ui.edge")}
     paper_contrast = {}
     for k, (src, ratio, bgk) in PAPER_RECIPES.items():
         if bgk:
@@ -102,11 +147,14 @@ def build():
     data = {
         "version": 1,
         "monitor": monitor,
+        "monitor_dark": mdark,
+        "board": board,
         "paper": paper,
         "status": PALETTE["status"],
         "agents": {a["id"]: {"color": a["color"], "text_on_dark": a["text_on_dark"], "text_on_light": a["text_on_light"]}
                    for a in cast},
         "contrast": contrast_table,
+        "monitor_dark_contrast": dict(mdark_contrast, agent_names_min=mdark_names),
         "paper_contrast": paper_contrast,
         "ink_ui": ink_ui,
         "ink_ui_contrast": ink_contrast,
@@ -115,8 +163,10 @@ def build():
                           "min_text_on_dark": cast_doc["checks"]["min_contrast_text_on_dark"],
                           "min_text_on_light": cast_doc["checks"]["min_contrast_text_on_light"]},
         "metrics": {
-            "monitor_font_px_per_block": {"desk": 96, "wall": 64},
-            "monitor_line_height": 10, "monitor_pad_left": 6, "monitor_pad_top": 5,
+            "monitor_font_px_per_block": {"desk": 96, "desk_one_high": 128, "wall": 64},
+            "monitor_line_height": 10, "monitor_pad_side_blocks": 0.09, "monitor_pad_top": 5,
+            "board_px_per_block": {"up_to_3_high": 64, "4_high": 72, "taller_board_px": 320},
+            "board_light_floor": 10,
             "gui_panel_padding": 8, "gui_gap": 4, "button_height": 20, "field_height": 18,
             "card_min": [60, 40], "pulse_ms": 1200, "caret_blink_ms": 500,
         },
@@ -130,6 +180,23 @@ def build():
 
 def write_md(d):
     m, p, c, pc = d["monitor"], d["paper"], d["contrast"], d["paper_contrast"]
+    md_, mc = d["monitor_dark"], d["monitor_dark_contrast"]
+    drows = "\n".join(
+        f"| `{k}` | `{md_[k]}` | {('on `' + md_[k + '_bg'] + '`') if (k + '_bg') in md_ else 'on glass'} | {mc[k]}:1 | {use} |"
+        for k, use in [
+            ("text", "assistant prose, plans, replies (paper-coloured)"),
+            ("muted", "activity, unchanged diff context, '+3 more'"),
+            ("tool", "tool-call line: 12px kit icon + tool name (`Read`, `Edit`, `$`...)"),
+            ("tool_arg", "the tool's argument after the name (path, command)"),
+            ("result", "tool results, passing tests, success summaries"),
+            ("error", "errors, failing tests, warnings, permission denials"),
+            ("path", "file paths when shown on their own (diff file line)"),
+            ("diff_hunk", "`@@ -a,b +c,d @@` hunk headers"),
+            ("diff_add", "added lines (`+`), full-width tinted row"),
+            ("diff_del", "removed lines (`-`), full-width tinted row"),
+            ("diff_ctx", "diff context lines"),
+            ("attention", "'Waiting for you' footer (pulses)"),
+        ])
     rows = "\n".join(
         f"| `{k}` | `{m[k]}` | {('on `' + m[k + '_bg'] + '`') if (k + '_bg') in m else 'on screen'} | {c[k]}:1 | {use} |"
         for k, use in [
@@ -158,29 +225,42 @@ def write_md(d):
 Generated by `gen/ui_style.py` (edit the tokens there, not this file). Tokens ship to the mod as
 `assets/agentcraft/gui/ui-style.json`; GUI sprites are documented in `assets/agentcraft/gui/kit.json`.
 
-Two surfaces, never mixed on one panel:
+Three surfaces, never mixed on one panel:
 
-- **Paper** (every GUI screen, and every lit screen in the world): matte cream panels, ink text, *no*
-  text shadow, thin brass for emphasis, clay for the one primary action. Never the default grey
-  Minecraft GUI. Lit monitors and the console terminal are warm e-ink paper `{m['bg']}` with faint
-  scanlines (`{m['scanline']}` every other texel row), rendered full-bright (`light_emission: 15` on the
-  screen face): brighter than the plaster around them by day, a soft glow at night, and the opposite of
-  the unlit `monitor_screen_off` smoked glass, so on/off reads from across the room even when a screen is
-  empty. Ink text, colour only where it carries meaning.
+- **Paper** (every GUI screen, the Task Wall cards and the console terminal's screen): matte cream
+  panels, ink text, *no* text shadow, thin brass for emphasis, clay for the one primary action. Never the
+  default grey Minecraft GUI. The console terminal is warm e-ink paper `{m['bg']}` with faint scanlines
+  (`{m['scanline']}`), full-bright. Ink text, colour only where it carries meaning.
+- **Glass** (lit desk monitors): warm charcoal glass `{md_['bg']}` with a soft top glow (`{md_['bg_top']}`) and
+  faint scanlines (`{md_['scanline']}` every other texel row), rendered full-bright, log text in light tones.
+  This replaced the first take (paper monitors) after a side-by-side test in game: lit paper screens read
+  as framed notes or plaster at mid distance, the glass with glowing cream text reads as a screen. The
+  unlit `monitor_screen_off` smoked glass is cooler and carries no text, so on/off still reads.
 - **Ink** (tooltips, nameplates, HUD, the console input bar): translucent or solid ink with cream text.
 
 ## 1. Monitor text (in-world)
 
 **Font and scale.** Vanilla font, unshadowed. One font pixel = 1/{d['metrics']['monitor_font_px_per_block']['desk']} block on
-desk monitors (about 10 lines per block row, legible from the desk chair) and 1/{d['metrics']['monitor_font_px_per_block']['wall']} block on wall
-screens read from across a room. Line height {d['metrics']['monitor_line_height']} font px, left padding {d['metrics']['monitor_pad_left']}, top padding {d['metrics']['monitor_pad_top']}.
+desk monitors at least 2 blocks high and wide, 1/{d['metrics']['monitor_font_px_per_block']['desk_one_high']} on 1-block-high (or wide) ones (so a tail
+of 7 rows fits), and 1/{d['metrics']['monitor_font_px_per_block']['wall']} block on wall screens read from across a room. Line height
+{d['metrics']['monitor_line_height']} font px (tool lines 13, for the 12 px icon), top padding {d['metrics']['monitor_pad_top']}, side padding
+{d['metrics']['monitor_pad_side_blocks']} block (12 px at 128 px/block, 9 at 96): the brass lip stands 1/16 block in front of the
+glass, so text closer to the bezel disappears behind it at oblique views (a desk camera looking at the neighbours).
 The 2 px walnut bezel and brass lip come from the block model, so do not draw a border in the renderer.
 
-**Header line.** Agent name in the agent's `text_on_light` colour (the screen is paper), then the state dot
-(`kit/dot_<state>`, 7 px), then the activity in `muted` (`editing auth/session.ts`). A 1 px rule in
-`{m['rule']}` underneath.
+**Header line.** The state dot (`kit/dot_<state>`, 7 px; waiting pulses its halo), the agent name in the
+agent's `text_on_dark` colour (worst case {mc['agent_names_min']}:1 on the glass), the activity in `muted`
+(`editing auth/session.ts`; on a second line when the screen is narrow), the task id right-aligned. A 1 px
+rule in `{md_['rule']}` underneath.
 
-**Log kinds.** Contrast is WCAG ratio against the actual background (computed, not eyeballed):
+**Log kinds on the glass** (`monitor_dark.*`). Contrast is the WCAG ratio against the worst tone of the glass
+(computed, not eyeballed):
+
+| kind | colour | background | contrast | use |
+|---|---|---|---|---|
+{drows}
+
+Paper monitor tokens (`monitor.*`, the first take; still shipped, e.g. for paper-screen variants):
 
 | kind | colour | background | contrast | use |
 |---|---|---|---|---|
@@ -190,11 +270,29 @@ Rules:
 - Draw the text full-bright like the screen face (`LightCoordsUtil.FULL_BRIGHT`, 15728880) and with
   `Font.DisplayMode.POLYGON_OFFSET`, unshadowed, so it never dims at night and never z-fights the screen face.
 - Newest line at the bottom, auto-scroll; when the log is longer than the screen, fade the top line to 50 % alpha.
-- Truncate long lines with `...`; never wrap a tool line, do wrap prose.
+- Truncate long lines with `...`; never wrap a tool line, do wrap prose. On narrow screens long snake_case
+  tool names shorten (`request_merge` -> `merge`, `create_task` -> `new task`) so the argument still shows.
+- Prose drops markdown markup the screen cannot show (`` `code` ``, `**bold**`, `# heading`).
 - Diff rows: tint the full row background (`diff_add_bg` / `diff_del_bg`) and keep the `+`/`-` sigil in the text colour,
   so the diff reads at a distance even when individual characters do not.
 - Never pure white, pure black, or vanilla `§` formatting colours. Identity colours only for agent names.
 - The idle screen (no agent) uses `monitor_screen_off` (lit=false); a screen that is "on" but empty shows only the header.
+- States: a blinking `caret` block at the bottom while the agent works or thinks; `attention` "Waiting for you"
+  when it waits on the user ("Needs you" on narrow screens); "Off shift" centred when the agent is off shift;
+  before the Foreman was ever reached, the agent's name stays in the header and the centre says
+  "Foreman not running" (the HUD pill's wording); when the link is lost the last known log stays, dimmed,
+  under a paper "Foreman offline" badge (`badge_bg` / `badge_text`; "Offline" on 1-block screens).
+
+**Task Wall** (`board.*`, cards on the walnut pinboard `task_board_surface`; 64 px per block up to 3 blocks
+high, 72 on a 4-high wall, then ~{d['metrics']['board_px_per_block']['taller_board_px']} px of board height): columns Todo / Doing / Review / Done split by 1 px
+`{d['board']['rule']}` brass rules, a paper label per column (`{d['board']['label']}`) with a 2 px underline in the column's
+status colour and the count (a red dot when the column holds blocked cards). Column widths follow the content:
+an empty column is a slim lane, a crowded one borrows width. Kit `card_<status>` cards (blocked = `card_blocked`,
+at the top of the column where the task stalled, the reason in the footer) come in three sizes: full (title 1-3
+lines, face + name, one hint), brief (title, 2 lines) and compact (1 line); a column steps down through them
+before the tail collapses into a `{d['board']['chip']}` "+N more" chip. The board was cream linen in the first take;
+cream cards on it had too little contrast from across the room (side-by-side test in game). Cards take the
+room's light with a block-light floor of {d['metrics']['board_light_floor']} (12 made the wall look backlit at night).
 
 ## 2. Paper GUI text
 

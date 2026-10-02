@@ -137,7 +137,7 @@ the quads end up. Non-cube shapes still need `noOcclusion()`. Suggested luminanc
 | block id | properties | render layer (auto) | luminance | shape | notes |
 |---|---|---|---|---|---|
 | `agentcraft:monitor` | `facing=north\|east\|south\|west, lit=bool, up\|down\|left\|right=bool` | solid | lit ? 7 : 0 | thin panel (back 4 px), nonOpaque | Connectable screen. up/down/left/right = true when the neighbour on that side (as seen by a viewer looking at the screen) is a monitor with the same facing; the bezel on that side is then omitted, so NxM monitors read as one screen. left = facing.getClockWise(), right = facing.getCounterClockWise(). Screen surface is the plane z = 12/16 from the front of a north-facing model (recessed 1 px behind the 2 px bezel); draw text there in the BER, inside the bezel (2 px inset on unconnected sides). |
-| `agentcraft:task_board` | `facing, up\|down\|left\|right=bool` | solid | 0 | thin panel (back 2 px), nonOpaque | Task Wall surface; same connection rules as monitor. Cards are drawn by the BER on the plane z = 14/16 (just proud of the linen). |
+| `agentcraft:task_board` | `facing, up\|down\|left\|right=bool` | solid | 0 | thin panel (back 2 px), nonOpaque | Task Wall surface (walnut pinboard); same connection rules as monitor. Cards are drawn by the BER on the plane z = 14/16 (just proud of the board). |
 | `agentcraft:decision_podium` | `facing, open=bool` | solid + cutout (auto) | open ? 9 : 0 | lectern-like, nonOpaque | Front (emblem) faces the player who placed it (vanilla lectern rule). open=true lights the desk paper, the clay lens and the desk bell. |
 | `agentcraft:memory_archive` | `facing` | solid | 0 | full cube | Library shelf: books + archive boxes. |
 | `agentcraft:memory_catalog` | `facing` | solid | 0 | full cube | Card-index drawers (memory index). |
@@ -494,9 +494,9 @@ fixed-size and drawn at their own size. 1 texel = 1 GUI px. Full manifest with c
 | `models/block/monitor_edge_right.json` | connectable bezel/trim edge (omitted when connected on that side) |
 | `models/block/monitor_edge_up.json` | connectable bezel/trim edge (omitted when connected on that side) |
 | `models/block/monitor_inventory.json` | merged model for the item (panel + all bezels) |
-| `models/block/monitor_panel_off.json` | connectable panel body (screen/linen + back + sides) |
-| `models/block/monitor_panel_off_glint.json` | connectable panel body (screen/linen + back + sides) |
-| `models/block/monitor_panel_on.json` | connectable panel body (screen/linen + back + sides) |
+| `models/block/monitor_panel_off.json` | connectable panel body (screen/board surface + back + sides) |
+| `models/block/monitor_panel_off_glint.json` | connectable panel body (screen/board surface + back + sides) |
+| `models/block/monitor_panel_on.json` | connectable panel body (screen/board surface + back + sides) |
 | `models/block/oak_parquet.json` | block model |
 | `models/block/plaster_frame.json` | block model |
 | `models/block/plaster_panel.json` | block model |
@@ -524,7 +524,7 @@ fixed-size and drawn at their own size. 1 texel = 1 GUI px. Full manifest with c
 | `models/block/task_board_edge_right.json` | connectable bezel/trim edge (omitted when connected on that side) |
 | `models/block/task_board_edge_up.json` | connectable bezel/trim edge (omitted when connected on that side) |
 | `models/block/task_board_inventory.json` | merged model for the item (panel + all bezels) |
-| `models/block/task_board_panel_default.json` | connectable panel body (screen/linen + back + sides) |
+| `models/block/task_board_panel_default.json` | connectable panel body (screen/board surface + back + sides) |
 | `models/block/terracotta_tile.json` | block model |
 | `models/block/walnut_panel.json` | block model |
 | `models/block/walnut_trim.json` | block model |
@@ -588,7 +588,7 @@ fixed-size and drawn at their own size. 1 texel = 1 GUI px. Full manifest with c
 | `textures/block/status_lamp_working_emissive.png` | emissive overlay (cutout, used by a light_emission=15 element) |
 | `textures/block/task_board_back.png` | task board part texture |
 | `textures/block/task_board_frame.png` | task board part texture |
-| `textures/block/task_board_linen.png` | task board part texture |
+| `textures/block/task_board_surface.png` | task board part texture |
 | `textures/block/terracotta_tile.png` | block texture |
 | `textures/block/walnut_panel.png` | block texture |
 | `textures/block/walnut_trim.png` | block texture |
