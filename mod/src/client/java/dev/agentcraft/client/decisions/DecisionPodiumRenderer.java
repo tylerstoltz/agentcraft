@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
 public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockEntity, DecisionPodiumRenderer.State> {
 	/** Bubble pixel scale relative to vanilla name tags (1/40 block per px): 1/72 block per px. */
 	private static final float SCALE = 40f / 72f;
-	private static final int W = 156;
+	private static final int W = 172;
 	private static final float TAIL_TIP_Y = 1.32f;
 	private static final float GROW_FROM = 6f;
 	private static final float GROW_MAX = 2.2f;
@@ -111,11 +111,12 @@ public class DecisionPodiumRenderer extends StationRenderer<DecisionPodiumBlockE
 			String kind = " · " + DecisionQueue.kindLabel(d.kind());
 			int inner = W - 16;
 			List<FormattedCharSequence> wrapped = TextUtil.wrap(font, UiBits.oneLine(d.question()), inner);
-			List<FormattedCharSequence> lines = new ArrayList<>(wrapped.subList(0, Math.min(2, wrapped.size())));
-			if (wrapped.size() > 2) {
-				// ellipsize the second line
-				String second = TextUtil.wrapPlain(font, UiBits.oneLine(d.question()), inner).get(1);
-				lines.set(1, Component.literal(TextUtil.ellipsize(font, second + " …", inner)).getVisualOrderText());
+			// the whole question, wrapped to 3 lines (only a longer one is cut, on its third line)
+			List<FormattedCharSequence> lines = new ArrayList<>(wrapped.subList(0, Math.min(3, wrapped.size())));
+			if (wrapped.size() > 3) {
+				List<String> plain = TextUtil.wrapPlain(font, UiBits.oneLine(d.question()), inner);
+				String third = String.join(" ", plain.subList(2, plain.size()));
+				lines.set(2, Component.literal(TextUtil.ellipsize(font, third, inner)).getVisualOrderText());
 			}
 			c = new Cache(s.foremanRevision, d.id(), s.count, header, Component.literal(name).getVisualOrderText(), Component.literal(kind)
 				.getVisualOrderText(), font.width(name), List.copyOf(lines), W);

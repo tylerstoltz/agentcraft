@@ -5,6 +5,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -42,7 +43,8 @@ public final class Nameplate {
 
 	/** A laid-out plate (pixel units). {@code compact}: name only. */
 	public record Data(String name, int nameColor, String family, String activity, boolean stale, boolean paused, boolean compact,
-		FormattedCharSequence nameSeq, FormattedCharSequence activitySeq, int width, int height, int innerWidth, int row1Width, int row2Width) {
+		FormattedCharSequence nameSeq, FormattedCharSequence activitySeq, int width, int height, int innerWidth, int row1Width, int row2Width,
+		FormattedCharSequence activitySeq2, int row3Width) {
 		boolean sameText(String n, int c, String f, String a, boolean s, boolean p) {
 			return name.equals(n) && nameColor == c && family.equals(f) && activity.equals(a) && stale == s && paused == p;
 		}
@@ -82,14 +84,26 @@ public final class Nameplate {
 	private static Data layout(AgentView v, String fam, String act, boolean compact) {
 		Font font = Minecraft.getInstance().font;
 		Kit.Padding pad = Kit.padding("nameplate");
-		String activity = compact ? "" : TextUtil.ellipsize(font, act, MAX_ACTIVITY_PX);
+		// the activity wraps to a second line before it is ever cut ("outlining the Tags docs");
+		// a question waiting for you is shown in full by the podium bubble, so the plate just says so
+		String shown = act.startsWith("asking you") ? "question for you" : act.replace("`", "");
+		String activity = "";
+		String activity2 = "";
+		if (!compact && !shown.isEmpty()) {
+			List<String> wrapped = TextUtil.wrapPlain(font, shown, MAX_ACTIVITY_PX);
+			activity = wrapped.get(0);
+			if (wrapped.size() > 1) {
+				activity2 = TextUtil.ellipsize(font, String.join(" ", wrapped.subList(1, wrapped.size())), MAX_ACTIVITY_PX);
+			}
+		}
 		int row1 = DOT + GAP + font.width(v.name);
 		int row2 = activity.isEmpty() ? 0 : font.width(activity);
-		int innerW = Math.max(row1, row2);
+		int row3 = activity2.isEmpty() ? 0 : font.width(activity2);
+		int innerW = Math.max(row1, Math.max(row2, row3));
 		int w = innerW + pad.left() + pad.right() + 2;
-		int h = pad.top() + 9 + (activity.isEmpty() ? 0 : 10) + pad.bottom() + 1;
+		int h = pad.top() + 9 + (activity.isEmpty() ? 0 : 10) + (activity2.isEmpty() ? 0 : 10) + pad.bottom() + 1;
 		return new Data(v.name, v.nameColor, fam, act, v.stale, v.showsPaused(), compact, Component.literal(v.name).getVisualOrderText(),
-			Component.literal(activity).getVisualOrderText(), w, h, innerW, row1, row2);
+			Component.literal(activity).getVisualOrderText(), w, h, innerW, row1, row2, Component.literal(activity2).getVisualOrderText(), row3);
 	}
 
 	/** World size factor for a plate at this camera distance (blocks). */
@@ -163,6 +177,10 @@ public final class Nameplate {
 			int actColor = d.stale() ? UiStyle.color("ink_ui.ghost", 0xFF857D71) : UiStyle.color("ink_ui.activity", 0xFFC4BDB2);
 			WorldUi.submitText(poseStack, collector, d.activitySeq(), x0 + pad.left() + 1 + (d.innerWidth() - d.row2Width()) / 2f, ty + 10, actColor,
 				light);
+			if (d.row3Width() > 0) {
+				WorldUi.submitText(poseStack, collector, d.activitySeq2(), x0 + pad.left() + 1 + (d.innerWidth() - d.row3Width()) / 2f, ty + 20,
+					actColor, light);
+			}
 		}
 		poseStack.popPose();
 	}

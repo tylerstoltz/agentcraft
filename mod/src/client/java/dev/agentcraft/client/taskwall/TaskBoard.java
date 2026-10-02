@@ -8,6 +8,7 @@ import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.monitor.DisplayDraw;
 import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.StatusMap;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
@@ -103,6 +104,10 @@ final class TaskBoard {
 		boolean placed;
 		int count;
 		int blocked;
+		/** Open cards in this column that wait on the user (pulsing clay). */
+		int needYou;
+		FormattedCharSequence blockedSeq = FormattedCharSequence.EMPTY;
+		float blockedW;
 		int perRow = 1;
 		FormattedCharSequence label = FormattedCharSequence.EMPTY;
 		FormattedCharSequence countSeq = FormattedCharSequence.EMPTY;
@@ -140,6 +145,10 @@ final class TaskBoard {
 		/** A long hint (blocked reason) on a card without assignee reads from the left, like the title. */
 		boolean hintLeft;
 		@Nullable String dot;
+		/** Blocked reason wrapped under the title (when it does not fit the footer), error colour. */
+		final List<FormattedCharSequence> reason = new ArrayList<>(2);
+		/** The card waits on the user: a pulsing clay ring around it. */
+		boolean needsYou;
 
 		boolean fits(float cw, float ch) {
 			return w <= cw + 0.75f && h <= ch + 0.75f;
@@ -353,7 +362,9 @@ final class TaskBoard {
 		if (densityOverride > 0) {
 			return densityOverride;
 		}
-		return h <= 3 ? 64 : h == 4 ? 72 : Math.max(40, Math.round(320f / h));
+		// 62 on the HQ's 7x4 wall: the columns fill the board with larger cards (72 left the bottom
+		// half of every column empty; 54 squeezed Todo into one-line cards)
+		return h <= 3 ? 64 : h == 4 ? 62 : Math.max(40, Math.round(320f / h));
 	}
 
 	/** Dev A/B: force a pixel density on every board (0 = the rule above); {@code dev.taskwall {ppb}}. */
@@ -493,26 +504,37 @@ final class TaskBoard {
 			}
 			col.count = ts.size();
 			col.blocked = 0;
+			col.needYou = 0;
 			col.hidden.clear();
 			col.chip = null;
 			for (Task t : ts) {
 				if (t.status() == TaskStatus.BLOCKED) {
 					col.blocked++;
 				}
+				if (StatusMap.needsYou(s, t)) {
+					col.needYou++;
+				}
 			}
 			col.family = listMode ? "working" : switch (col.col) {
 				case TODO -> "idle";
 				case DOING -> "working";
-				case REVIEW -> "thinking";
+				case REVIEW -> col.needYou > 0 ? "waiting" : "thinking";
 				case DONE -> "done";
 			};
 			String label = listMode ? "TASKS" : col.col.label.toUpperCase(Locale.ROOT);
 			String cs = Integer.toString(col.count);
-			if (font.width(label) + font.width(cs) + (col.blocked > 0 ? 12 : 0) + 12 > col.w) {
+			// an explicit "1 blocked" chip (not a red dot next to the count, which read as "4 blocked")
+			String bl = col.blocked > 0 ? col.blocked + " blocked" : "";
+			if (!bl.isEmpty() && font.width(label) + font.width(cs) + font.width(bl) + 24 > col.w) {
+				bl = col.blocked + "!";
+			}
+			if (font.width(label) + font.width(cs) + (bl.isEmpty() ? 0 : font.width(bl) + 12) + 12 > col.w) {
 				// tiny board: the count says it all
 				label = cs + (listMode ? " tasks" : "");
 				cs = "";
 			}
+			col.blockedSeq = seq(bl);
+			col.blockedW = font.width(bl);
 			col.label = seq(label);
 			col.countSeq = seq(cs);
 			col.countW = font.width(cs);
@@ -793,9 +815,30 @@ final class TaskBoard {
 			Task t = ts.get(i);
 			Title ti = titles.get(t.id());
 			int l = ti == null ? 1 : ti.lines(t.assignee() != null ? w[0] : w[1], w[1], maxL);
-			lines = Math.max(lines, Math.min(maxL, l));
+			lines = Math.max(lines, Math.min(maxL, l) + reasonLines(t, w[1]).size());
 		}
 		return fullH(lines);
+	}
+
+	/**
+	 * A blocked card's reason when it is too long for the footer: wrapped to at most 2 lines under
+	 * the title (the footer then shows who and the id), so "needs Blendi's npm token" is never cut.
+	 */
+	static List<String> reasonLines(Task t, int inner) {
+		if (t.status() != TaskStatus.BLOCKED || t.blockedReason() == null) {
+			return List.of();
+		}
+		String reason = t.blockedReason().replace("`", "").strip();
+		Font font = Minecraft.getInstance().font;
+		int foot = inner - (t.assignee() != null ? 10 + font.width(t.assignee()) + 4 : 0);
+		if (reason.isEmpty() || font.width(reason) <= foot) {
+			return List.of();
+		}
+		List<String> out = TextUtil.wrapPlain(font, reason, inner);
+		if (out.size() > 2) {
+			out = List.of(out.get(0), TextUtil.ellipsize(font, out.get(1) + " " + String.join(" ", out.subList(2, out.size())), inner));
+		}
+		return out;
 	}
 
 	/** Title line widths for a card: {first line (status dot room), other lines}. */
@@ -849,11 +892,16 @@ final class TaskBoard {
 			o.face = face ? portrait(assignee) : null;
 			return o;
 		}
-		int lines = Math.max(1, Math.min(c.maxLines, Math.round((c.th - fullH(0)) / (float) LINE)));
+		List<String> reason = reasonLines(t, inner);
+		int lines = Math.max(1, Math.min(c.maxLines, Math.round((c.th - fullH(0)) / (float) LINE) - reason.size()));
 		int w1 = assignee != null ? inner - DOT_ROOM : inner;
 		for (String l : ti.text.isEmpty() ? List.of(t.id()) : ti.wrap(font, w1, inner, lines)) {
 			o.lines.add(seq(l));
 		}
+		for (String l : reason) {
+			o.reason.add(seq(l));
+		}
+		o.needsYou = StatusMap.needsYou(s, t);
 		// assignee: face + name, and their live state dot top-right while they work on this very card
 		float footerLeft = 0;
 		String nameText = null;
@@ -864,6 +912,11 @@ final class TaskBoard {
 			if (!done && a != null && a.isActive() && t.id().equals(a.taskId())) {
 				o.dot = a.state().family();
 			}
+		}
+		if (o.needsYou) {
+			o.dot = "waiting"; // one mapping everywhere (StatusMap): waits on you = clay, pulsing
+		} else if (t.status() == TaskStatus.REVIEW) {
+			o.dot = StatusMap.task(s, t);
 		}
 		// footer hint (right): the most useful single fact
 		String hint;
@@ -877,10 +930,16 @@ final class TaskBoard {
 				}
 			}
 		}
-		if (blocked) {
-			String reason = t.blockedReason() == null ? "" : t.blockedReason().replace("`", "").strip();
-			hint = reason.isEmpty() ? "blocked" : reason;
+		String yours = StatusMap.needsYouLabel(s, t);
+		if (blocked && !reason.isEmpty()) {
+			hint = t.id(); // the reason has its own lines above the footer
+		} else if (blocked) {
+			String why = t.blockedReason() == null ? "" : t.blockedReason().replace("`", "").strip();
+			hint = why.isEmpty() ? "blocked" : why;
 			hintColor = error;
+		} else if (yours != null) {
+			hint = yours;
+			hintColor = UiStyle.CLAY_DARK;
 		} else if (t.ci() == CiStatus.FAIL && !done) {
 			hint = "CI failing";
 			hintColor = error;

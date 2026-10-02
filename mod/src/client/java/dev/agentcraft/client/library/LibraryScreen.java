@@ -487,14 +487,7 @@ public final class LibraryScreen extends Screen {
 		if (t == null) {
 			return null;
 		}
-		return switch (t.status()) {
-			case DOING -> "working";
-			case REVIEW -> "thinking";
-			case DONE -> "done";
-			case BLOCKED -> "error";
-			case CANCELLED -> "cancelled";
-			default -> "idle";
-		};
+		return dev.agentcraft.client.ui.StatusMap.task(s, t);
 	}
 
 	private void drawFooter(GuiGraphicsExtractor g) {
