@@ -112,6 +112,9 @@ Injected changes live only in the mod's model: when the shot ends the Foreman ho
 reconnecting, and the fresh snapshot puts everything back (agents walk back). `dev.play.stop`
 aborts a shot.
 
+Opening a screen for the first time in a session can cost one slow frame (about 35 ms measured
+for the console): open it during a moment the camera does not care about, or once before the take.
+
 **Timing is real time.** The camera is exact every frame; agent walks, sitting and bubbles run on
 game ticks, so they can shift by a tick (50 ms) between takes. Start walks early enough that the
 camera never depends on an agent's exact arrival.
