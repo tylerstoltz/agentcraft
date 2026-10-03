@@ -165,7 +165,7 @@ AgentCraft is built to point at code you care about.
 
 ## Quick start
 
-**You need:** Windows 10 or 11, Java 25 (Temurin) on your PATH, Node 22+, git, and a copy of
+**You need:** Windows 10 or 11, or macOS, Java 25, Node 22+, git, and a copy of
 Minecraft: Java Edition.
 
 **For the real agents** you need Claude API access, either of these:
@@ -186,6 +186,21 @@ tools\launch.ps1 -Backend sim                    # try it first: a simulated tea
 tools\launch.ps1 -Repo C:\path\to\your\repo      # real agents on your repo
 tools\stop.ps1                                   # stop everything launch.ps1 started
 ```
+
+On macOS, install Java 25 with `brew install openjdk@25`, then run from the checkout
+(the script selects that JDK without changing your system Java):
+
+```sh
+node tools/mac.mjs launch --backend sim                 # try the studio without API usage
+node tools/mac.mjs stop --profile sim
+node tools/mac.mjs launch --repo /path/to/your/repo --use-claude-login
+node tools/mac.mjs stop
+```
+
+The macOS launcher installs npm dependencies on first run, downloads Minecraft and Fabric
+through Gradle, starts the Foreman and game in the background, and waits for the studio world.
+Use `--dev` for a muted client that does not take focus; `--no-game` starts only the Foreman.
+See [tools/README.md](tools/README.md) for options and logs.
 
 The first launch installs npm dependencies and lets Gradle download Minecraft and Fabric, which
 takes a few minutes. After that, a launch reaches the studio in under a minute. The HQ builds itself
@@ -323,8 +338,8 @@ screenshot suite.
 
 AgentCraft is young and has been used by one person on one machine. Today it is:
 
-- **Windows only.** The launcher and notifications are PowerShell; the Foreman itself is mostly
-  portable.
+- **Windows and macOS development launchers.** Windows has PowerShell notifications; macOS
+  currently has no desktop toasts.
 - **Singleplayer,** one studio per world, on **Minecraft 26.3**.
 - **Run through the development client** (`gradlew runClient`). A regular mod release for normal
   launchers is planned.
