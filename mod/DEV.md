@@ -153,6 +153,12 @@ treated the same, other binary frames get an `ok:false` reply).
 | `dev.test.stall` | `ms` (1-600000) | **Test only** (`AGENTCRAFT_DEV_TEST=1`): blocks the render thread to simulate a hang |
 | `dev.foreman` | `reconnect?` (false) | The Foreman link + model summary (same as `dev.state.foreman`); `reconnect:true` drops the connection and connects again now |
 | `dev.foreman.send` | `message:{type, ...}` | Sends a client message (docs/protocol.md "Mod -> Foreman") through the mod's own link and replies `{ack:{re, ok, error?, result?}}`. Example: `{message:{type:"goal.submit", text:"Add #tags"}}`, `{message:{type:"decision.answer", decisionId:"d3", option:"Merge"}}` |
+| `dev.foreman.inject` | exactly one of `message:{type,...}`, `patch:{agent\|task: id, set:{wire fields}}`, `say:{agent, text, to?}` | Applies to the mod's Foreman model **as if the Foreman had sent it** (always available; bypasses the hold queue). `patch` copies the current agent/task, replaces the given wire fields (`{"station":"desk","state":"editing"}`, `{"status":"doing","assignee":"marlow"}`, `null` clears) and applies it as an `agent.upsert`/`task.upsert`; `say` is an `agent.say` stamped now. Replies `{applied, message}`. Video choreography; the next snapshot (reconnect) undoes it |
+| `dev.foreman.hold` | `on` (bool), `release?` = `reconnect` (default) / `replay` / `drop` | `on:true`: live Foreman messages are queued instead of applied, so a shot shows only what it injects. `on:false` releases them: `reconnect` drops the queue and reconnects (fresh snapshot), `replay` applies the queue, `drop` discards it. `dev.state.foreman.held/heldQueued` show it |
+| `dev.play` | `duration` (s), `camera`, `timeline?`, `name?`, `showHud?` (false), `holdEndMs?` (300), `foreman?:{hold?, release?}`, `log?` (true) | **Real-time shot playback** for a screen recorder (OBS). See "Shot playback" below. Replies when the shot is done: `{frames, resolution, perf{fps, frameMsMedian/P99/Max, framesOver20ms, pathStepMsMin/Max}, cameraVsPath{maxPosError, maxRotError, maxFovError}, events[{t, at, event, ok, error?}], warnings, frameLog}` |
+| `dev.play.pose` | `camera`, `t?` (0), `duration?` | Where a camera path is at time t: `{pose{x,y,z,yaw,pitch,fov}, start, end}` (eye position). `record.mjs` puts the camera there with `dev.camera` before playing; also handy to preview a path with stills |
+| `dev.play.status` / `dev.play.stop` | | Progress of the playing shot / stop it (its `dev.play` replies `ok:false`) |
+| `dev.window` | `width`, `height` | Resizes the game window (windowed mode, `Window.setWindowed`), e.g. 2560x1440 to fill the monitor for a capture; replies once a frame was rendered at the new size `{width, height, framebufferWidth/Height, renderWidth/Height}` |
 | `dev.agents` | `settle?` (false) | Every agent NPC: `id, entityId, x,y,z, yaw, station, anchor, target{x,y,z,yaw}, walking, path[[x,y,z]...], state, activity, stale, model, skin`, and `plate{mode full\|compact, lift, target, rank, nudge, scale, depth, weight, focused, capped, rect[x0,y0,x1,y1] in screen px}` when its nameplate was laid out last frame; top level also has `plates, plateOverlaps`; `dev.state.agents` also has `plateOverlapPairs` ("rowan/wren": which plates overlapped last frame) and `exclaims`. `settle:true` snaps walking agents to their targets and the nameplates to their final layout on the next frame (no one mid-walk, no plate mid-slide in a shot) |
 | `dev.anchors` | `prefix?` | The published layout: `{layout, revision, bounds, anchors:{name:{x,y,z,yaw,pitch}}, count}` |
 | `dev.agents.look` | `agent?` | Agent life per agent: `{id, family, awaitingUser, awaitingDecision, needsYou, paused, posture, seated, sit, seat{x,z,top,drop,deskTop}?, bodyYaw, headYaw, headPitch, bubble, particles}`; top level `exclaims` (agents showing the "!"), `card{agent, input}` while an agent card is open (`input` = its message line, null when closed), `textInputActive` (SDL text input on: typed characters are delivered) |
@@ -179,12 +185,70 @@ DevBridge.addStateContributor((mc, state) -> state.add("foreman", foremanStatusJ
 FrameScheduler.afterFrames(2).thenRun(...);                        // end-of-frame callbacks (render thread)
 FrameScheduler.when(() -> condition, minFrames, stableFrames, timeoutMs, "what");
 FrameScheduler.msSinceLastFrame(); FrameScheduler.stalled();      // render-thread liveness, any thread
+DevBridge.invoke("dev.screen", req);                               // run a registered command from mod code (dev.play timelines)
 ```
 Register in `onInitializeClient`. Built-ins are registered when the bridge starts, so a later
 `register` with the same name replaces a built-in. Throw `DevBridge.DevException` for user errors
 (sent back verbatim); any other exception becomes `internal error: ...` and is logged.
 `Fields` (`num`, `num(min,max)`, `optNum`, `integer`, `optInt`, `optLong`, `bool`, `optBool`, `str`,
 `nonBlank`, `optStr`, `obj`, `optObj`) refuses NaN/Infinity, wrong JSON types and out-of-range values.
+
+### Shot playback (`dev.play`, `tools/record.mjs`)
+
+Plays a choreographed camera shot **in real time** so a screen recorder (OBS, 60 fps window
+capture) films it. Code: `client.dev.play` (`ShotPlayer`, `CameraPath`, `Timeline`, `PlayCommands`);
+hooks in `MinecraftMixin`; shot files and their format: `tools/shots/README.md`.
+
+Per loop iteration, on the render thread:
+1. `Minecraft.runTick` HEAD (before the client ticks): the first call starts the clock; every
+   timeline event with `t <= elapsed` runs, so its effect is in this frame.
+2. `Minecraft.renderFrame` HEAD (after the ticks): the path is sampled and the player is snapped
+   there with `snapTo` (position **and previous position**, rotation **and previous rotation**), the
+   camera's own smoothed eye height (`CameraAccessor`, lerped with the partial tick) is subtracted,
+   and the FOV is pinned (`DevCamera`). `Camera.alignWithEntity` then lands exactly on the path:
+   no tick interpolation, no jitter (measured: rendered camera vs path max error 0 blocks / 8e-6 deg).
+3. `renderFrame` TAIL: frame timing and the rendered camera are logged; after the end pose was held
+   for `holdEndMs` the shot ends, the HUD comes back and a Foreman hold is released.
+
+**Which time a frame shows.** Frame *starts* jitter by about +-2 ms against vsync (ticks, packets,
+GC); frame *ends* (right after present) are as regular as the display. Sampling the path at the
+frame start gave uneven camera steps (14.8-18.6 ms of path time per 16.7 ms frame). The path is
+now sampled at the predicted present time: previous frame end + the smoothed frame interval,
+clamped to within one interval of the wall clock (a hitch still advances the camera by the real
+time that passed). Path steps now follow the frame intervals (16.59-16.78 ms in a clean take).
+t = 0 is the predicted present time of the shot's first frame.
+
+**Camera paths** (`camera` field, also `dev.play.pose`):
+- `keys`: keyframes `{t, x,y,z, yaw,pitch | lookAt:{x,y,z}, fov?, ease?}` or `{t, anchor}` (eye
+  position; `cam_*` anchors are eyes, other anchors feet + 1.62). A time-based (non-uniform)
+  Catmull-Rom spline (cubic Hermite, tangents `(v[i+1]-v[i-1])/(t[i+1]-t[i-1])`); `easeEnds`
+  (default true) gives zero velocity at the first and last key. Yaw takes the shortest arc between
+  keys. When every key has a `lookAt` (or the path has one) the look *target* is splined instead
+  of yaw/pitch, so a subject stays centred. `ease` on a key (`inOut|in|out|linear`) remaps time
+  inside the segment that starts there (e.g. a hold).
+- `orbit`: `{center:{x,z}, radius, y, from, to, lookAt?, fov?, ease?:"inOut"}`: an exact arc at
+  constant height; angles in degrees, 0 = south of the centre, growing like yaw (90 = west).
+
+**Timeline** (`timeline` field): `{t, inject:{type,...}}`, `{t, patch:{agent|task, set}}`,
+`{t, say:{agent, text, to?}}` (same as `dev.foreman.inject`), or `{t, cmd:"dev.xxx", ...fields}`
+for any DevBridge command (`dev.screen`, `dev.key`, `dev.agents {settle}`, `dev.screenshot`...;
+`dev.command` takes the server command in `command`). `{t, cmd:"dev.type", text, msPerChar?:75,
+jitter?:0.3, seed?}` types one character at a time with a natural, seeded rhythm (longer pauses
+after spaces/punctuation). An event that fails at once stops the shot (`ok:false`); slower
+failures are reported in `events`. With a timeline, live Foreman messages are held during the shot
+(`foreman.hold`, default on) and released by reconnecting (fresh snapshot, so the injected changes
+are undone after the shot).
+
+**Not deterministic** (real time): the client ticks (agent walks, sitting, bubbles), the integrated
+server and the GPU run on their own clocks, so two takes differ by up to a tick (50 ms) in when an
+agent arrives; server commands (`dev.command`) apply whenever the server thread gets to them;
+particles are random. The camera itself is exact every frame. Shots therefore start agents walking
+early enough (desk_story: the walk starts at 0.6 s, the camera arrives at 3.6 s) and never cut
+on an agent's exact arrival.
+
+Measured (RTX 4090, vsync on, window 2560x1440 via `dev.window`): all three example shots at 60 fps,
+frame time median 16.68 ms, p99 <= 16.8 ms, 0 frames over 20 ms in the final takes (one earlier
+orbit take had one 33.5 ms hitch followed by two 8.3 ms frames: the camera followed real time).
 
 ## Phase 2: the mod as a live view of the Foreman
 
@@ -361,6 +425,7 @@ node tools/devcli.mjs time 12000 | weather clear | hud off | screen pause | key 
 node tools/devcli.mjs raw '{"type":"dev.waitChunks","timeoutMs":60000}'
 node tools/devcli.mjs quit                         # saves; waits for the bridge to close
 node tools/shoot.mjs tools/scenes/phase1.json [--only a,b] [--manifest out.json] [--verbose]
+node tools/record.mjs tools/shots/hq_orbit.json [more.json] [--hold 3000] [--stills 1,3] [--window 2560x1440]   # play shots for OBS (tools/shots/README.md)
 ```
 `devcli` prints the JSON reply and exits 1 on `ok:false`. `--port` overrides the port. `--timeout`
 sets the connect timeout in seconds. `devcli release` hands the view back after dev camera use.

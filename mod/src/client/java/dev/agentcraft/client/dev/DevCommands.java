@@ -182,6 +182,8 @@ final class DevCommands {
 			});
 		}
 
+		dev.agentcraft.client.dev.play.PlayCommands.register();
+
 		DevBridge.registerScreen("title", mc -> new TitleScreen());
 		DevBridge.registerScreen("pause", mc -> new PauseScreen(true));
 		DevBridge.registerScreen("options", mc -> new OptionsScreen(mc.gui.screen(), mc.options));

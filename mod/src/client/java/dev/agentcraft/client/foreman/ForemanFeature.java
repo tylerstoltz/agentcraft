@@ -67,6 +67,41 @@ public final class ForemanFeature {
 					});
 				});
 		}
+		// Video choreography (always available): inject messages as if the Foreman sent them, hold the live stream.
+		DevBridge.register("dev.foreman.inject", 5_000,
+			"{message:{type,...}} | {patch:{agent|task:id, set:{field:value...}}} | {say:{agent, text, to?}} - apply to the mod's Foreman"
+				+ " model as if received (bypasses the hold queue); patch copies the current agent/task and replaces a few wire fields",
+			(req, mc) -> {
+				Fields f = Fields.of(req);
+				JsonObject msg = injectMessage(f);
+				return DevBridge.onClient(mc, () -> applyInjected(msg));
+			});
+		DevBridge.register("dev.foreman.hold", 10_000,
+			"{on:bool, release?:reconnect|replay|drop} - hold live Foreman messages (queued, not applied) so a shot shows only what it"
+				+ " injects; on:false releases them: reconnect (default, fresh snapshot), replay (apply the queue) or drop",
+			(req, mc) -> {
+				Fields f = Fields.of(req);
+				boolean on = f.bool("on");
+				String release = f.optStr("release", "reconnect");
+				if (!java.util.Set.of("reconnect", "replay", "drop").contains(release)) {
+					throw new DevBridge.DevException("field 'release' must be reconnect|replay|drop (got '" + release + "')");
+				}
+				return DevBridge.onClient(mc, () -> {
+					JsonObject o = new JsonObject();
+					o.addProperty("wasHeld", state.isHeld());
+					if (on) {
+						state.setHold(true);
+					} else if (state.isHeld()) {
+						o.addProperty("released", state.releaseHold(release.equals("replay")));
+						if (release.equals("reconnect")) {
+							link.reconnectNow();
+						}
+					}
+					o.addProperty("held", state.isHeld());
+					o.addProperty("queued", state.heldCount());
+					return o;
+				});
+			});
 		DevBridge.register("dev.foreman.send", 25_000,
 			"{message:{type, ...payload}} -> {ack:{re, ok, error?, result?}} - send a client message (docs/protocol.md Mod -> Foreman) through"
 				+ " the mod's own link, e.g. {message:{type:'goal.submit', text:'...'}} or {message:{type:'decision.answer', decisionId:'d3', option:'Merge'}}",
@@ -80,6 +115,72 @@ public final class ForemanFeature {
 					return o;
 				});
 			});
+	}
+
+	/**
+	 * Validates an injection request ({@code message} | {@code patch} | {@code say}) and returns it as
+	 * {@code {kind, ...}} for {@link #applyInjected}. Any thread.
+	 */
+	public static JsonObject injectMessage(Fields f) {
+		int kinds = (f.has("message") ? 1 : 0) + (f.has("patch") ? 1 : 0) + (f.has("say") ? 1 : 0);
+		if (kinds != 1) {
+			throw new DevBridge.DevException("give exactly one of message | patch | say");
+		}
+		JsonObject out = new JsonObject();
+		if (f.has("message")) {
+			JsonObject msg = f.obj("message").json().deepCopy();
+			Fields.of(msg).nonBlank("type");
+			out.addProperty("kind", "message");
+			out.add("message", msg);
+		} else if (f.has("patch")) {
+			Fields p = f.obj("patch");
+			if (p.has("agent") == p.has("task")) {
+				throw new DevBridge.DevException("field 'patch' needs exactly one of agent | task");
+			}
+			out.addProperty("kind", "patch");
+			out.addProperty("of", p.has("agent") ? "agent" : "task");
+			out.addProperty("id", p.has("agent") ? p.nonBlank("agent") : p.nonBlank("task"));
+			out.add("set", p.obj("set").json().deepCopy());
+		} else {
+			Fields s = f.obj("say");
+			JsonObject msg = new JsonObject();
+			msg.addProperty("v", Protocol.VERSION);
+			msg.addProperty("type", "agent.say");
+			msg.addProperty("agentId", s.nonBlank("agent"));
+			msg.addProperty("text", s.str("text"));
+			String to = s.optStr("to", null);
+			if (to != null) {
+				msg.addProperty("to", to);
+			}
+			out.addProperty("kind", "message");
+			out.add("message", msg);
+		}
+		return out;
+	}
+
+	/** Applies a validated injection (see {@link #injectMessage}). Client thread. */
+	public static JsonObject applyInjected(JsonObject inj) {
+		ForemanState st = Foreman.state();
+		JsonObject o = new JsonObject();
+		if (inj.get("kind").getAsString().equals("patch")) {
+			try {
+				JsonObject applied = st.patch(inj.get("of").getAsString(), inj.get("id").getAsString(), inj.getAsJsonObject("set"));
+				o.addProperty("applied", true);
+				o.add("message", applied);
+			} catch (IllegalArgumentException e) {
+				throw new DevBridge.DevException(e.getMessage());
+			}
+			return o;
+		}
+		JsonObject msg = inj.getAsJsonObject("message").deepCopy();
+		String type = msg.get("type").getAsString();
+		if (type.equals("agent.say") && !msg.has("ts")) {
+			// the bubble is fresh: stamped now
+			msg.addProperty("ts", System.currentTimeMillis());
+		}
+		o.addProperty("applied", st.inject(type, msg));
+		o.add("message", msg);
+		return o;
 	}
 
 	/** Compact JSON view of the link + model (for dev.state / dev.foreman). Client thread. */
@@ -98,6 +199,8 @@ public final class ForemanFeature {
 		o.addProperty("messages", Foreman.link().messageCount());
 		o.addProperty("lastMessageAgoMs", s.lastMessageAt() == 0 ? -1 : System.currentTimeMillis() - s.lastMessageAt());
 		o.addProperty("stale", s.isStale());
+		o.addProperty("held", s.isHeld());
+		o.addProperty("heldQueued", s.heldCount());
 		ForemanStatus fs = s.status();
 		o.addProperty("backend", fs == null ? null : fs.backend().wire());
 		o.addProperty("auth", fs == null ? null : fs.auth().wire());

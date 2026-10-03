@@ -257,6 +257,113 @@ public final class ForemanState {
 		fire(l -> l.onConnection(status));
 	}
 
+	// ------------------------------------------------------------------ hold queue + injection (video choreography)
+
+	/** Upper bound of the hold queue (oldest messages are dropped beyond it; the release reconnects anyway). */
+	public static final int HOLD_MAX = 20_000;
+	private boolean hold;
+	private final Deque<Object[]> held = new ArrayDeque<>();
+	private int heldDropped;
+
+	/**
+	 * A message from the live link. While {@link #setHold held}, it is queued instead of applied, so
+	 * a choreographed shot sees only what it injects; otherwise it is applied at once.
+	 */
+	void receive(String type, JsonObject json) {
+		if (hold) {
+			held.addLast(new Object[] {type, json});
+			while (held.size() > HOLD_MAX) {
+				held.removeFirst();
+				heldDropped++;
+			}
+			return;
+		}
+		apply(type, json);
+	}
+
+	/** True while live Foreman messages are being held back. */
+	public boolean isHeld() {
+		return hold;
+	}
+
+	/** Number of live messages waiting in the hold queue. */
+	public int heldCount() {
+		return held.size();
+	}
+
+	/** Hold live messages (queue them) instead of applying them. Client thread. */
+	public void setHold(boolean on) {
+		if (on && !hold) {
+			held.clear();
+			heldDropped = 0;
+		}
+		hold = on;
+	}
+
+	/**
+	 * End the hold. {@code replay}: apply the queued messages in order; otherwise drop them (the
+	 * caller then reconnects for a fresh snapshot). Returns how many were queued.
+	 */
+	public int releaseHold(boolean replay) {
+		hold = false;
+		int n = held.size();
+		if (replay) {
+			while (!held.isEmpty()) {
+				Object[] m = held.removeFirst();
+				try {
+					apply((String) m[0], (JsonObject) m[1]);
+				} catch (Exception e) {
+					AgentCraft.LOGGER.warn("Replaying held Foreman message '{}' failed", m[0], e);
+				}
+			}
+		} else {
+			held.clear();
+		}
+		return n;
+	}
+
+	public int heldDropped() {
+		return heldDropped;
+	}
+
+	/**
+	 * Apply a Foreman message as if the Foreman had sent it (dev.foreman.inject, dev.record
+	 * timelines). Bypasses the hold queue. Client thread. Returns false for types the model does not keep.
+	 */
+	public boolean inject(String type, JsonObject json) {
+		return apply(type, json);
+	}
+
+	/**
+	 * Build an {@code agent.upsert} / {@code task.upsert} from the current agent or task with a few
+	 * fields replaced (wire names, e.g. {@code {"station":"desk","state":"editing"}}) and apply it.
+	 * Returns the message that was applied. Client thread.
+	 */
+	public JsonObject patch(String kind, String id, JsonObject set) {
+		Object current = switch (kind) {
+			case "agent" -> agents.get(id);
+			case "task" -> tasks.get(id);
+			default -> throw new IllegalArgumentException("patch kind must be agent or task");
+		};
+		if (current == null) {
+			throw new IllegalArgumentException("no " + kind + " '" + id + "' in the Foreman state (known: "
+				+ String.join(", ", kind.equals("agent") ? agents.keySet() : tasks.keySet()) + ")");
+		}
+		JsonObject obj = ForemanJson.GSON.toJsonTree(current).getAsJsonObject();
+		for (var e : set.entrySet()) {
+			obj.add(e.getKey(), e.getValue().deepCopy());
+		}
+		if (kind.equals("task") && !set.has("updatedAt")) {
+			obj.addProperty("updatedAt", System.currentTimeMillis());
+		}
+		JsonObject msg = new JsonObject();
+		msg.addProperty("v", Protocol.VERSION);
+		msg.addProperty("type", kind + ".upsert");
+		msg.add(kind, obj);
+		apply(kind + ".upsert", msg);
+		return msg;
+	}
+
 	/** Apply one parsed Foreman message. Returns false for types the model does not keep (ack, diff, error...). */
 	boolean apply(String type, JsonObject json) {
 		lastMessageAt = System.currentTimeMillis();

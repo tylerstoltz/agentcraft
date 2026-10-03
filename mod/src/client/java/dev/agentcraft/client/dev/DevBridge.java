@@ -96,6 +96,24 @@ public final class DevBridge extends WebSocketServer {
 		HANDLERS.put(type, new Registered(handler, timeoutMs, help));
 	}
 
+	/**
+	 * Run a registered command from mod code (e.g. a {@code dev.record} timeline) as if a client had
+	 * sent {@code request}. Called on any thread; the handler hops to the client thread itself (inline
+	 * when already on it). No timeout is applied.
+	 */
+	public static CompletableFuture<JsonObject> invoke(String type, JsonObject request) {
+		Registered reg = HANDLERS.get(type);
+		if (reg == null) {
+			return CompletableFuture.failedFuture(new DevException("unknown type '" + type + "' (try dev.help)"));
+		}
+		try {
+			CompletableFuture<JsonObject> f = reg.handler().handle(request, Minecraft.getInstance());
+			return f != null ? f : CompletableFuture.failedFuture(new IllegalStateException("handler returned no future"));
+		} catch (Throwable t) {
+			return CompletableFuture.failedFuture(t);
+		}
+	}
+
 	/** Make a screen openable via {@code dev.screen {open:name}}. */
 	public static void registerScreen(String name, Function<Minecraft, Screen> factory) {
 		SCREENS.put(name, factory);
@@ -341,6 +359,12 @@ public final class DevBridge extends WebSocketServer {
 		}
 		out.addProperty("error", msg == null ? cause.getClass().getSimpleName() : msg);
 		return out;
+	}
+
+	/** The error text a reply would carry for {@code t} (unwraps CompletionException). */
+	public static String describeError(Throwable t) {
+		JsonObject o = error(null, null, t);
+		return o.get("error").getAsString();
 	}
 
 	/** Help text for every registered command, sorted. */
