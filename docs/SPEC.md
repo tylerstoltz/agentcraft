@@ -142,7 +142,7 @@ assets-src/   procedural texture/model/skin generators (Python+PIL / Node), Blen
 tools/        launch.ps1, shoot.mjs, scenes/*.json, smoke tests
 sandbox/      throwaway git repos for end-to-end tests (never the user's real repos in tests)
 artifacts/    screenshots, logs (gitignored)
-docs/         SPEC.md, visual-bar.md, STATUS.md (running log of what's done / next)
+docs/         SPEC.md, visual-bar.md, protocol.md, QA.md, img/
 ```
 
 ## Definition of done for v1
