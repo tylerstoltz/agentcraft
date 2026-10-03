@@ -1,131 +1,346 @@
+<div align="center">
+
 # AgentCraft
 
-*Powered by Claude.* Minecraft as a spatial UI for real multi-agent Claude work. A team of Claude agents (a lead plus
-workers) splits up a goal, works in real git worktrees of your repo, talks to each other, and shows
-its progress physically in a Minecraft studio: desks with live monitors, a Task Wall, a Decision
-Podium, a merge station with diff review, and a memory library. You steer everything from an
-in-game console and answer the agents' questions when they come to you.
+**A team of Claude agents doing real work on your code, inside a Minecraft studio you can walk around in.**
 
-![HQ exterior](docs/img/exterior.png)
-![Interior](docs/img/interior.png)
+*Powered by Claude*
 
-| Console | Merge review |
+[![License: MIT](https://img.shields.io/badge/license-MIT-c9a227)](LICENSE)
+[![Minecraft 26.3](https://img.shields.io/badge/Minecraft-26.3-8fa98b)](https://www.minecraft.net)
+[![Fabric](https://img.shields.io/badge/mod%20loader-Fabric-d97757)](https://fabricmc.net)
+[![Claude Agent SDK](https://img.shields.io/badge/agents-Claude%20Agent%20SDK-2fa3a0)](https://code.claude.com/docs/en/agent-sdk/overview)
+[![Tests](https://img.shields.io/badge/tests-481%20passing-3b2a20)](foreman/test)
+
+<img src="docs/img/readme/hero.jpg" alt="The AgentCraft HQ at golden hour" width="100%">
+
+</div>
+
+<br>
+
+Multi-agent coding usually means a wall of terminal text. AgentCraft turns it into a place.
+
+You type a goal. A lead agent reads your repo, writes a plan and pins tasks to a wall. Workers walk to
+their desks, sit down and start coding in their own git worktrees while their monitors stream every
+file they read and every line they change. When a call is genuinely yours, an agent walks over to
+you with a question. When work is ready, you review the real diff and press **Merge**. Nothing
+touches your branch without that click, and nothing is ever pushed.
+
+Close the game and the agents keep working. Open it again and the studio catches up.
+
+<br>
+
+## How a goal plays out
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**1. You give a goal.** Press <kbd>`</kbd> and type it. `@juniper` messages a specific agent, with
+Tab completion.
+
+<img src="docs/img/readme/console.jpg" alt="The command console with agent autocomplete">
+
+</td>
+<td width="50%" valign="top">
+
+**2. The lead plans.** Marlow splits the goal into tasks with dependencies. They land on the Task
+Wall, and the plan goes into the shared library.
+
+<img src="docs/img/readme/task-wall.jpg" alt="The Task Wall kanban">
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**3. The team builds.** Each worker codes in its own worktree. Monitors stream the live log: tool
+calls, test runs, red and green diffs.
+
+<img src="docs/img/readme/desk.jpg" alt="Juniper coding at her desk with a live monitor">
+
+</td>
+<td width="50%" valign="top">
+
+**4. They come to you.** A clay <kbd>!</kbd> appears, the bell rings, the agent walks to the
+podium. Press <kbd>J</kbd> to answer.
+
+<img src="docs/img/readme/podium.jpg" alt="Marlow waiting at the decision podium">
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**5. You review and merge.** A real code review screen: file list, line numbers, collapsed context,
+the worker's summary and the reviewer's notes.
+
+<img src="docs/img/readme/diff.jpg" alt="The merge review screen with a real diff">
+
+</td>
+<td width="50%" valign="top">
+
+**6. Memory stays shared.** The lead's plan, decisions and repo conventions live in a library every
+agent reads, and you can too.
+
+<img src="docs/img/readme/library.jpg" alt="The memory library">
+
+</td>
+</tr>
+</table>
+
+<br>
+
+## Meet the team
+
+<img src="docs/img/readme/cast.jpg" alt="The six AgentCraft agents" width="100%">
+
+Six hand-pixelled characters, each with their own silhouette and colour. **Marlow** leads: he plans,
+splits work and reviews. **Juniper, Kit, Wren, Rowan and Tove** build. They walk the studio with
+real pathfinding, sit at their desks while they type, show what they are doing with small particles
+and nameplates, talk in speech bubbles, and come find you when they need a decision.
+
+<br>
+
+## The studio
+
+<table>
+<tr>
+<td width="50%"><img src="docs/img/readme/atrium.jpg" alt="The goal atrium"></td>
+<td width="50%"><img src="docs/img/readme/studio.jpg" alt="The studio floor"></td>
+</tr>
+<tr>
+<td><b>The Goal Atrium.</b> Progress ring, task counts, and how many decisions need you.</td>
+<td><b>The studio floor.</b> Desks, status lamps, the library and the lounge.</td>
+</tr>
+</table>
+
+<img src="docs/img/readme/night.jpg" alt="The HQ at night" width="100%">
+
+Everything is information you can read at a glance. Far away, the lamps and the cupola beacon tell
+you who is working, who is stuck and who is waiting on you. Closer, nameplates and cards tell you
+what. Up close, monitors and screens tell you exactly how.
+
+<br>
+
+## Proven with real agents
+
+This is not a mockup. These screenshots come from a real run with Claude agents on a sample repo,
+driven entirely through the game: a goal typed into the console, questions and permission prompts
+answered in game, merges reviewed in the diff screen, including a merge conflict sent back to the
+worker and resolved. The game was restarted mid run and the Foreman was taken offline and brought
+back. Six features landed in the repo with its tests passing.
+
+<table>
+<tr>
+<td width="33%"><img src="docs/img/readme/real-decision.jpg" alt="A real question from the lead agent"></td>
+<td width="33%"><img src="docs/img/readme/real-monitor.jpg" alt="A real agent's monitor streaming its work"></td>
+<td width="33%"><img src="docs/img/readme/real-reconnected.jpg" alt="The team resuming after the Foreman reconnected"></td>
+</tr>
+<tr>
+<td>Marlow asks which default export format to use.</td>
+<td>A worker's monitor streaming its live log.</td>
+<td>Back online after a Foreman restart, the team resumes.</td>
+</tr>
+</table>
+
+<br>
+
+## Safe on real repos
+
+AgentCraft is built to point at code you care about.
+
+- **Worktrees, always.** Every task runs in its own git worktree on `agentcraft/<agent>/<task>`. Your
+  checkout is never touched by an agent.
+- **You merge, nobody else.** A merge happens only when you approve it. It is refused if your
+  checkout has uncommitted changes. Conflicts go back to the worker, who resolves them and asks again.
+- **Nothing is ever pushed.** Agents get no git network access at all. This is enforced inside git
+  itself, not just by a command filter, so even a push hidden in a test script or a hook fails.
+- **Risky commands ask first.** Reads and edits inside the worktree are allowed. Anything else
+  (writing outside it, network access, destructive commands) becomes an in game permission prompt
+  that shows exactly what "Always allow" would cover.
+- **Clear authorship.** Agents commit as `AgentCraft <Name>`. Only the merge you approve is made as you.
+
+<br>
+
+## Quick start
+
+**You need:** Windows 10 or 11, Java 25 (Temurin) on your PATH, Node 22+, git, and a copy of
+Minecraft: Java Edition.
+
+**For the real agents** you need Claude API access, either of these:
+
+- `ANTHROPIC_API_KEY`: create a key at [console.anthropic.com](https://console.anthropic.com), then
+  `setx ANTHROPIC_API_KEY sk-ant-...` and open a new terminal.
+- A cloud provider supported by the Agent SDK: Amazon Bedrock (`CLAUDE_CODE_USE_BEDROCK=1`), Google
+  Vertex AI (`CLAUDE_CODE_USE_VERTEX=1`) or Microsoft Foundry (`CLAUDE_CODE_USE_FOUNDRY=1`), with that
+  provider's usual credentials.
+
+Then:
+
+```powershell
+git clone https://github.com/blendi-remade/agentcraft
+cd agentcraft
+
+tools\launch.ps1 -Backend sim                    # try it first: a simulated team, no API usage
+tools\launch.ps1 -Repo C:\path\to\your\repo      # real agents on your repo
+tools\stop.ps1                                   # stop everything launch.ps1 started
+```
+
+The first launch installs npm dependencies and lets Gradle download Minecraft and Fabric, which
+takes a few minutes. After that, a launch reaches the studio in under a minute. The HQ builds itself
+the first time; in an older world, rebuild it with `/agentcraft hq`.
+
+> **Personal use with Claude Code.** If you already use Claude Code, `tools\launch.ps1 -UseClaudeLogin`
+> runs the agents on your own `claude` CLI login instead of an API key. Anthropic does not allow
+> third party tools to offer claude.ai login to their users, so this is off by default and meant for
+> running AgentCraft yourself. To make it permanent for yourself, put
+> `{"claude": {"useClaudeLogin": true}}` in `~/.agentcraft/config.json`.
+
+**Your name.** The agents call you by your OS user name. Change it with
+`-ForemanArgs '--user-name','Sam'`, `AGENTCRAFT_USER_NAME`, or `{"userName": "Sam"}` in
+`~/.agentcraft/config.json`.
+
+<br>
+
+## Controls
+
+| Key | What it does |
 |---|---|
-| ![Console](docs/img/console.png) | ![Diff review](docs/img/diff.png) |
+| <kbd>`</kbd> | Open the **console** |
+| <kbd>J</kbd> | **Answer decisions**: questions, permission prompts and merges, oldest first |
+| <kbd>Enter</kbd> on a terminal block | Open the console |
+| Right click an agent | Agent card: state, task, recent log, message, pause, stop |
+| Right click the podium, merge station, archive or a task card | Decisions, diff review, memory library, task details |
+
+All keys can be rebound in Options, Controls.
+
+**Console commands.** Plain text starts a new goal. `@name message` talks to an agent.
+
+| Command | |
+|---|---|
+| `/answer [d4] <n or option> [text]` | Answer an open decision |
+| `/diff [worktree or @agent]` | Review a worktree's changes |
+| `/status` | Goal, agents, tasks, decisions and spend |
+| `/pause @x`, `/resume @x` | Pause an agent, keeping its task |
+| `/stop @x`, `/spawn @x [task]` | Take an agent off shift, or bring one on |
+| `/repo add <path>`, `/repos` | Register and list repos |
+| `/help` | Everything else |
+
+<br>
 
 ## How it works
 
-- **Foreman** (`foreman/`, Node + TypeScript, Claude Agent SDK) runs the agents and is the source
-  of truth: task graph, messages, shared memory, decisions, git worktrees. It keeps working when
-  the game is closed, and all state survives restarts (`~/.agentcraft`).
-- **Mod** (`mod/`, Fabric for Minecraft 26.3) is the view and input device. It connects to the
-  Foreman over a local WebSocket (127.0.0.1 only).
-- Backends: `claude` (real agents through the Claude Agent SDK) or `sim` (a scripted demo team, no
-  API usage).
-
-## Requirements
-
-Windows 10/11, Java 25 on PATH (Temurin), Node 22+ and git. The first launch downloads Gradle,
-Minecraft and Fabric through the Gradle wrapper (a few minutes). You don't need a Minecraft launcher.
-
-For the real agents you need **Claude API access**, either of these:
-- `ANTHROPIC_API_KEY`: create a key at [console.anthropic.com](https://console.anthropic.com) and set
-  it, e.g. `setx ANTHROPIC_API_KEY sk-ant-...` (then open a new terminal), or
-- a cloud provider supported by the Agent SDK: Amazon Bedrock (`CLAUDE_CODE_USE_BEDROCK=1`), Google
-  Vertex AI (`CLAUDE_CODE_USE_VERTEX=1`) or Microsoft Foundry (`CLAUDE_CODE_USE_FOUNDRY=1`), with
-  that provider's usual credentials.
-
-Without either, the claude backend shows an "auth failed" banner and the sim backend still works.
-
-**Personal use only:** if you already use Claude Code, `tools\launch.ps1 -UseClaudeLogin` runs the
-agents on your own `claude` CLI login instead of an API key. Anthropic doesn't allow third-party
-tools to offer claude.ai login to their users, so this is off by default and meant for running
-AgentCraft yourself, not for offering it to others. To make it permanent for yourself, put
-`{"claude": {"useClaudeLogin": true}}` in `~/.agentcraft/config.json`.
-
-## Launch
-
-```powershell
-tools\launch.ps1 -Backend sim                       # demo team, no API usage
-tools\launch.ps1 -Repo C:\path\to\your\repo        # real agents on your repo (claude backend)
-tools\stop.ps1                                      # stop everything launch.ps1 started
+```mermaid
+flowchart LR
+    subgraph game ["Minecraft (Fabric mod)"]
+        HQ["HQ, agents, monitors,<br/>Task Wall, podium"]
+        UI["Console, decisions,<br/>diff review, library"]
+    end
+    subgraph foreman ["Foreman (Node + TypeScript)"]
+        Team["Lead + workers<br/>(Claude Agent SDK)"]
+        State["Task graph, messages,<br/>memory, decisions"]
+        Git["Worktrees, diffs,<br/>approved merges"]
+    end
+    Repo[("Your git repo")]
+    game <-->|"WebSocket, localhost only"| foreman
+    Team --> Git --> Repo
 ```
 
-`launch.ps1` starts the Foreman (or reuses a running one), installs npm dependencies on first
-run, builds the mod, and opens the game straight into the "AgentCraft HQ" world. Close the game
-any time: the agents keep working, and the game resyncs when you reopen it. Useful flags:
-`-Reset` (fresh state), `-Speed N` (sim speed), `-Port/-DevPort` (if 7878/7879 are taken), and
-`-Showcase busy|late` (static demo state). The studio builds itself on the first launch. In an
-older world, rebuild it with `/agentcraft hq`.
+- **The Foreman** (`foreman/`) runs the agents and owns all the state: tasks and their
+  dependencies, messages, shared memory, decisions and worktrees. Everything is saved to disk and
+  Claude sessions resume by id, so it survives restarts and crashes.
+- **The mod** (`mod/`) is the window and the controls. It draws what the Foreman knows and sends
+  back what you decide. If the game closes, no work is lost.
+- **The sim backend** is a scripted team that exercises every feature with real git edits. It powers
+  the demo, the screenshot QA and development, without any API usage.
 
-**Your name.** The agents address you by your OS user name. To use another name, pass
-`-ForemanArgs '--user-name','Sam'`, set `AGENTCRAFT_USER_NAME`, or put `{"userName": "Sam"}` in
-`~/.agentcraft/config.json`. Your in-game player name in the dev run comes from `AGENTCRAFT_PLAYER`
-(defaulting to the OS user name).
+<details>
+<summary><b>More on the Foreman</b></summary>
 
-## Daily workflow
+<br>
 
-| Key | Does |
-|---|---|
-| `` ` `` (backtick) | Open the **console** (all keys are rebindable in Options → Controls) |
-| `Enter` while looking at a console terminal | Console |
-| `J` | **Answer decisions**: the oldest open question, permission or merge |
-| Right-click an agent | Agent card: state, task, last log lines, message/pause/stop |
-| Right-click podium / merge station / archive / lectern / task card | Decisions / diff review / memory library / task details |
+- **Team:** a lead (Opus by default) that plans and reviews, and up to three workers at once (Sonnet
+  by default). Pick the team with `--workers`.
+- **Task graph:** tasks only start when the tasks they depend on are done, and move through todo,
+  doing, review and done, with blocked on the side.
+- **CI loop:** your tests run after each task. A failure goes back to the worker once, then to review
+  with the failure noted.
+- **Merge conflicts:** when parallel work collides, the branch goes back to its worker, who merges
+  your branch in, resolves it and sends a fresh review.
+- **Messages:** agents message each other and you, and a message to a busy agent reaches it mid task.
+- **Spend:** a running total in `/status` and the console header.
+- **Protocol:** documented in [docs/protocol.md](docs/protocol.md), generated from the schemas and
+  kept in sync by `npm run check`.
 
-Console input:
+</details>
 
-- plain text: **new goal** for the team
-- `@juniper text`: message an agent (Tab completes names)
-- `/answer [d4] <n|option> [text]` · `/diff [worktree|@agent]` · `/status` · `/repos` · `/repo add <path>`
-- `/pause @x` · `/resume @x` · `/stop @x` (off shift; its task goes back on the board) · `/spawn @x [task]`
-- `/help` for everything, Up/Down for history
-
-When an agent needs you, a clay "!" appears over its head, it walks to the podium, the HUD shows
-"N waiting · press J", and Windows shows a toast. Merge decisions open a full diff review
-(file list, line numbers, j/k scroll, n/p switch files) with **Merge / Request changes / Reject**.
-
-## Safety model
-
-- Every worker gets its own git worktree on branch `agentcraft/<agent>/<task>`. Your checked-out
-  branch is only touched by a merge **you** approve. A merge is refused if your checkout is dirty. If it
-  would conflict (parallel tasks touched the same lines), the branch goes back to its worker, who
-  merges your branch into it and resolves the conflict; you then get a fresh merge review.
-- **Nothing ever pushes.** Agents have no git network access at all (blocked at the git level, not
-  only by the permission policy), and the Foreman's own git calls run no repository hooks.
-- Reads and edits inside the worktree are auto-allowed. Anything else risky (writing outside the
-  worktree, network, destructive shell commands) becomes a **permission** decision in-game:
-  Allow once / Always allow (the exact scope is shown) / Deny.
-- Agents' commits are authored "AgentCraft <Name>". Only the merge you approve is made as you.
+<br>
 
 ## Costs
 
-The claude backend defaults to lead = Opus and workers = Sonnet at medium effort, with at most 3
-workers at once and a lead review per task. API usage is billed per token to your Anthropic (or
-cloud provider) account. A small goal costs a few dollars. Cheaper:
-`-ForemanArgs '--model','sonnet','--effort','low'`. Measured with that (and `'--workers','juniper,kit'`)
-on the demo repo: three two-task goals, including two merge conflicts the workers resolved, took
-2-10 minutes each and about $6 in total. The console header and `/status` show the running total.
-Pass `-ForemanArgs` from a PowerShell prompt (an array). Through `powershell -File` it arrives as one
-comma-joined string, which the Foreman now refuses as an unknown option rather than ignoring it.
-The `sim` backend costs nothing.
+The claude backend bills per token to your Anthropic or cloud provider account. A small goal costs a
+few dollars. For a cheaper team:
 
-## Troubleshooting
+```powershell
+tools\launch.ps1 -Repo C:\path\to\repo -ForemanArgs '--model','sonnet','--effort','low','--workers','juniper,kit'
+```
 
-- **"Foreman not running" pill**: start it with `tools\launch.ps1`, or check
-  `artifacts\logs\foreman-<profile>.log`.
-- **Auth banner (claude)**: set `ANTHROPIC_API_KEY` (or a cloud provider, see Requirements) and
-  relaunch. With `-UseClaudeLogin`: run `claude`, then `/login`, then relaunch.
-- **Port in use**: pass `-Port` / `-DevPort`.
-- **Terminal view of the team**: `cd foreman; npm run tui -- --port 7878`.
+Measured with those settings on the sample repo: three two task goals, including two merge conflicts
+the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim backend is free.
 
-## For developers
+<br>
 
-`mod/DEV.md` (build, DevBridge camera/screenshot API, 26.3 notes), `mod/FEATURES.md` (feature
-packages and the state-model API), `foreman/README.md`, `docs/protocol.md`, `docs/QA.md`
-(`node tools/qa.mjs` captures the QA camera set), `assets-src/README.md` (art pipeline).
-Tests: `cd foreman; npm test` (481 tests).
+## Project layout
+
+| Path | What lives there |
+|---|---|
+| [`foreman/`](foreman) | The orchestrator: agents, task graph, memory, decisions, git safety, 481 tests |
+| [`mod/`](mod) | The Fabric mod: HQ builder, agents, displays, screens, HUD |
+| [`assets-src/`](assets-src) | Scripts that generate every skin, block texture and UI sprite |
+| [`tools/`](tools) | Launcher, stop script, DevBridge CLI, screenshot and QA runner |
+| [`docs/`](docs) | Protocol reference, QA guide, design notes |
+
+<br>
+
+## Development
+
+```powershell
+cd foreman; npm test                       # 481 tests
+cd mod; .\gradlew.bat build                # the mod
+node tools/qa.mjs --home .agentcraft-home  # capture the 10 shot QA gallery
+```
+
+Every visual in this README was captured in game through the **DevBridge**, a small localhost API in
+the mod that scripts use to move the camera and take screenshots. Start with
+[mod/DEV.md](mod/DEV.md) and [mod/FEATURES.md](mod/FEATURES.md) for the mod,
+[foreman/README.md](foreman/README.md) for the orchestrator and [docs/QA.md](docs/QA.md) for the
+screenshot suite.
+
+<br>
+
+## Status
+
+AgentCraft is young and has been used by one person on one machine. Today it is:
+
+- **Windows only.** The launcher and notifications are PowerShell; the Foreman itself is mostly
+  portable.
+- **Singleplayer,** one studio per world, on **Minecraft 26.3**.
+- **Run through the development client** (`gradlew runClient`). A regular mod release for normal
+  launchers is planned.
+
+Issues and ideas are welcome.
+
+<br>
 
 ## License
 
-MIT. See [LICENSE](LICENSE). All art (skins, block textures, UI sprites) is generated by the scripts in `assets-src/` and is covered by the same license. Minecraft itself is not included: the Gradle build downloads it from Mojang for development, and players need their own copy of Minecraft: Java Edition.
+[MIT](LICENSE). All art (skins, block textures and UI sprites) is generated by the scripts in
+`assets-src/` and is covered by the same license. Minecraft is not included: Gradle downloads it from
+Mojang for development, and players need their own copy of Minecraft: Java Edition. AgentCraft is
+not affiliated with Mojang, Microsoft or Anthropic.
+
+<div align="center">
+<br>
+<sub>Built with Claude.</sub>
+</div>
