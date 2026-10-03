@@ -35,6 +35,7 @@ import { formatInbox } from '../../bus.js';
 import { descendantsOf, killSnapshot, killTree, orphansOf, processTable, type ProcEntry } from '../../util/proc.js';
 import { truncate } from '../../util/text.js';
 import { leadSystemPrompt, planPrompt, RESUME_PROMPT, reviewPrompt, workerSystemPrompt, workPrompt } from './prompts.js';
+import { detectApiAuth, NO_API_AUTH_MESSAGE, withAuthMode } from './auth.js';
 import { StreamMapper, type TurnStats } from './stream.js';
 import { buildMcpServer, MCP_SERVER, type ToolHooks, type TurnHandle } from './tools.js';
 import { userName } from '../../user.js';
@@ -225,7 +226,13 @@ export class ClaudeBackend implements Backend {
       this.fm.setStatus({ auth: 'ok', message: `Claude (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
       return true;
     }
-    this.fm.setStatus({ auth: 'checking', message: 'Checking Claude login...' });
+    // API authentication by default; the claude.ai login only when explicitly opted into
+    const api = detectApiAuth(process.env);
+    if (!this.cfg.useClaudeLogin && !api.ok) {
+      this.markAuthFailed(NO_API_AUTH_MESSAGE);
+      return false;
+    }
+    this.fm.setStatus({ auth: 'checking', message: this.cfg.useClaudeLogin ? 'Checking Claude login...' : 'Checking Claude API access...' });
     async function* never(): AsyncGenerator<never> {
       await new Promise(() => undefined);
     }
@@ -234,13 +241,19 @@ export class ClaudeBackend implements Backend {
       const info = await Promise.race([q.accountInfo(), new Promise<never>((_, r) => setTimeout(() => r(new Error('timed out after 45s')), 45_000))]);
       const ok = !!(info.email || info.organization || (info.apiKeySource && info.apiKeySource !== 'none') || (info.tokenSource && info.tokenSource !== 'none') || (info.apiProvider && info.apiProvider !== 'firstParty'));
       if (!ok) throw new Error('not logged in');
-      const account = [info.organization, info.subscriptionType].filter(Boolean).join(' · ') || info.apiProvider || 'ok';
+      const account = this.cfg.useClaudeLogin
+        ? [info.organization, info.subscriptionType].filter(Boolean).join(' · ') || info.apiProvider || 'ok'
+        : [api.ok ? api.source : 'API', info.organization].filter(Boolean).join(' · ');
       this.authFailed = false;
       this.fm.setStatus({ auth: 'ok', account, message: `Claude (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
       this.fm.log.info(`claude auth ok (${account})`);
       return true;
     } catch (e) {
-      this.markAuthFailed(`Claude login check failed: ${(e as Error).message}. Run \`claude\` and /login (or set ANTHROPIC_API_KEY), then restart the Foreman. The sim backend still works.`);
+      this.markAuthFailed(
+        this.cfg.useClaudeLogin
+          ? `Claude login check failed: ${(e as Error).message}. Run \`claude\` and /login, then restart the Foreman. The sim backend still works.`
+          : `Claude API check failed: ${(e as Error).message}. Check ANTHROPIC_API_KEY (or your cloud provider settings), then restart the Foreman. The sim backend still works.`,
+      );
       return false;
     } finally {
       try {
@@ -580,7 +593,7 @@ export class ClaudeBackend implements Backend {
   }
 
   private env(who: { agentId?: string; cwd?: string } = {}): Record<string, string | undefined> {
-    return agentEnv(process.env, who);
+    return withAuthMode(agentEnv(process.env, who), this.cfg.useClaudeLogin);
   }
 
   private cwdFor(job: Job): { cwd: string; role: 'lead' | 'worker' } {

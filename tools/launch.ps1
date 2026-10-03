@@ -14,8 +14,9 @@
   Stop everything with tools\stop.ps1 (only what this script started).
 
 .EXAMPLE
-  tools\launch.ps1                                     # claude backend, ~/.agentcraft, ports 7878/7879
+  tools\launch.ps1                                     # claude backend (needs ANTHROPIC_API_KEY), ~/.agentcraft, ports 7878/7879
   tools\launch.ps1 -Repo C:\code\life-tracker          # register a repo with the Foreman
+  tools\launch.ps1 -UseClaudeLogin                     # personal use: your `claude` CLI login instead of an API key
   tools\launch.ps1 -Backend sim                        # scripted demo team, no API calls
   tools\launch.ps1 -Showcase late                      # static showcase state (sim)
   tools\launch.ps1 -Dev -Showcase busy -Home C:\Projects\agentcraft\.agentcraft-home -Port 27878 -DevPort 7889
@@ -38,6 +39,8 @@ param(
     [switch]$Autostart,
     [string]$Goal,
     [string[]]$ForemanArgs,
+    # claude backend: use your local `claude` CLI login instead of ANTHROPIC_API_KEY (personal use only)
+    [switch]$UseClaudeLogin,
     [switch]$Notify,
     [switch]$NoNotify,
     [switch]$NoGame,
@@ -211,6 +214,7 @@ if ($live) {
     if ($Autostart) { $fargs += '--autostart' }
     if ($Goal) { $fargs += @('--goal', $Goal) }
     if ($Dev -or $NoNotify) { $fargs += '--no-notify' } elseif ($Notify) { $fargs += '--notify' }
+    if ($UseClaudeLogin) { $fargs += '--use-claude-login' }
     if ($ForemanArgs) { $fargs += $ForemanArgs }
     if ($DryRun) {
         Write-Kv 'would run' ("node " + (Join-CmdArgs $fargs) + "   (in foreman/)") 'Yellow'

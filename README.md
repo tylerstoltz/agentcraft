@@ -1,6 +1,6 @@
 # AgentCraft
 
-Minecraft as a spatial UI for real multi-agent Claude work. A team of Claude agents (a lead plus
+*Powered by Claude.* Minecraft as a spatial UI for real multi-agent Claude work. A team of Claude agents (a lead plus
 workers) splits up a goal, works in real git worktrees of your repo, talks to each other, and shows
 its progress physically in a Minecraft studio: desks with live monitors, a Task Wall, a Decision
 Podium, a merge station with diff review, and a memory library. You steer everything from an
@@ -20,14 +20,28 @@ in-game console and answer the agents' questions when they come to you.
   the game is closed, and all state survives restarts (`~/.agentcraft`).
 - **Mod** (`mod/`, Fabric for Minecraft 26.3) is the view and input device. It connects to the
   Foreman over a local WebSocket (127.0.0.1 only).
-- Backends: `claude` (real agents; uses your logged-in `claude` CLI) or `sim` (a scripted demo team,
-  no API usage).
+- Backends: `claude` (real agents through the Claude Agent SDK) or `sim` (a scripted demo team, no
+  API usage).
 
 ## Requirements
 
-Windows 10/11, Java 25 on PATH (Temurin), Node 22+, git, and the `claude` CLI logged in (`claude`,
-then `/login`) for the real backend. The first launch downloads Gradle, Minecraft and Fabric
-through the Gradle wrapper (a few minutes). You don't need a Minecraft launcher.
+Windows 10/11, Java 25 on PATH (Temurin), Node 22+ and git. The first launch downloads Gradle,
+Minecraft and Fabric through the Gradle wrapper (a few minutes). You don't need a Minecraft launcher.
+
+For the real agents you need **Claude API access**, either of these:
+- `ANTHROPIC_API_KEY`: create a key at [console.anthropic.com](https://console.anthropic.com) and set
+  it, e.g. `setx ANTHROPIC_API_KEY sk-ant-...` (then open a new terminal), or
+- a cloud provider supported by the Agent SDK: Amazon Bedrock (`CLAUDE_CODE_USE_BEDROCK=1`), Google
+  Vertex AI (`CLAUDE_CODE_USE_VERTEX=1`) or Microsoft Foundry (`CLAUDE_CODE_USE_FOUNDRY=1`), with
+  that provider's usual credentials.
+
+Without either, the claude backend shows an "auth failed" banner and the sim backend still works.
+
+**Personal use only:** if you already use Claude Code, `tools\launch.ps1 -UseClaudeLogin` runs the
+agents on your own `claude` CLI login instead of an API key. Anthropic doesn't allow third-party
+tools to offer claude.ai login to their users, so this is off by default and meant for running
+AgentCraft yourself, not for offering it to others. To make it permanent for yourself, put
+`{"claude": {"useClaudeLogin": true}}` in `~/.agentcraft/config.json`.
 
 ## Launch
 
@@ -87,7 +101,8 @@ When an agent needs you, a clay "!" appears over its head, it walks to the podiu
 ## Costs
 
 The claude backend defaults to lead = Opus and workers = Sonnet at medium effort, with at most 3
-workers at once and a lead review per task. A small goal costs a few dollars. Cheaper:
+workers at once and a lead review per task. API usage is billed per token to your Anthropic (or
+cloud provider) account. A small goal costs a few dollars. Cheaper:
 `-ForemanArgs '--model','sonnet','--effort','low'`. Measured with that (and `'--workers','juniper,kit'`)
 on the demo repo: three two-task goals, including two merge conflicts the workers resolved, took
 2-10 minutes each and about $6 in total. The console header and `/status` show the running total.
@@ -99,7 +114,8 @@ The `sim` backend costs nothing.
 
 - **"Foreman not running" pill**: start it with `tools\launch.ps1`, or check
   `artifacts\logs\foreman-<profile>.log`.
-- **Auth banner (claude)**: run `claude`, then `/login`, then relaunch.
+- **Auth banner (claude)**: set `ANTHROPIC_API_KEY` (or a cloud provider, see Requirements) and
+  relaunch. With `-UseClaudeLogin`: run `claude`, then `/login`, then relaunch.
 - **Port in use**: pass `-Port` / `-DevPort`.
 - **Terminal view of the team**: `cd foreman; npm run tui -- --port 7878`.
 
@@ -108,7 +124,7 @@ The `sim` backend costs nothing.
 `mod/DEV.md` (build, DevBridge camera/screenshot API, 26.3 notes), `mod/FEATURES.md` (feature
 packages and the state-model API), `foreman/README.md`, `docs/protocol.md`, `docs/QA.md`
 (`node tools/qa.mjs` captures the QA camera set), `assets-src/README.md` (art pipeline).
-Tests: `cd foreman; npm test` (476 tests).
+Tests: `cd foreman; npm test` (481 tests).
 
 ## License
 

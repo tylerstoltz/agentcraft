@@ -29,8 +29,10 @@ Minecraft is closed, and survives restarts.
 cd foreman
 npm install
 
-# real agents (uses your logged-in `claude` CLI credentials, or ANTHROPIC_API_KEY)
+# real agents: needs ANTHROPIC_API_KEY (or CLAUDE_CODE_USE_BEDROCK / _VERTEX / _FOUNDRY)
 npm run start -- --backend claude --repo C:\path\to\your\repo
+# personal use only: your local `claude` CLI login instead of an API key
+npm run start -- --backend claude --repo C:\path\to\your\repo --use-claude-login
 
 # simulated team on a fresh sandbox repo (no API calls) - for demos and screenshot QA
 npm run start -- --backend sim --reset --speed 2
@@ -315,6 +317,6 @@ npm run check       # all of the above + protocol doc freshness
 - **`port 7878 is already in use`**: another Foreman is running (`~/.agentcraft/foreman.json` and `~/.agentcraft/<profile>/foreman.json` have its pid) - or use `--port`.
 - **`profile "claude" is in use by the Foreman pid N`**: that profile already has a running Foreman; stop it or use `--profile`.
 - **`... is not a repository root`**: `/repo add` the repository's top folder (the message names it).
-- **Banner says auth failed**: run `claude` and `/login` (or set `ANTHROPIC_API_KEY`), restart the Foreman. The sim backend works without auth.
+- **Banner says auth failed**: set `ANTHROPIC_API_KEY` (or a cloud provider switch) and restart the Foreman. With `--use-claude-login`: run `claude` and `/login`. The sim backend works without auth. Why the claude.ai login is opt-in: Anthropic does not allow third-party tools to offer it ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)); see `src/agents/claude/auth.ts`.
 - **Merge refused: uncommitted changes**: commit or stash in your checkout, then choose Merge again (the decision re-opened).
 - **Reset the demo repo**: `node sandbox/create-demo.mjs --force`.

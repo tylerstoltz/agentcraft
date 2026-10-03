@@ -31,6 +31,11 @@ export interface ClaudeConfig {
   resumeOnStart: boolean;
   /** lead reviews each finished task before the merge decision reaches the user */
   leadReview: boolean;
+  /**
+   * Use the local `claude` CLI's claude.ai login instead of an API key / cloud provider. Personal use
+   * only: Anthropic does not allow third-party tools to offer claude.ai login (see agents/claude/auth.ts).
+   */
+  useClaudeLogin: boolean;
 }
 
 export type ShowcaseCheckpoint = 'showcase' | 'showcase-late';
@@ -143,7 +148,7 @@ function effort(v: unknown, d: EffortLevel): EffortLevel {
 
 /** Every flag loadConfig reads (the `no-` prefix is stripped by parseFlags). */
 export const KNOWN_FLAGS = new Set([
-  'home', 'backend', 'profile', 'user-name', 'repo', 'workers', 'model', 'port', 'goal', 'autostart', 'reset', 'notify',
+  'home', 'backend', 'profile', 'user-name', 'use-claude-login', 'repo', 'workers', 'model', 'port', 'goal', 'autostart', 'reset', 'notify',
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
@@ -228,6 +233,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       maxBudgetUsdPerTurn: flags['max-budget'] !== undefined ? num(flags['max-budget'], 0) || undefined : (fileClaude.maxBudgetUsdPerTurn as number | undefined),
       resumeOnStart: bool(flags.resume ?? fileClaude.resumeOnStart, true),
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
+      useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
     },
     sim: {
       speed: Math.max(0.05, num(flags.speed ?? env.AGENTCRAFT_SIM_SPEED ?? fileSim.speed, 1)),
@@ -274,6 +280,9 @@ usage: npm run start -- [options]
   --no-ambient             no idle chatter while waiting on you
 
  claude backend
+  auth: ANTHROPIC_API_KEY, or a cloud provider (CLAUDE_CODE_USE_BEDROCK / _VERTEX / _FOUNDRY)
+  --use-claude-login       use your local \`claude\` CLI login instead (personal use only; env
+                           AGENTCRAFT_USE_CLAUDE_LOGIN=1, config.json claude.useClaudeLogin)
   --model <m>              model for lead and workers (default lead: opus, workers: sonnet)
   --lead-model <m> / --worker-model <m>
   --effort low|medium|high|xhigh|max   (default medium)
