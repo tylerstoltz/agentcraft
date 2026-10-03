@@ -23,7 +23,8 @@ was verified in game in Phase 2 (`artifacts/shots/phase2_*.png`).
 
 | package | owner (Phase 3) | owns |
 |---|---|---|
-| `client.foreman` | core | WebSocket link, protocol mirror, state model, `Foreman` facade |
+| `foreman` (main) + `client.foreman` | core | link (direct WebSocket or server relay), protocol mirror, state model (main, also run by a dedicated server: `ServerForeman`); `Foreman` facade + `RelayConnector` (client) |
+| `relay` (main) | core | multiplayer Foreman relay: per-player pipe through the server, op/allowlist gate |
 | `client.agents` | agents specialist | agent NPCs: manager, motion, pathfinding, renderer, nameplate, hooks |
 | `client.hud` | hud specialist | connection banner (done), goal boss bar, in-game toasts |
 | `client.monitor` | monitor specialist | `MonitorRenderer` (BER): live agent log on desk monitors |
@@ -33,13 +34,14 @@ was verified in game in Phase 2 (`artifacts/shots/phase2_*.png`).
 | `client.diff` | diff specialist | diff/merge review screen, `MergeStationRenderer` |
 | `client.library` | library specialist | memory screen, `MemoryArchiveRenderer` |
 | `client.permissions` | permissions specialist | permission decision UX |
-| `client.hq` + `hq` (main) | HQ specialist | the real HQ builder (main), world blocks driven by state (client), `StatusLampRenderer` |
+| `client.hq` + `hq` (main) | HQ specialist | the real HQ builder, site choice + earthworks (`HqSite`), world blocks driven by state (`HqWorldDriver`, main), `StatusLampRenderer` (client) |
 | `client.ui` | core (additive) | kit drawing, style tokens, text utils (screens + world) |
-| `client.world` | core (additive) | `StationRenderer` base, `ServerTasks`, `StationInteractions`, dev helpers |
-| `layout` (main) | core | anchor registry + naming contract |
+| `client.world` | core (additive) | `StationRenderer` base, `ServerTasks`, `StationInteractions`, `RemoteLayout`, dev helpers |
+| `layout` (main) | core | anchor registry + naming contract, `LayoutSync` (layout to remote clients) |
+| `world` (main) | core | HQ world identity, profile (studio / survival / hardcore) and rules, world marker |
 | `block`, `entity` (main) | core | the 16 blocks, block entities, the agent entity type |
 
-## The Foreman state model (`dev.agentcraft.client.foreman`)
+## The Foreman state model (`dev.agentcraft.foreman`)
 
 `Foreman.state()` is a `ForemanState`: the client's copy of everything the Foreman knows.
 **Read and listen on the client (render) thread only** (renderers' extract step, screens, HUD, tick
@@ -149,7 +151,10 @@ world builds it automatically on first start (`AGENTCRAFT_HQ_AUTOBUILD=0` turns 
 timber-framed studio hall (x -24..24, z -10..6, floor blocks y=65, **agents stand at y=66**) with an
 octagonal Goal Atrium in front under a ribbed copper dome with a glazed lantern (centre 0,15;
 entrance and spawn at z=22, gabled portico, path south to a lychgate at z=48), terraces, pond,
-cottage garden, all in a meadow hollow ringed by low wooded hills (closed horizon).
+cottage garden, all in a meadow hollow ringed by low wooded hills (closed horizon). These are the
+builder's own coordinates, which are the world coordinates on the classic flat site. On other terrain
+`HqSite` picks a site and the whole build (blocks, bindings, anchors) is shifted there, with
+earthworks around it (see DEV.md "HQ site"). Everything else reads positions from the anchors.
 
 | zone | where | stations / anchors |
 |---|---|---|
@@ -175,7 +180,8 @@ Cameras: every QA anchor (`cam_exterior_hero`, `cam_entrance_atrium`, `cam_task_
 `cam_testbench`. Desk cameras look over the agent's right shoulder (seat at the left third of the
 screen), so the nameplate sits beside the log rather than on it.
 
-Status lamp bindings (driven by `client.hq.HqWorldDriver`, applied on the integrated server only
+Status lamp bindings (driven by `hq.HqWorldDriver`: from the client's model onto the integrated
+server in singleplayer, from the server's own Foreman link on a dedicated server; written only
 when a state differs, re-applied every 2 s so rebuilt or newly placed lamps catch up; nothing
 changes while the Foreman link is down): `agent:<id>` (the agent's status family, the same as its
 nameplate: an idle/done agent with a decision waiting on you is `waiting`; off when off shift or
@@ -193,11 +199,12 @@ lamps also draw a breathing clay glow frame round their niche (BER), so "a decis
 reads from the entrance. Waiting lamps breathe and shed clay motes, an open podium sheds motes;
 **none of that while the Foreman link is down** (the lamps hold their last state, quietly).
 
-Build contract: everything inside the site box x -46..46, y 60..100, z -36..54 is planned in
+Build contract: everything inside the site box x -46..46, y 60..100, z -36..54 (builder coordinates) is planned in
 memory (terrain heightmap first: the hills rise from the plain at the box edge, so the site meets
 the world without a step) and applied as a diff (only differing cells are written, no neighbour
 updates; connections of stairs/panes/fences/panels computed in a second pass; Foreman-driven
-properties kept). Nothing outside the box is touched. **Player changes are kept**: the plan of the
+properties kept). Nothing outside the box is touched, except the earthworks ring and the clearing
+above the box on a relocated site. **Player changes are kept**: the plan of the
 last studio build is stored in the world folder (`agentcraft-hq-plan.dat`, palette + one index per
 cell, ~30 KB compressed), and a cell that matches neither the old nor the new plan (the player built, broke
 or replaced it since) is left alone; `/agentcraft hq force` resets those too. Another builder (`hq
@@ -252,7 +259,8 @@ screen `12/16`, task board linen `14/16` (minus a hair). `MonitorRenderer` uses 
 placeholder (agent name on the screen), which proves the transform.
 
 World state driven by the Foreman (lamp `status`, podium `open`, merge station `active`, monitor
-`lit`): change blocks on the integrated server with `client.world.ServerTasks.run(level -> ...)`
+`lit`): add it to `hq.HqWorldDriver` (common code, so it works in singleplayer and on a dedicated
+server alike); `client.world.ServerTasks.run(level -> ...)` reaches only the integrated server
 (singleplayer; only set a state when it differs). Clicks on stations: 
 `StationInteractions.onUse(ModBlocks.CONSOLE_TERMINAL, (player, pos, state, be) -> open...)`
 (client side, consumed, sneak-click still places blocks).

@@ -60,18 +60,53 @@ GRADLE_USER_HOME=C:/Projects/agentcraft/.gradle-home ./gradlew --stop       # st
 2. Program args: `--username <you> --width 1920 --height 1080`, where `<you>` is `AGENTCRAFT_PLAYER`
    or else your OS user name (letters, digits and `_`, at most 16 characters).
 3. **AutoWorld** (client) runs the first time the title screen appears. It loads the world folder
-   `AgentCraft HQ` if it exists, and otherwise creates it: creative, peaceful, commands allowed, no
+   `AgentCraft HQ` (or `AGENTCRAFT_WORLD_NAME`) if it exists, and otherwise creates it from the
+   creation switches below. The default is the studio world: creative, peaceful, commands allowed, no
    structures, no bonus chest, superflat plains meadow (bedrock / 124 stone / 3 dirt / grass), so
-   **the grass top is y=64 and you stand at y=65**. World spawn is 0 65 0.
-4. **HqWorld** (server side, HQ world only) re-applies the game rules on every start: no time or
-   weather cycle, keep inventory, no fire spread, no mob spawning of any kind, no mob griefing, no vine
-   spread, no snow build-up, respawn radius 0, no locator bar, quiet advancement and command output,
-   and max_block_modifications 1,000,000 so large /fill commands work for the HQ builder. On first
-   creation it also sets time 12000 (golden hour), clear weather and the world spawn. It writes a
-   marker file `agentcraft-world.json` in the world folder. Players who join in spectator or survival
-   are put back into creative.
+   **the grass top is y=64 and you stand at y=65**.
+4. **HqWorld** (server side, HQ world only) picks the world's **profile** at its first start from its
+   game mode and hardcore flag (creative = `studio`, survival/adventure = `survival`, hardcore =
+   `hardcore`), saves it in the marker file `agentcraft-world.json`, and applies it on every start.
+   Every profile keeps the build safe: no mob griefing, no fire spread, no vine spread, no snow
+   build-up, respawn radius 0, max_block_modifications 1,000,000 (for the HQ builder). `studio` adds
+   no time or weather cycle, keep inventory, no mob spawning of any kind, no locator bar, quiet
+   advancement and command output, time 12000 (golden hour) and clear weather at creation, and puts
+   players who join in spectator or survival back into creative. `survival`/`hardcore` leave the rest
+   vanilla. `/agentcraft mode studio|survival` switches later (rules, default and online players' game
+   mode); hardcore is fixed. First-time players, and players who die without a bed or respawn
+   anchor, are put on the `spawn` anchor in front of the door.
+5. A world is an HQ world when its level name is `AgentCraft HQ`, when it has the marker file, when
+   AutoWorld created it, or when the server runs with `AGENTCRAFT_HQ=1` (any world, e.g. a normal seed
+   on a dedicated server: set `gamemode`, `hardcore`, `difficulty`, `level-seed` and `level-type` in
+   `server.properties` as usual).
+6. **HQ site** (`hq.HqSite`, studio builder): on a flat world the HQ goes to the classic spot at the
+   origin; on any other world the site is searched around world spawn (`AGENTCRAFT_HQ_SITE=auto`).
+   The search samples the generator's own height function over the footprint of about 200 candidates
+   (no chunks are generated; about 6 s) and scores flatness, water, sea level and altitude. The
+   builder then runs at that offset, clears everything above the site box and slopes a 14-block ring
+   of earthworks into the natural terrain. The site is chosen once and saved in the marker (`site`),
+   so `/agentcraft hq` rebuilds in place. The test-room builder is not relocatable (always the origin).
 
 Delete `mod/run/saves/AgentCraft HQ` to start over with a fresh world.
+
+### World creation and HQ site switches (only read when a world is created / first built)
+
+| Var | Default | Effect |
+|---|---|---|
+| `AGENTCRAFT_WORLD_NAME` | `AgentCraft HQ` | Singleplayer world folder + name. A new name creates a new world; an existing world ignores the creation switches |
+| `AGENTCRAFT_WORLD` | `flat` | `normal`: vanilla terrain with structures (singleplayer) |
+| `AGENTCRAFT_SEED` | fixed (flat) / random (normal) | Number or text, as on the vanilla create-world screen |
+| `AGENTCRAFT_GAMEMODE` | `creative` | `survival` or `hardcore` (singleplayer; a server uses `server.properties`) |
+| `AGENTCRAFT_DIFFICULTY` | `peaceful` (creative) / `normal` | `peaceful`, `easy`, `normal`, `hard` (hardcore is always hard). Change it later with `/difficulty` |
+| `AGENTCRAFT_CHEATS` | 1 (0 in hardcore) | Commands allowed in the singleplayer world |
+| `AGENTCRAFT_HQ` | 0 | `1`: treat any world the server runs as an HQ world |
+| `AGENTCRAFT_HQ_SITE` | `origin` (flat) / `auto` | `auto`, `spawn`, `origin`, `X,Z` (centred there), `X,Y,Z` (ground top at Y) |
+| `AGENTCRAFT_HQ_SEARCH` | 256 | `auto`: search radius around world spawn (blocks) |
+| `AGENTCRAFT_HQ_STRICT` | 0 | `1`: refuse to build when the best site is poor (>25 % water, rough, below sea level) |
+| `AGENTCRAFT_HQ_AUTOBUILD` | 1 | `0`: do not build the HQ into a fresh HQ world |
+
+Example: a hardcore world on random terrain with the HQ at the best spot near spawn:
+`AGENTCRAFT_WORLD_NAME="HQ hardcore" AGENTCRAFT_WORLD=normal AGENTCRAFT_GAMEMODE=hardcore tools/launch.sh`.
 
 ### Environment switches (env var, or `-Dagentcraft.xxx=` system property)
 
@@ -256,11 +291,15 @@ Feature map and APIs for Phase 3: **mod/FEATURES.md**. This section records how 
 
 ```
 common (src/main)                          client (src/client)
-  AgentCraft          registries + init      AgentCraftClient -> ClientFeatures (one init() per feature)
-  block/              16 blocks, BEs, items  foreman/   link (java.net.http WS), Protocol records, ForemanState, Foreman facade
+  AgentCraft, Env      registries + init      AgentCraftClient -> ClientFeatures (one init() per feature)
+  block/              16 blocks, BEs, items  foreman/   Foreman facade, RelayConnector (server relay transport)
   entity/             agent entity type      agents/    AgentManager, AgentMotion, GridPathfinder, AgentRenderer, Nameplate, hooks
-  layout/             Anchors + names        hud/       ConnectionBanner        ui/  UiStyle, Kit, Panels, WorldUi, TextUtil
-  hq/                 /agentcraft hq builder world/     StationRenderer base, ServerTasks, StationInteractions, dev helpers
+  layout/             Anchors, LayoutSync    hud/       ConnectionBanner        ui/  UiStyle, Kit, Panels, WorldUi, TextUtil
+  hq/                 builders, HqSite,      world/     StationRenderer base, ServerTasks, StationInteractions, RemoteLayout, dev helpers
+                      HqWorldDriver
+  foreman/            link, Protocol, ForemanState, ServerForeman (dedicated server's own link)
+  relay/              multiplayer Foreman relay (per-player pipe, op/allowlist gate)
+  world/              HqWorld (identity, profile, rules), WorldMarker
   command/            /agentcraft root       monitor/ taskwall/ decisions/ console/ diff/ library/ permissions/ hq/  (Phase 3)
 ```
 

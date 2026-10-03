@@ -160,6 +160,9 @@ AgentCraft is built to point at code you care about.
   (writing outside it, network access, destructive commands) becomes an in game permission prompt
   that shows exactly what "Always allow" would cover.
 - **Clear authorship.** Agents commit as `AgentCraft <Name>`. Only the merge you approve is made as you.
+- **On a shared server, only trusted players drive.** Everyone can watch, but goals, messages,
+  answers and merges need op or an entry in `config/agentcraft-allowlist.json`, and each one is
+  logged with the player's name.
 
 <br>
 
@@ -217,6 +220,26 @@ the first time; in an older world, rebuild it with `/agentcraft hq`.
 **Your name.** The agents call you by your OS user name. Change it with
 `-ForemanArgs '--user-name','Sam'`, `AGENTCRAFT_USER_NAME`, or `{"userName": "Sam"}` in
 `~/.agentcraft/config.json`.
+
+**Your world.** By default the studio sits in a calm creative meadow. Environment variables set
+before the first launch create a different world instead (an existing world keeps its settings):
+
+```sh
+AGENTCRAFT_WORLD_NAME="HQ survival" AGENTCRAFT_WORLD=normal AGENTCRAFT_GAMEMODE=survival \
+  AGENTCRAFT_DIFFICULTY=hard tools/launch.sh --backend sim
+```
+
+`AGENTCRAFT_WORLD=normal` uses vanilla terrain (`AGENTCRAFT_SEED` picks the seed); the HQ is then
+built on the best site near spawn and blended into the landscape (`AGENTCRAFT_HQ_SITE=X,Z` picks
+the spot). `AGENTCRAFT_GAMEMODE` is `creative`, `survival` or `hardcore`. In game,
+`/agentcraft mode studio|survival` switches between the calm studio rules and vanilla play. All
+options are in [mod/DEV.md](mod/DEV.md).
+
+**Play together.** A Fabric dedicated server with the mod hosts the studio for several players. Run
+the Foreman on the server machine; each player's client reaches it through the server, so players
+need only the mod. Name the server's world `AgentCraft HQ` (or set `AGENTCRAFT_HQ=1`), op or
+allowlist the players who may drive the agents, and everyone sees the same team, lamps and podium.
+See [mod/DEV.md](mod/DEV.md) "Multiplayer".
 
 <br>
 

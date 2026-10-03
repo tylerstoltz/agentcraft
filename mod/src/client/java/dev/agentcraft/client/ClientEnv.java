@@ -1,8 +1,8 @@
 package dev.agentcraft.client;
 
+import dev.agentcraft.Env;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Locale;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -29,36 +29,15 @@ public final class ClientEnv {
 	public static final boolean AUTO_WORLD = flag("AGENTCRAFT_AUTOWORLD", true);
 
 	public static String raw(String envName) {
-		String prop = System.getProperty(envName.toLowerCase(Locale.ROOT).replace('_', '.'));
-		if (prop != null && !prop.isBlank()) {
-			return prop.trim();
-		}
-		String env = System.getenv(envName);
-		return env == null || env.isBlank() ? null : env.trim();
+		return Env.raw(envName);
 	}
 
 	public static boolean flag(String envName, boolean def) {
-		String v = raw(envName);
-		if (v == null) {
-			return def;
-		}
-		return switch (v.toLowerCase(Locale.ROOT)) {
-			case "1", "true", "yes", "on" -> true;
-			case "0", "false", "no", "off" -> false;
-			default -> def;
-		};
+		return Env.flag(envName, def);
 	}
 
 	public static int intValue(String envName, int def) {
-		String v = raw(envName);
-		if (v == null) {
-			return def;
-		}
-		try {
-			return Integer.parseInt(v);
-		} catch (NumberFormatException e) {
-			return def;
-		}
+		return Env.intValue(envName, def);
 	}
 
 	/**

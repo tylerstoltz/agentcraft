@@ -23,10 +23,23 @@ public interface HqBuilder {
 
 	/**
 	 * How a build was asked for: {@code force} = reset every cell of the site to the plan, even the
-	 * ones the player changed since the last build (builders that keep such cells honour it).
+	 * ones the player changed since the last build (builders that keep such cells honour it);
+	 * {@code site} = where to put it ({@link #relocatable} builders only, see {@link HqSite}).
 	 */
-	record Options(boolean force) {
+	record Options(boolean force, HqSite.Site site) {
 		public static final Options DEFAULT = new Options(false);
+
+		public Options(boolean force) {
+			this(force, HqSite.Site.CLASSIC);
+		}
+	}
+
+	/**
+	 * True when the builder honours {@link Options#site} (builds at an offset and reports its anchors
+	 * in its own coordinates; {@link HqFeature} shifts them). Others always build at the origin.
+	 */
+	default boolean relocatable() {
+		return false;
 	}
 
 	/**

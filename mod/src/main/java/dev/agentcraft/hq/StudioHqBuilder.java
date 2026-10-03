@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Block;
@@ -152,6 +153,11 @@ public final class StudioHqBuilder implements HqBuilder {
 	}
 
 	@Override
+	public boolean relocatable() {
+		return true;
+	}
+
+	@Override
 	public void build(ServerLevel level, Anchors.Builder a) {
 		build(level, a, Options.DEFAULT);
 	}
@@ -179,9 +185,13 @@ public final class StudioHqBuilder implements HqBuilder {
 		cameras(a);
 		p.settleGrass();
 		long tPlan = System.nanoTime() - tPlan0;
-		BlockState[] previous = PlanStore.load(level.getServer(), ID, SITE, p.size());
-		Plan.Stats st = p.apply(level, previous, options.force());
-		PlanStore.save(level.getServer(), ID, SITE, p.cells());
+		BlockPos origin = options.site().origin();
+		int[] box = {SITE[0] + origin.getX(), SITE[1] + origin.getY(), SITE[2] + origin.getZ(), SITE[3] + origin.getX(),
+			SITE[4] + origin.getY(), SITE[5] + origin.getZ()};
+		BlockState[] previous = PlanStore.load(level.getServer(), ID, box, p.size());
+		Plan.Stats st = p.apply(level, previous, options.force(), origin);
+		PlanStore.save(level.getServer(), ID, box, p.cells());
+		int earth = options.site().terraform() ? HqSite.terraform(level, p, origin) : 0;
 		a.bounds(-HX + 1, FLOOR, HZN + 1, HX - 1, FLOOR + 16, AZ + 8);
 		a.spot(AnchorNames.ENTRANCE, AX, FEET, AZ + 7, 180);
 		a.put(AnchorNames.SPAWN, AX + 0.5, FEET, AZ + 7.5, 180, 0);
@@ -196,6 +206,9 @@ public final class StudioHqBuilder implements HqBuilder {
 			AgentCraft.LOGGER.info("Studio HQ: kept your changes at {}", st.keptSample());
 		}
 		StringBuilder r = new StringBuilder(String.format(Locale.ROOT, "%d blocks updated", st.changed() + st.connected()));
+		if (earth > 0) {
+			r.append(String.format(Locale.ROOT, "; %d blocks of earthworks around the site", earth));
+		}
 		if (st.kept() > 0) {
 			r.append(String.format(Locale.ROOT, "; kept %d block%s you changed since the last build (/agentcraft hq force resets them)", st.kept(),
 				st.kept() == 1 ? "" : "s"));

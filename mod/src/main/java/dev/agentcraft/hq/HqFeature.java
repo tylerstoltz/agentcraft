@@ -8,10 +8,13 @@ import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;
 import dev.agentcraft.world.HqWorld;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import org.jspecify.annotations.Nullable;
@@ -97,14 +100,34 @@ public final class HqFeature {
 		return buildAndPublish(level, builder, HqBuilder.Options.DEFAULT);
 	}
 
+	/** {@code layout} moved by {@code o} (a relocatable builder reports its anchors in its own coordinates). */
+	static Anchors.Layout shifted(Anchors.Layout layout, BlockPos o) {
+		if (o.equals(BlockPos.ZERO)) {
+			return layout;
+		}
+		Map<String, Anchor> moved = new LinkedHashMap<>();
+		layout.anchors().forEach((name, a) -> moved.put(name, new Anchor(a.name(), a.x() + o.getX(), a.y() + o.getY(), a.z() + o.getZ(),
+			a.yaw(), a.pitch())));
+		Anchors.Bounds b = layout.bounds();
+		Anchors.Bounds mb = b == null ? null : new Anchors.Bounds(b.minX() + o.getX(), b.minY() + o.getY(), b.minZ() + o.getZ(),
+			b.maxX() + o.getX(), b.maxY() + o.getY(), b.maxZ() + o.getZ());
+		return new Anchors.Layout(layout.name(), layout.revision(), mb, moved);
+	}
+
 	public static Anchors.Layout buildAndPublish(ServerLevel level, HqBuilder builder, HqBuilder.Options options) {
 		long t0 = System.nanoTime();
 		// another builder rewrites the same ground without a record: the studio's memory of its last
 		// build no longer describes the world
 		PlanStore.invalidateUnless(level.getServer(), builder.id());
+		HqSite.Site site = HqSite.Site.CLASSIC;
+		if (builder.relocatable()) {
+			site = HqSite.resolve(level);
+			options = new HqBuilder.Options(options.force(), site);
+			AgentCraft.LOGGER.info("HQ site: {} (offset {})", site.report(), site.origin().toShortString());
+		}
 		Anchors.Builder anchors = Anchors.builder(builder.id());
 		lastReport = builder.build(level, anchors, options);
-		Anchors.Layout layout = anchors.build();
+		Anchors.Layout layout = shifted(anchors.build(), site.origin());
 		Anchors.publish(level.getServer(), layout);
 		Anchor spawn = layout.get(AnchorNames.SPAWN);
 		if (spawn != null) {

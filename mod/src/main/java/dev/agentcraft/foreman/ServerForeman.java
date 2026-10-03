@@ -1,6 +1,7 @@
 package dev.agentcraft.foreman;
 
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.Env;
 import dev.agentcraft.hq.HqWorldDriver;
 import dev.agentcraft.world.HqWorld;
 import java.net.URI;
@@ -49,10 +50,10 @@ public final class ServerForeman {
 	}
 
 	private static void start(MinecraftServer server) {
-		if (!server.isDedicatedServer() || !HqWorld.isHq(server) || !envFlag("AGENTCRAFT_FOREMAN", true)) {
+		if (!server.isDedicatedServer() || !HqWorld.isHq(server) || !Env.flag("AGENTCRAFT_FOREMAN", true)) {
 			return;
 		}
-		URI uri = URI.create("ws://127.0.0.1:" + envInt("AGENTCRAFT_PORT", 7878));
+		URI uri = URI.create("ws://127.0.0.1:" + Env.intValue("AGENTCRAFT_PORT", 7878));
 		String modVersion = FabricLoader.getInstance().getModContainer(AgentCraft.MOD_ID)
 			.map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse("0");
 		ForemanState st = new ForemanState(new LinkStatus(LinkStatus.Phase.WAITING_RETRY, uri.toString(), 0, null,
@@ -71,23 +72,5 @@ public final class ServerForeman {
 		if (l != null) {
 			l.stop();
 		}
-	}
-
-	static int envInt(String name, int def) {
-		try {
-			String v = System.getenv(name);
-			return v == null || v.isBlank() ? def : Integer.parseInt(v.trim());
-		} catch (NumberFormatException e) {
-			return def;
-		}
-	}
-
-	static boolean envFlag(String name, boolean def) {
-		String v = System.getenv(name);
-		if (v == null || v.isBlank()) {
-			return def;
-		}
-		v = v.trim().toLowerCase(java.util.Locale.ROOT);
-		return !(v.equals("0") || v.equals("false") || v.equals("off") || v.equals("no"));
 	}
 }

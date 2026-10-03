@@ -1,8 +1,10 @@
 package dev.agentcraft.client;
 
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.Env;
 import dev.agentcraft.world.HqWorld;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -30,9 +32,20 @@ import net.minecraft.world.level.levelgen.flat.FlatLevelGeneratorSettings;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 
 /**
- * Boots straight into the "AgentCraft HQ" world without any clicks: the first time the title
- * screen appears, the world is loaded if it exists, or created (creative, peaceful, superflat
- * grass meadow with no structures/decoration) if it does not. Disable with AGENTCRAFT_AUTOWORLD=0.
+ * Boots straight into the HQ world without any clicks: the first time the title screen appears, the
+ * world is loaded if it exists, or created if it does not. Disable with AGENTCRAFT_AUTOWORLD=0.
+ *
+ * <p>Creation settings (they only matter when the world is created; an existing world keeps its own):
+ * <pre>
+ * AGENTCRAFT_WORLD_NAME   folder + level name (default "AgentCraft HQ"); a new name = a new world
+ * AGENTCRAFT_WORLD        flat (default: superflat meadow, no structures) | normal (vanilla terrain)
+ * AGENTCRAFT_SEED         number or text; default: fixed for flat, random for normal
+ * AGENTCRAFT_GAMEMODE     creative (default: the studio profile) | survival | hardcore
+ * AGENTCRAFT_DIFFICULTY   peaceful | easy | normal | hard (default: peaceful in creative, normal
+ *                         in survival; hardcore is always hard)
+ * AGENTCRAFT_CHEATS       commands allowed (default on, off in hardcore)
+ * </pre>
+ * Where the HQ goes in a normal world is up to the server side (AGENTCRAFT_HQ_SITE, see HqSite).
  */
 public final class AutoWorld {
 	private static boolean attempted;
@@ -55,7 +68,7 @@ public final class AutoWorld {
 				// waiting forever on "Missing content detected!" in an unattended run.
 				openingHq = false;
 				AgentCraft.LOGGER.warn("AutoWorld: '{}' needs confirmation ({}); making a backup and loading it",
-					HqWorld.LEVEL_NAME, screen.getTitle().getString());
+					worldName(), screen.getTitle().getString());
 				client.execute(() -> ((BackupConfirmScreenAccessor) backup).agentcraft$onProceed().proceed(true, false));
 				return;
 			}
@@ -70,27 +83,77 @@ public final class AutoWorld {
 		});
 	}
 
+	/** The HQ world's folder / level name. */
+	public static String worldName() {
+		return Env.str("AGENTCRAFT_WORLD_NAME", HqWorld.LEVEL_NAME);
+	}
+
 	public static void openOrCreate(Minecraft mc) {
+		String name = worldName();
 		try {
-			if (mc.getLevelSource().levelExists(HqWorld.LEVEL_NAME)) {
-				AgentCraft.LOGGER.info("AutoWorld: loading existing world '{}'", HqWorld.LEVEL_NAME);
+			HqWorld.expectHqWorld(name);
+			if (mc.getLevelSource().levelExists(name)) {
+				AgentCraft.LOGGER.info("AutoWorld: loading existing world '{}'", name);
+				if (Env.raw("AGENTCRAFT_WORLD") != null || Env.raw("AGENTCRAFT_SEED") != null || Env.raw("AGENTCRAFT_GAMEMODE") != null) {
+					AgentCraft.LOGGER.warn("AutoWorld: '{}' already exists, so AGENTCRAFT_WORLD/SEED/GAMEMODE are ignored"
+						+ " (set AGENTCRAFT_WORLD_NAME to create another world)", name);
+				}
 				openingHq = true;
-				mc.createWorldOpenFlows().openWorld(HqWorld.LEVEL_NAME, () -> mc.gui.setScreen(new TitleScreen()));
+				mc.createWorldOpenFlows().openWorld(name, () -> mc.gui.setScreen(new TitleScreen()));
 			} else {
-				AgentCraft.LOGGER.info("AutoWorld: creating world '{}'", HqWorld.LEVEL_NAME);
+				Creation c = Creation.fromEnv();
+				AgentCraft.LOGGER.info("AutoWorld: creating world '{}' ({} terrain, seed {}, {}, {}{})", name, c.normal ? "normal" : "flat",
+					c.seed, c.hardcore ? "hardcore" : c.mode.getName(), c.difficulty.getSerializedName(), c.cheats ? ", cheats" : "");
 				LevelSettings settings = new LevelSettings(
-					HqWorld.LEVEL_NAME,
-					GameType.CREATIVE,
-					new LevelSettings.DifficultySettings(Difficulty.PEACEFUL, false, false),
-					true,
+					name,
+					c.mode,
+					new LevelSettings.DifficultySettings(c.difficulty, c.hardcore, false),
+					c.cheats,
 					WorldDataConfiguration.DEFAULT
 				);
-				WorldOptions options = new WorldOptions("agentcraft-hq".hashCode(), false, false);
-				mc.createWorldOpenFlows().createFreshLevel(HqWorld.LEVEL_NAME, settings, options, AutoWorld::meadowDimensions, new TitleScreen());
+				WorldOptions options = new WorldOptions(c.seed, c.normal, false);
+				mc.createWorldOpenFlows().createFreshLevel(name, settings, options,
+					c.normal ? WorldPresets::createNormalWorldDimensions : AutoWorld::meadowDimensions, new TitleScreen());
 			}
 		} catch (Exception e) {
 			AgentCraft.LOGGER.error("AutoWorld failed; staying on the title screen", e);
 			mc.gui.setScreen(new TitleScreen());
+		}
+	}
+
+	/** World creation settings from the environment (see the class doc). */
+	record Creation(boolean normal, long seed, GameType mode, boolean hardcore, Difficulty difficulty, boolean cheats) {
+		static Creation fromEnv() {
+			String world = Env.str("AGENTCRAFT_WORLD", "flat").toLowerCase(Locale.ROOT);
+			boolean normal = switch (world) {
+				case "normal", "default", "vanilla", "random" -> true;
+				case "flat", "meadow", "superflat" -> false;
+				default -> {
+					AgentCraft.LOGGER.warn("AGENTCRAFT_WORLD='{}' is not flat|normal; using flat", world);
+					yield false;
+				}
+			};
+			String seedText = Env.raw("AGENTCRAFT_SEED");
+			long seed = seedText != null ? WorldOptions.parseSeed(seedText).orElse(WorldOptions.randomSeed())
+				: normal ? WorldOptions.randomSeed() : "agentcraft-hq".hashCode();
+			String gm = Env.str("AGENTCRAFT_GAMEMODE", "creative").toLowerCase(Locale.ROOT);
+			boolean hardcore = gm.equals("hardcore");
+			GameType mode = hardcore ? GameType.SURVIVAL : GameType.byName(gm, null);
+			if (mode == null) {
+				AgentCraft.LOGGER.warn("AGENTCRAFT_GAMEMODE='{}' is not creative|survival|hardcore; using creative", gm);
+				mode = GameType.CREATIVE;
+			}
+			Difficulty difficulty = Difficulty.byName(Env.str("AGENTCRAFT_DIFFICULTY",
+				mode == GameType.CREATIVE ? "peaceful" : "normal").toLowerCase(Locale.ROOT));
+			if (difficulty == null) {
+				AgentCraft.LOGGER.warn("AGENTCRAFT_DIFFICULTY is not peaceful|easy|normal|hard; using normal");
+				difficulty = Difficulty.NORMAL;
+			}
+			if (hardcore) {
+				difficulty = Difficulty.HARD;
+			}
+			boolean cheats = Env.flag("AGENTCRAFT_CHEATS", !hardcore);
+			return new Creation(normal, seed, mode, hardcore, difficulty, cheats);
 		}
 	}
 

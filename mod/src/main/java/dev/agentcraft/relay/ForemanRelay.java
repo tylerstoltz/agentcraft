@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.Env;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
@@ -50,7 +51,7 @@ public final class ForemanRelay {
 		.executor(Executors.newCachedThreadPool(r -> daemon(r, "AgentCraft-Relay-io")))
 		.connectTimeout(Duration.ofSeconds(3))
 		.build();
-	private static final URI FOREMAN = URI.create("ws://127.0.0.1:" + envInt("AGENTCRAFT_PORT", 7878));
+	private static final URI FOREMAN = URI.create("ws://127.0.0.1:" + Env.intValue("AGENTCRAFT_PORT", 7878));
 
 	private static volatile @Nullable MinecraftServer server;
 	private static long allowlistMtime = -1;
@@ -345,15 +346,6 @@ public final class ForemanRelay {
 			c = c.getCause();
 		}
 		return c instanceof java.net.ConnectException ? "connection refused" : c.getClass().getSimpleName();
-	}
-
-	private static int envInt(String name, int def) {
-		try {
-			String v = System.getenv(name);
-			return v == null || v.isBlank() ? def : Integer.parseInt(v.trim());
-		} catch (NumberFormatException e) {
-			return def;
-		}
 	}
 
 	private static Thread daemon(Runnable r, String name) {
