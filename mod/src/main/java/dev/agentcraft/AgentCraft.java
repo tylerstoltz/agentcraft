@@ -10,6 +10,7 @@ import dev.agentcraft.hq.HqFeature;
 import dev.agentcraft.layout.Anchors;
 import dev.agentcraft.layout.LayoutSync;
 import dev.agentcraft.relay.ForemanRelay;
+import dev.agentcraft.world.HqProtection;
 import dev.agentcraft.world.HqWorld;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
@@ -33,6 +34,7 @@ public class AgentCraft implements ModInitializer {
 		ModItems.init();
 		ModEntities.init();
 		HqWorld.init();
+		HqProtection.init();
 		Anchors.init();
 		LayoutSync.init();
 		AgentCraftCommands.init();

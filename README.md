@@ -239,7 +239,9 @@ options are in [mod/DEV.md](mod/DEV.md).
 the Foreman on the server machine; each player's client reaches it through the server, so players
 need only the mod. Name the server's world `AgentCraft HQ` (or set `AGENTCRAFT_HQ=1`), op or
 allowlist the players who may drive the agents, and everyone sees the same team, lamps and podium.
-See [mod/DEV.md](mod/DEV.md) "Multiplayer".
+Only ops can build or break on the HQ site (`/agentcraft protect off` lifts that).
+[server-docker/](server-docker/README.md) has a ready Docker setup; details in
+[mod/DEV.md](mod/DEV.md) "Multiplayer".
 
 <br>
 

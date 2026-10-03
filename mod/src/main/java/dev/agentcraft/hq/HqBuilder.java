@@ -43,6 +43,15 @@ public interface HqBuilder {
 	}
 
 	/**
+	 * The box this builder writes deterministically ({minX, minY, minZ, maxX, maxY, maxZ}, inclusive, in
+	 * its own coordinates; shifted by the site offset for a relocatable builder). {@code HqProtection}
+	 * guards it. Null = unknown (the walkable layout bounds are used instead).
+	 */
+	default int @org.jspecify.annotations.Nullable [] siteBox() {
+		return null;
+	}
+
+	/**
 	 * Builds with options and returns a one-line report for the player (null = nothing to say).
 	 * The default ignores the options.
 	 */

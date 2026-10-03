@@ -63,6 +63,11 @@ public final class TestRoomBuilder implements HqBuilder {
 	}
 
 	@Override
+	public int[] siteBox() {
+		return new int[] {-16, FLOOR, -32, 16, FEET + 10, 16};
+	}
+
+	@Override
 	public void build(ServerLevel level, Anchors.Builder a) {
 		panels.clear();
 		clear(level);

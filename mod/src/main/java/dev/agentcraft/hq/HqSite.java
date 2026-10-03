@@ -69,6 +69,16 @@ public final class HqSite {
 	private HqSite() {
 	}
 
+	/** The saved site offset, or the origin when none is saved yet (classic site, or built before sites existed). */
+	public static BlockPos savedOrigin(net.minecraft.server.MinecraftServer server) {
+		JsonObject m = WorldMarker.load(server).json();
+		if (m.has("site") && m.get("site").isJsonObject()) {
+			JsonObject s = m.getAsJsonObject("site");
+			return new BlockPos(s.get("x").getAsInt(), s.get("y").getAsInt(), s.get("z").getAsInt());
+		}
+		return BlockPos.ZERO;
+	}
+
 	/** The site of this world: the saved one, else chosen now from the launch flags and saved. Server thread. */
 	public static Site resolve(ServerLevel level) {
 		WorldMarker marker = WorldMarker.load(level.getServer());

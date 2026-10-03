@@ -38,7 +38,7 @@ was verified in game in Phase 2 (`artifacts/shots/phase2_*.png`).
 | `client.ui` | core (additive) | kit drawing, style tokens, text utils (screens + world) |
 | `client.world` | core (additive) | `StationRenderer` base, `ServerTasks`, `StationInteractions`, `RemoteLayout`, dev helpers |
 | `layout` (main) | core | anchor registry + naming contract, `LayoutSync` (layout to remote clients) |
-| `world` (main) | core | HQ world identity, profile (studio / survival / hardcore) and rules, world marker |
+| `world` (main) | core | HQ world identity, profile (studio / survival / hardcore) and rules, site protection, world marker |
 | `block`, `entity` (main) | core | the 16 blocks, block entities, the agent entity type |
 
 ## The Foreman state model (`dev.agentcraft.foreman`)

@@ -337,6 +337,14 @@ HQ on first start like singleplayer. Fabric clients with the mod join it normall
   still drives the integrated server (so `dev.foreman.inject` choreography keeps moving the blocks).
 - **Agents** stay client-side (below): every client runs the same deterministic simulation from the
   same Foreman state and layout, so they agree up to a few ticks of message timing.
+- **Site protection** (`world.HqProtection`, every HQ world, on by default): players who are not op
+  (and not the singleplayer owner) cannot break blocks, place blocks, pour fluids or light fires
+  inside the builder's whole site box (`HqBuilder#siteBox`, shifted to the saved site), so the
+  building, grounds and everything `/agentcraft hq` owns stay intact. Doors, chests and stations
+  stay usable; the earthworks ring and the world beyond are ordinary ground. `/agentcraft protect
+  on|off` (saved in the world marker).
+- **Docker**: `server-docker/` runs this as an itzg Fabric server with `network_mode: host`; see its
+  README.
 
 Dev loop: `./gradlew runServer` (set `level-name=AgentCraft HQ`, `level-type=minecraft\:flat` and the
 meadow `generator-settings` in `run/server/server.properties`), then `runClient --no-configuration-cache
