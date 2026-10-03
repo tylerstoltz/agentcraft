@@ -1,11 +1,16 @@
 package dev.agentcraft.world;
 
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.layout.Anchor;
+import dev.agentcraft.layout.AnchorNames;
+import dev.agentcraft.layout.Anchors;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Set;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.MinecraftServer;
@@ -42,7 +47,28 @@ public final class HqWorld {
 			if (player.gameMode() == GameType.SPECTATOR || player.gameMode() == GameType.SURVIVAL) {
 				player.setGameMode(GameType.CREATIVE);
 			}
+			// Vanilla's first-join spawn search snaps to the highest block at the spawn column, which is
+			// the entrance portico's roof: put first-time players exactly on the spawn anchor instead.
+			if (player.addTag(ARRIVED_TAG)) {
+				toSpawnAnchor(player);
+			}
 		});
+		ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
+			if (!alive && isHq(newPlayer.level().getServer()) && newPlayer.getRespawnConfig() == null) {
+				toSpawnAnchor(newPlayer); // died with no bed / anchor of their own
+			}
+		});
+	}
+
+	/** Player tag: this player has been placed at the HQ entrance once. */
+	private static final String ARRIVED_TAG = "agentcraft.arrived";
+
+	/** Moves {@code player} onto the layout's spawn anchor (in front of the door), if there is one. */
+	public static void toSpawnAnchor(ServerPlayer player) {
+		Anchor spawn = Anchors.get(AnchorNames.SPAWN);
+		if (spawn != null) {
+			player.teleportTo(player.level().getServer().overworld(), spawn.x(), spawn.y(), spawn.z(), Set.of(), spawn.yaw(), 0f, true);
+		}
 	}
 
 	public static boolean isHq(MinecraftServer server) {
