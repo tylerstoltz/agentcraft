@@ -261,7 +261,7 @@ usage: npm run start -- [options]
                            env AGENTCRAFT_USER_NAME, config.json "userName")
   --profile <name>         state profile under home (default: backend name)
   --reset                  wipe this profile's state first (sim: also recreates the demo repo)
-  --notify / --no-notify   Windows toast when a decision waits (default: on for claude, off for sim)
+  --notify / --no-notify   desktop notification when a decision waits (default: on for claude, off for sim)
   --toast-silent           toasts without sound
   --repo-poll-ms <n>       how often repo checkouts are checked for head/dirty changes (default 10000)
   --merge-style merge|squash  approved merges: merge commit keeping the agents' commits (default),

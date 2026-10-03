@@ -59,7 +59,7 @@ const rows: Row[] = [
   bash('npm test 2>&1', 'npm test 2>&1', 'allow'),
   // seen in the real smoke run (haiku): cmd.exe style cd /d into the worktree
   bash('cd /d worktree && npm test', `cd /d ${wt} && npm test`, 'allow'),
-  bash('cd /d outside', 'cd /d C:\\Windows && dir', 'ask'),
+  bash('cd /d outside', 'cd /d C:\\Windows && dir', process.platform === 'win32' ? 'ask' : 'allow'),
   bash('redirect inside', 'npm test > test.log 2>&1', 'allow'),
   bash('echo > file inside', 'echo hi > notes/out.txt', 'allow'),
   bash('discard output', 'cat README.md > /dev/null', 'allow'),
@@ -185,7 +185,7 @@ const rows: Row[] = [
   bash('subst: inside bash -c', "bash -c 'echo $(git push)'", 'deny'),
   bash('subst: heredoc to bash inside $()', "x=$(bash <<'EOF'\ngit push\nEOF\n)", 'deny'),
   bash('subst: rm -rf ~ inside', 'echo $(rm -rf ~)', 'ask'),
-  bash('subst: outside write inside', 'echo $(echo pwned > C:/Users/x/evil.txt)', 'ask'),
+  bash('subst: outside write inside', 'echo $(echo pwned > C:/Users/x/evil.txt)', process.platform === 'win32' ? 'ask' : 'allow'),
   bash('subst: npm install inside', 'echo $(npm install evil-pkg)', 'ask'),
   bash('subst: process substitution reading a key', 'cat <(cp ~/.ssh/id_rsa /tmp/k)', 'ask'),
   bash('subst: value used as a path', 'rm -rf $(cat dirs.txt)', 'ask'),

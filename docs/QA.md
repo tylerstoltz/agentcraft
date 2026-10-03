@@ -7,9 +7,11 @@ independent judges who score each shot on the rubric. Nothing ships until every 
 
 ## Run it
 
-```powershell
+In a fresh clone, install the QA runner's dependencies first with `npm ci --prefix tools`.
+
+```sh
 # the normal QA run: starts what is missing, shoots, writes the sheet, stops what it started
-node tools/qa.mjs --port 27878 --dev-port 7889 --home C:\Projects\agentcraft\.agentcraft-home
+node tools/qa.mjs --port 27878 --dev-port 7889 --home /path/to/agentcraft/.agentcraft-home
 
 node tools/qa.mjs ... --showcase late             # the later state (blocked, error, done agents)
 node tools/qa.mjs ... --only qa03_task_wall,qa04_agent_desk --run-id 20261001-2310   # re-shoot into an existing run
@@ -30,7 +32,7 @@ works. At most one game per checkout.
 What a run does:
 
 1. Starts (or reuses) a **showcase Foreman** and the **game** with
-   `tools\launch.ps1 -Dev -Showcase busy|late -Home ... -Port ... -DevPort ...` (muted, never
+   `tools/launch.ps1` on Windows or `tools/mac.mjs` on macOS (muted, never
    steals focus, no toasts). Whatever was already running is reused and left running.
 2. Waits for a ready world and for the Foreman to hold the showcase state
    (`foreman.status.showcase`), then asks the mod for its camera anchors (`dev.anchors`).
@@ -46,7 +48,7 @@ What a run does:
    - `artifacts/shots/qa/latest.json` points at the newest run
 5. Puts the player and the clock back where they were before the run (`--no-restore` skips it;
    the QA world is the checkout's real HQ world in `mod/run`), then stops exactly what it started
-   (`tools\stop.ps1 -FromSummary <run>/launch.json`).
+   (through the platform's stop command, using the launch summary).
 
 Exit code 0 = no shot failed (and, with `--strict`, none was skipped). A run takes about
 30-50 s with a warm Gradle daemon.
