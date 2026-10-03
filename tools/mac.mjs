@@ -13,16 +13,21 @@ const runDir = path.join(root, 'artifacts', 'run');
 const logDir = path.join(root, 'artifacts', 'logs');
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
-const saveJson = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
+const saveJson = (file, value) => {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
+};
 const runFile = (kind, profile) => path.join(runDir, `mac-${kind}-${profile}.json`);
 
 function usage(code = 0) {
   console.log(`AgentCraft macOS launcher
   node tools/mac.mjs launch [--backend sim|claude] [--repo PATH] [--use-claude-login]
                             [--home PATH] [--profile NAME] [--port N] [--dev-port N]
-                            [--dev] [--no-game] [--no-foreman] [--no-wait]
+                            [--dev] [--showcase busy|late] [--reset]
+                            [--no-game] [--no-foreman] [--no-wait]
+                            [--summary-json PATH]
                             [--foreman-arg VALUE] (repeatable)
-  node tools/mac.mjs stop [--game] [--foreman] [--profile NAME]
+  node tools/mac.mjs stop [--game] [--foreman] [--profile NAME] [--stop-daemon]
 
 Default: Claude backend, ~/.agentcraft, ports 7878/7879. --dev mutes the game,
 keeps it from taking focus, and disables desktop notifications.`);
@@ -31,8 +36,8 @@ keeps it from taking focus, and disables desktop notifications.`);
 
 function options(argv) {
   const out = { action: argv.shift(), repo: [], foremanArgs: [] };
-  const values = new Set(['backend', 'repo', 'home', 'profile', 'port', 'dev-port', 'foreman-arg']);
-  const switches = new Set(['use-claude-login', 'dev', 'no-game', 'no-foreman', 'no-wait', 'game', 'foreman']);
+  const values = new Set(['backend', 'repo', 'home', 'profile', 'port', 'dev-port', 'showcase', 'summary-json', 'foreman-arg']);
+  const switches = new Set(['use-claude-login', 'dev', 'reset', 'no-game', 'no-foreman', 'no-wait', 'game', 'foreman', 'stop-daemon']);
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i].replace(/^--/, '');
     if (!argv[i].startsWith('--')) throw new Error(`unexpected argument: ${argv[i]}`);
@@ -47,6 +52,11 @@ function options(argv) {
   }
   if (!['launch', 'stop'].includes(out.action)) usage(out.action ? 2 : 0);
   out.backend ??= process.env.AGENTCRAFT_BACKEND || 'claude';
+  if (out.showcase) {
+    if (!['busy', 'late'].includes(out.showcase)) throw new Error('showcase must be busy or late');
+    out.backend = 'sim';
+    out.profile ??= out.showcase === 'late' ? 'showcase-late' : 'showcase';
+  }
   if (!['sim', 'claude'].includes(out.backend)) throw new Error('backend must be sim or claude');
   out.profile ??= out.backend;
   if (!/^[\w-]+$/.test(out.profile)) throw new Error('profile must contain only letters, digits, _ or -');
@@ -156,7 +166,7 @@ function prepareAudio(dev) {
   }
 }
 
-async function launch(opt) {
+async function launch(opt, summary) {
   if (process.platform !== 'darwin') throw new Error('tools/mac.mjs is for macOS');
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Node 22+ is required');
   fs.mkdirSync(runDir, { recursive: true });
@@ -172,6 +182,7 @@ async function launch(opt) {
   if (!opt['no-foreman']) {
     if (owned(fm) && await portOpen(fm.port)) {
       fmPort = fm.port;
+      summary.foreman.port = fmPort;
       console.log(`Reusing Foreman ${fm.pid} on :${fmPort}`);
       if (fm.backend !== opt.backend) console.warn(`Foreman is already using backend ${fm.backend}`);
       for (const repo of opt.repo) console.log(runCli('foremancli.mjs', ['repo-add', repo, '--port', String(fmPort)]));
@@ -183,9 +194,12 @@ async function launch(opt) {
       for (const repo of opt.repo) args.push('--repo', repo);
       if (opt['use-claude-login']) args.push('--use-claude-login');
       if (opt.dev) args.push('--no-notify');
+      if (opt.showcase) args.push('--showcase', opt.showcase);
+      if (opt.reset || opt.showcase) args.push('--reset');
       args.push(...opt.foremanArgs);
       fm = { ...start(process.execPath, args, path.join(root, 'foreman'), path.join(logDir, `mac-foreman-${opt.profile}.log`)), backend: opt.backend, port: fmPort, home: opt.home };
       saveJson(fmFile, fm);
+      summary.foreman.started = true;
       await waitPort(fmPort, 120000, fm, 'Foreman');
       console.log(`Foreman running on :${fmPort} (PID ${fm.pid})`);
     }
@@ -205,6 +219,7 @@ async function launch(opt) {
   if (owned(game)) {
     if (!await portOpen(game.devPort)) await waitPort(game.devPort, 600000, game, 'Minecraft');
     console.log(`Minecraft is already running (PID ${game.pid}, DevBridge :${game.devPort})`);
+    summary.game.devPort = game.devPort;
     if (game.foremanPort !== fmPort) console.warn(`It was launched for Foreman :${game.foremanPort}; stop the game before switching ports.`);
     return;
   }
@@ -219,6 +234,7 @@ async function launch(opt) {
   };
   game = { ...start('/bin/sh', [path.join(root, 'mod', 'gradlew'), 'runClient', '--console=plain'], path.join(root, 'mod'), path.join(logDir, 'mac-game.log'), env), devPort: opt['dev-port'], foremanPort: fmPort };
   saveJson(gameFile, game);
+  summary.game.started = true;
   console.log(`Starting Minecraft (Gradle PID ${game.pid}); log: ${game.log}`);
   if (opt['no-wait']) return;
   await waitPort(game.devPort, 600000, game, 'Minecraft');
@@ -250,11 +266,20 @@ async function stop(opt) {
     fs.rmSync(file, { force: true });
     console.log(`${kind}: stopped`);
   }
+  if (opt['stop-daemon'] && kinds.includes('game')) {
+    const env = { ...process.env, JAVA_HOME: javaHome(), GRADLE_USER_HOME: process.env.GRADLE_USER_HOME || path.join(root, '.gradle-home') };
+    const result = spawnSync('/bin/sh', [path.join(root, 'mod', 'gradlew'), '--stop'], { cwd: path.join(root, 'mod'), env, stdio: 'inherit' });
+    if (result.status !== 0) throw new Error('could not stop the Gradle daemon');
+  }
 }
 
 try {
   const opt = options(process.argv.slice(2));
-  if (opt.action === 'launch') await launch(opt); else await stop(opt);
+  if (opt.action === 'launch') {
+    const summary = { foreman: { started: false, port: opt.port }, game: { started: false, devPort: opt['dev-port'] } };
+    try { await launch(opt, summary); }
+    finally { if (opt['summary-json']) saveJson(path.resolve(opt['summary-json']), summary); }
+  } else await stop(opt);
 } catch (error) {
   console.error(`AgentCraft: ${error.message}`);
   process.exitCode = 1;

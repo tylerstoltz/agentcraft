@@ -17,7 +17,7 @@ Minecraft is closed, and survives restarts.
      |- Memory        src/memory.ts      markdown notes, shared + per agent
      |- DecisionQueue src/decisions.ts   question | permission | merge; answer wakes the agent
      |- RepoManager   src/repos.ts       repos, per-task worktrees, structured diffs, guarded merges
-     |- Notifier      src/notifier.ts    Windows toast + console bell when you are needed
+     |- Notifier      src/notifier.ts    desktop notification + console bell when you are needed
      |- Store         src/store.ts       atomic JSON state + JSONL logs under AGENTCRAFT_HOME
      `- Backend       claude: src/agents/claude/  (Claude Agent SDK sessions)
                       sim:    src/agents/sim/     (deterministic scripted team, real git)
@@ -79,7 +79,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
 | `--goal "<text>"` | | submit a goal right away |
 | `--reset` | | wipe this profile first |
-| `--notify` / `--no-notify` / `AGENTCRAFT_NOTIFY` | on for claude, off for sim | Windows toasts |
+| `--notify` / `--no-notify` / `AGENTCRAFT_NOTIFY` | on for claude, off for sim | Windows or macOS notifications |
 | `--toast-silent` | | toast without sound |
 | `--model`, `--lead-model`, `--worker-model` | lead `opus`, workers `sonnet` | any model id/alias the CLI accepts |
 | `--effort low..max` | `medium` | |

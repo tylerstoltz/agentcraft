@@ -1,6 +1,6 @@
 // Notifier: tells the user (outside the game) that a decision is waiting.
 //
-//  - Windows toast via PowerShell + Windows.UI.Notifications (no installs; uses PowerShell's AUMID)
+//  - Windows toast via PowerShell + Windows.UI.Notifications; macOS notification via osascript
 //  - console bell on the Foreman's terminal (only when stdout is a TTY)
 //  - rate-limited and coalesced: at most one toast per `minIntervalMs`; decisions that arrive
 //    inside the window are summarised in the next toast
@@ -16,7 +16,7 @@ export interface NotifierOptions {
   minIntervalMs?: number;
   bell?: boolean;
   log?: Logger;
-  /** injectable for tests; default shows a real Windows toast */
+  /** injectable for tests; default shows a native desktop notification */
   spawnToast?: (title: string, body: string, silent: boolean) => Promise<boolean>;
   now?: () => number;
 }
@@ -61,6 +61,32 @@ export function showWindowsToast(title: string, body: string, silent: boolean): 
       resolve(code === 0);
     });
   });
+}
+
+/** Display a macOS Notification Center banner without passing text through a shell. */
+export function showMacNotification(title: string, body: string, silent: boolean): Promise<boolean> {
+  if (process.platform !== 'darwin') return Promise.resolve(false);
+  const script = silent
+    ? 'display notification (item 2 of argv) with title (item 1 of argv)'
+    : 'display notification (item 2 of argv) with title (item 1 of argv) sound name "Glass"';
+  return new Promise((resolve) => {
+    const child = spawn('osascript', ['-e', 'on run argv', '-e', script, '-e', 'end run', '--', title, body], { stdio: 'ignore' });
+    const timer = setTimeout(() => child.kill(), 15_000);
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code === 0);
+    });
+  });
+}
+
+export function showDesktopNotification(title: string, body: string, silent: boolean): Promise<boolean> {
+  if (process.platform === 'win32') return showWindowsToast(title, body, silent);
+  if (process.platform === 'darwin') return showMacNotification(title, body, silent);
+  return Promise.resolve(false);
 }
 
 export class Notifier {
@@ -109,10 +135,10 @@ export class Notifier {
     const body = items.length === 1 ? items[0]! : items.slice(-3).map((t) => `• ${t}`).join('\n');
     this.lastShown = this.now();
     this.sent.push({ title, body, ts: this.lastShown });
-    const show = this.opts.spawnToast ?? showWindowsToast;
+    const show = this.opts.spawnToast ?? showDesktopNotification;
     try {
       const ok = await show(title, body, this.opts.silent ?? false);
-      if (!ok) this.opts.log?.warn('toast notification failed (PowerShell returned non-zero)');
+      if (!ok) this.opts.log?.warn('desktop notification failed');
     } catch (e) {
       this.opts.log?.warn(`toast notification failed: ${(e as Error).message}`);
     }

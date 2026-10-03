@@ -18,7 +18,8 @@ Use `--dev` for mute/no focus/no notifications; `--no-game` or `--no-foreman` to
 one component; `--no-wait` to return immediately while Minecraft builds. Repeat
 `--foreman-arg VALUE` to pass extra Foreman options. Logs and process records live in
 `artifacts/logs/mac-*.log` and `artifacts/run/mac-*.json`. `stop` only signals processes
-recorded by this launcher. macOS desktop notifications are not implemented yet.
+recorded by this launcher. macOS uses Notification Center for agent decisions.
+The screenshot QA command, `node tools/qa.mjs`, also uses this launcher on macOS.
 
 ## Windows
 

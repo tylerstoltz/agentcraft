@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// QA runner: showcase Foreman + game (tools/launch.ps1 -Dev -Showcase), the QA scene, a contact
+// QA runner: showcase Foreman + game (Windows launch.ps1 or macOS mac.mjs), the QA scene, a contact
 // sheet and a manifest, then it stops exactly what it started. See docs/QA.md.
 //
 //   node tools/qa.mjs [--showcase busy|late] [--scene tools/scenes/qa.json] [--only qa01_exterior_hero,...]
@@ -72,10 +72,16 @@ const scene = loadScene(scenePath);
 let env = {};
 let sheet = null;
 
-function runPs(script, args, logFile) {
+function runLauncher(action, args, logFile) {
   return new Promise((resolve) => {
-    const ps = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    const child = spawn(ps, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(TOOLS, script), ...args], { cwd: ROOT, windowsHide: true });
+    const windows = process.platform === 'win32';
+    const command = windows
+      ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      : process.execPath;
+    const argv = windows
+      ? ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(TOOLS, action === 'launch' ? 'launch.ps1' : 'stop.ps1'), ...args]
+      : [path.join(TOOLS, 'mac.mjs'), action, ...args];
+    const child = spawn(command, argv, { cwd: ROOT, windowsHide: true });
     const out = fs.createWriteStream(logFile);
     const pipe = (d) => { out.write(d); process.stderr.write(String(d).replace(/^(?=.)/gm, '    ')); };
     child.stdout.on('data', pipe);
@@ -83,9 +89,9 @@ function runPs(script, args, logFile) {
     let done = false;
     const finish = (code) => { if (done) return; done = true; out.end(); resolve(code ?? 1); };
     child.on('close', (code) => finish(code));
-    // launch.ps1 starts long-running processes without handle inheritance (tools/lib/bgrun.mjs),
-    // so 'close' follows 'exit' at once; never hang on a pipe someone else still holds anyway
+    // Launchers detach long-running processes; never hang on a pipe they may still hold.
     child.on('exit', (code) => setTimeout(() => finish(code), 3000));
+    child.on('error', () => finish(1));
   });
 }
 
@@ -112,20 +118,23 @@ let launchCode = null;
 if (!opt['no-launch']) {
   const gameUp = await probeDev();
   const fmUp = await probeForeman();
-  const args = ['-Dev', '-Showcase', showcase, '-Home', home, '-Port', String(port), '-DevPort', String(devPort), '-Profile', profile, '-SummaryJson', launchSummaryPath];
+  const windows = process.platform === 'win32';
+  const args = windows
+    ? ['-Dev', '-Showcase', showcase, '-Home', home, '-Port', String(port), '-DevPort', String(devPort), '-Profile', profile, '-SummaryJson', launchSummaryPath]
+    : ['--dev', '--showcase', showcase, '--home', home, '--port', String(port), '--dev-port', String(devPort), '--profile', profile, '--summary-json', launchSummaryPath];
   if (fmUp && !fmUp.showcase) {
     log(`a Foreman on :${port} is running but is not holding a showcase (backend ${fmUp.backend}); stop it or pick another --port`);
     process.exit(1);
   }
   // something answering that launch.ps1 did not start (or another profile): use it as-is
   if (gameUp) log(`a game already answers on DevBridge :${devPort}; using it`);
-  log(`launching: tools\\launch.ps1 ${args.join(' ')}${gameUp ? ' -NoGame' : ''}`);
-  launchCode = await runPs('launch.ps1', gameUp ? [...args, '-NoGame'] : args, path.join(outDir, 'launch.log'));
+  log(`launching: ${windows ? 'tools/launch.ps1' : 'tools/mac.mjs launch'} ${args.join(' ')}${gameUp ? ' (game already running)' : ''}`);
+  launchCode = await runLauncher('launch', gameUp ? [...args, windows ? '-NoGame' : '--no-game'] : args, path.join(outDir, 'launch.log'));
   try { launch = JSON.parse(fs.readFileSync(launchSummaryPath, 'utf8').replace(/^\uFEFF/, '')); } catch {}
   if (launchCode !== 0) {
-    log(`launch.ps1 failed (exit ${launchCode}); see ${path.join(outDir, 'launch.log')}`);
+    log(`launcher failed (exit ${launchCode}); see ${path.join(outDir, 'launch.log')}`);
     await shutdown();
-    writeManifest({ ok: false, error: `launch.ps1 failed (exit ${launchCode})`, shots: [] });
+    writeManifest({ ok: false, error: `launcher failed (exit ${launchCode})`, shots: [] });
     process.exit(1);
   }
 }
@@ -136,9 +145,12 @@ async function shutdown() {
   const startedFm = launch.foreman?.started;
   if (!startedGame && !startedFm) return null;
   log(`stopping what this run started (${[startedGame && 'game', startedFm && 'Foreman'].filter(Boolean).join(' + ')})`);
-  const args = ['-FromSummary', launchSummaryPath];
-  if (opt['stop-daemon'] && startedGame) args.push('-StopDaemon');
-  const code = await runPs('stop.ps1', args, path.join(outDir, 'stop.log'));
+  const windows = process.platform === 'win32';
+  const args = windows
+    ? ['-FromSummary', launchSummaryPath]
+    : ['--profile', profile, ...(!startedGame ? ['--foreman'] : !startedFm ? ['--game'] : [])];
+  if (opt['stop-daemon'] && startedGame) args.push(windows ? '-StopDaemon' : '--stop-daemon');
+  const code = await runLauncher('stop', args, path.join(outDir, 'stop.log'));
   return code;
 }
 
@@ -254,7 +266,7 @@ if (opt.strict && summary?.counts.skipped) ok = false;
 const manifest = writeManifest({
   ok,
   error: fatal ?? undefined,
-  stopped: stopCode === null ? 'nothing (reused or --keep)' : stopCode === 0 ? 'ok' : `stop.ps1 exit ${stopCode}`,
+  stopped: stopCode === null ? 'nothing (reused or --keep)' : stopCode === 0 ? 'ok' : `launcher stop exit ${stopCode}`,
   anchors: summary?.anchors,
   counts: summary?.counts,
   hung: summary?.hung ?? null,
