@@ -168,7 +168,7 @@ describe('claude backend orchestration (fake SDK)', () => {
     const kitLog = fm.store.logTail('kit').map((e) => `${e.kind}:${e.text}`);
     expect(kitLog.some((l) => l.startsWith('tool:Edit src/cli.ts'))).toBe(true);
     expect(kitLog.some((l) => l.startsWith('diff:src/cli.ts'))).toBe(true);
-    expect(kitLog.some((l) => l.includes('Blendi denied'))).toBe(true);
+    expect(kitLog.some((l) => l.includes('Alex denied'))).toBe(true);
     // workers never ran in the user checkout; the lead did (read-only)
     expect(calls.filter((c) => /Your task/.test(c.prompt)).every((c) => c.cwd.includes(path.join('worktrees', 'demo-app')))).toBe(true);
     expect(calls.find((c) => c.prompt.startsWith('New goal'))!.cwd).toBe(repoPath);

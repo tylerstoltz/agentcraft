@@ -15,6 +15,7 @@ import { run } from '../../util/proc.js';
 import { truncate } from '../../util/text.js';
 import { toolActivity } from '../activity.js';
 import { appendReviewNote, applyPatch, miniDiff, type Patch } from './edits.js';
+import { userName } from '../../user.js';
 
 export class Stopped extends Error {
   constructor() {
@@ -43,7 +44,7 @@ export function rng(seed: number): () => number {
 }
 
 const AMBIENT: Record<string, string[]> = {
-  marlow: ['Re-reading the plan against the goal', 'Checking dependencies on the task wall', 'Sketching the release notes outline', 'Thinking about what is left for Blendi'],
+  marlow: ['Re-reading the plan against the goal', 'Checking dependencies on the task wall', 'Sketching the release notes outline', 'Thinking about what is left for you'],
   kit: ['Thinking through regex edge cases: #, ##, #-', 'Considering Unicode letter classes for tags', 'Re-running the failing case in my head'],
   juniper: ['Reading how run() dispatches commands', 'Comparing flag parsing styles in cli.ts', 'Looking at how the tests build their harness'],
   wren: ['Checking cyan contrast on dark terminals', 'Making sure NO_COLOR is respected', 'Lining up the list columns'],
@@ -475,7 +476,7 @@ export class SimDirector {
         return 'merged';
       }
       if (d.answer?.option === 'Reject' || d.status === 'cancelled') {
-        this.say('marlow', 'all', `Blendi rejected ${t.id}. I'll stop the work that depends on it.`);
+        this.say('marlow', 'all', `${userName()} rejected ${t.id}. I'll stop the work that depends on it.`);
         this.act(worker, 'idle', 'lounge', `${t.id} rejected`);
         this.fm.setAgent(worker, { taskId: null, worktree: null });
         this.vars.rejected = true;
@@ -484,7 +485,7 @@ export class SimDirector {
       }
       // Request changes
       const note = d.answer?.text ?? 'please tidy this up';
-      this.say('marlow', worker, `Blendi asked for changes on ${t.id}: "${note}"`);
+      this.say('marlow', worker, `${userName()} asked for changes on ${t.id}: "${note}"`);
       await this.sleep(800);
       const wt = this.wt(taskKey);
       await this.think(worker, `Addressing review feedback: ${note}`, 'desk');

@@ -49,7 +49,7 @@ function fakeQuery() {
         return;
       }
       const cli = path.join(cwd, 'src', 'cli.ts');
-      if (p.startsWith('Blendi approved merging')) {
+      if (p.startsWith('Alex approved merging')) {
         // the conflict hand-back: merge main, resolve keeping both sides, commit the merge
         const s = sid(agent === 'kit' ? '2001' : '3001');
         yield init(s);
@@ -126,13 +126,13 @@ describe('claude backend: approved merge that conflicts with main', () => {
     await fm.answerDecision(m1.id, 'Merge');
     expect(fm.tasks.get('t1')!.status).toBe('done');
 
-    // t2 now conflicts in src/cli.ts: not a dead end on Blendi's desk, back to Juniper
+    // t2 now conflicts in src/cli.ts: not a dead end on the user's desk, back to Juniper
     await fm.answerDecision(m2.id, 'Merge');
     expect(fm.decisions.get(m2.id)!.status).not.toBe('open');
     expect(['doing', 'review']).toContain(fm.tasks.get('t2')!.status); // the fake worker may already be done
     expect(fm.store.data.feed.some((f) => /t2 conflicts with main in src\/cli\.ts/.test(f.text))).toBe(true);
-    await until(() => prompts.some((x) => x.agent === 'juniper' && x.prompt.startsWith('Blendi approved merging t2')));
-    const handBack = prompts.find((x) => x.agent === 'juniper' && x.prompt.startsWith('Blendi approved merging t2'))!.prompt;
+    await until(() => prompts.some((x) => x.agent === 'juniper' && x.prompt.startsWith('Alex approved merging t2')));
+    const handBack = prompts.find((x) => x.agent === 'juniper' && x.prompt.startsWith('Alex approved merging t2'))!.prompt;
     expect(handBack).toContain('git merge main');
     expect(handBack).toContain('src/cli.ts');
 

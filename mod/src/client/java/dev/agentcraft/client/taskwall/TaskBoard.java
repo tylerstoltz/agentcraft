@@ -822,7 +822,7 @@ final class TaskBoard {
 
 	/**
 	 * A blocked card's reason when it is too long for the footer: wrapped to at most 2 lines under
-	 * the title (the footer then shows who and the id), so "needs Blendi's npm token" is never cut.
+	 * the title (the footer then shows who and the id), so "needs the user's npm token" is never cut.
 	 */
 	static List<String> reasonLines(Task t, int inner) {
 		if (t.status() != TaskStatus.BLOCKED || t.blockedReason() == null) {

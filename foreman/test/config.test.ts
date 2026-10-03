@@ -45,3 +45,34 @@ describe('loadConfig argument checking', () => {
     expect(() => load(['--effort', 'lo'])).toThrow(/unknown effort "lo"/);
   });
 });
+
+describe('user name', () => {
+  it('comes from --user-name, then AGENTCRAFT_USER_NAME, then config.json, else the OS account', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { defaultUserName } = await import('../src/user.js');
+    expect(load(['--user-name', 'Sam']).userName).toBe('Sam');
+    home = tempDir();
+    expect(loadConfig(['--home', home], { AGENTCRAFT_USER_NAME: 'Robin' }).userName).toBe('Robin');
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ userName: 'Kai' }));
+    expect(loadConfig(['--home', home], {}).userName).toBe('Kai');
+    rmrf(home);
+    const d = load([]).userName;
+    expect(d).toBe(defaultUserName());
+    expect(d.length).toBeGreaterThan(0);
+  });
+
+  it('is sent to the mod in foreman.status and used in prompts', async () => {
+    const { makeForeman } = await import('./helpers.js');
+    const { leadSystemPrompt } = await import('../src/agents/claude/prompts.js');
+    home = tempDir();
+    const h = makeForeman(home, ['--user-name', 'Sam']);
+    try {
+      expect(h.fm.status.userName).toBe('Sam');
+      expect(h.fm.nameOf('user')).toBe('Sam');
+      expect(leadSystemPrompt(h.fm, ['kit'])).toContain('The user is Sam.');
+    } finally {
+      await h.fm.close();
+    }
+  });
+});

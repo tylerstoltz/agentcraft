@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJson } from './util/fsx.js';
 import type { BackendName } from './protocol.js';
+import { defaultUserName } from './user.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 
 export const FOREMAN_VERSION = '0.1.0';
@@ -48,6 +49,8 @@ export interface SimConfig {
 
 export interface Config {
   backend: BackendName;
+  /** the person the team works for (prompts, feed, UI); default: the OS user name */
+  userName: string;
   home: string;
   profile: string;
   /** profile directory: <home>/<profile> */
@@ -140,7 +143,7 @@ function effort(v: unknown, d: EffortLevel): EffortLevel {
 
 /** Every flag loadConfig reads (the `no-` prefix is stripped by parseFlags). */
 export const KNOWN_FLAGS = new Set([
-  'home', 'backend', 'profile', 'repo', 'workers', 'model', 'port', 'goal', 'autostart', 'reset', 'notify',
+  'home', 'backend', 'profile', 'user-name', 'repo', 'workers', 'model', 'port', 'goal', 'autostart', 'reset', 'notify',
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
@@ -192,6 +195,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
   const model = str(flags.model);
   const cfg: Config = {
     backend,
+    userName: (str(pick('user-name', 'AGENTCRAFT_USER_NAME')) ?? str(file.userName))?.trim().slice(0, 40) || defaultUserName(),
     home,
     profile,
     dataDir: path.join(home, profile),
@@ -247,6 +251,8 @@ usage: npm run start -- [options]
   --goal "<text>"          submit a goal right away
   --port <n>               WebSocket port (default 7878, env AGENTCRAFT_PORT)
   --home <dir>             state root (default ~/.agentcraft, env AGENTCRAFT_HOME)
+  --user-name <name>       your name, as the agents address you (default: your OS user name,
+                           env AGENTCRAFT_USER_NAME, config.json "userName")
   --profile <name>         state profile under home (default: backend name)
   --reset                  wipe this profile's state first (sim: also recreates the demo repo)
   --notify / --no-notify   Windows toast when a decision waits (default: on for claude, off for sim)

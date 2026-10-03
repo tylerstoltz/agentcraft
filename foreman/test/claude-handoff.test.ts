@@ -199,7 +199,7 @@ setInterval(() => {}, 1000);`;
     let oldCli: ChildProcess | undefined;
     let oldAliveWhenResumed: boolean | undefined;
     const kit: Script = async function* (o, p, aborted) {
-      if (p.startsWith('Blendi paused you')) {
+      if (p.startsWith('Alex paused you')) {
         oldAliveWhenResumed = !!oldCli && oldCli.exitCode === null && oldCli.signalCode === null;
         yield init(sid(2));
         fs.appendFileSync(path.join(o.cwd!, 'README.md'), '\nversion flag (Kit)\n');
@@ -236,7 +236,7 @@ setInterval(() => {}, 1000);`;
       if (!firstTurnDone) {
         fs.appendFileSync(path.join(o.cwd!, 'README.md'), '\nversion flag (Kit)\n');
         await callTool(o, 'update_task', { task_id: 't1', status: 'review', summary: 'done' });
-        // the last agentcraft tool call is behind us; Blendi writes now, then the turn ends
+        // the last agentcraft tool call is behind us; the user writes now, then the turn ends
         await gate;
         firstTurnDone = true;
         yield ok(sid(2));
@@ -259,7 +259,7 @@ setInterval(() => {}, 1000);`;
     await fm.close();
   });
 
-  it("the next worker is told it takes over, with Blendi's earlier answers (so it does not ask again)", async () => {
+  it("the next worker is told it takes over, with Alex's earlier answers (so it does not ask again)", async () => {
     const calls: Call[] = [];
     let stateAfterAnswer: { state: string; station: string } | undefined;
     const kit: Script = async function* (o, _p, aborted) {
@@ -270,7 +270,7 @@ setInterval(() => {}, 1000);`;
       const a = h.fm.agent('kit')!;
       stateAfterAnswer = { state: a.state, station: a.station };
       fs.writeFileSync(path.join(o.cwd!, 'KIT_PARTIAL.md'), 'half-done by Kit\n');
-      await aborted.catch(() => undefined); // still working when Blendi stops Kit
+      await aborted.catch(() => undefined); // still working when the user stops Kit
       yield ok(sid(2));
     };
     const { h, errors } = await boot('kit,juniper', calls, { kit, juniper: juniperFinishes });
@@ -284,12 +284,12 @@ setInterval(() => {}, 1000);`;
     await until(() => calls.some((c) => c.agent === 'juniper'), 30_000);
     const jp = calls.find((c) => c.agent === 'juniper')!.prompt;
     expect(jp).toMatch(/You take over this task from Kit/);
-    expect(jp).toMatch(/Kit asked: "Short or long output\?" -> Blendi: Long - with the package name/);
+    expect(jp).toMatch(/Kit asked: "Short or long output\?" -> Alex: Long - with the package name/);
     await until(() => fm.decisions.open().some((d) => d.kind === 'merge' && d.taskId === 't1'), 30_000);
     // the lead's review knows the history too (seen for real: it blamed Juniper for not asking)
     const review = calls.find((c) => c.agent === 'marlow' && c.prompt.startsWith('Review request: t1'))!.prompt;
     expect(review).toMatch(/Worked on by Kit, then Juniper/);
-    expect(review).toMatch(/Blendi already answered these questions on this task/);
+    expect(review).toMatch(/Alex already answered these questions on this task/);
     expect(errors).toEqual([]);
     await fm.close();
   });

@@ -198,7 +198,7 @@ describe('RepoManager', () => {
     const original = fs.readFileSync(readme, 'utf8');
     await h.fm.repos.pollStatus('demo-app');
     expect(await h.fm.repos.pollStatus('demo-app')).toBe(false); // nothing changed
-    fs.writeFileSync(readme, original + '\nBlendi is editing\n');
+    fs.writeFileSync(readme, original + '\nAlex is editing\n');
     expect(await h.fm.repos.pollStatus('demo-app')).toBe(true);
     expect(h.fm.repos.get('demo-app')!.dirty).toBe(true);
     fs.writeFileSync(readme, original);
@@ -221,15 +221,15 @@ describe('RepoManager', () => {
   it('respects the checkout\'s line-ending config (autocrlf=true): not falsely dirty, merges write CRLF, worktrees stay LF', async () => {
     const repo2 = await demoRepo();
     try {
-      // Blendi's checkout uses autocrlf=true (the Git for Windows default): files are CRLF on disk.
-      // Set up with plain git, the way Blendi's own git would do it.
+      // the user's checkout uses autocrlf=true (the Git for Windows default): files are CRLF on disk.
+      // Set up with plain git, the way the user's own git would do it.
       const plainGit = (...args: string[]) => execFileSync('git', args, { cwd: repo2, stdio: 'pipe' });
       plainGit('config', 'core.autocrlf', 'true');
       for (const f of ['README.md', 'src/format.ts']) fs.rmSync(path.join(repo2, f));
       plainGit('checkout', '--', '.');
       expect(fs.readFileSync(path.join(repo2, 'README.md'), 'utf8')).toContain('\r\n');
       const r = await h.fm.repos.add(repo2);
-      // an editor saves README.md without changing it: still clean for Blendi's git and the Foreman
+      // an editor saves README.md without changing it: still clean for the user's git and the Foreman
       const readme = path.join(repo2, 'README.md');
       fs.writeFileSync(readme, fs.readFileSync(readme));
       expect(await h.fm.repos.isDirty(repo2)).toBe(false);
@@ -244,7 +244,7 @@ describe('RepoManager', () => {
       expect(h.fm.decisions.get(d.id)!.status).toBe('answered'); // not refused as dirty
       const merged = fs.readFileSync(path.join(repo2, 'src', 'format.ts'), 'utf8');
       expect(merged).toContain('// Rendering of notes for the terminal.');
-      expect(merged).toContain('\r\n'); // written the way Blendi's git writes it
+      expect(merged).toContain('\r\n'); // written the way the user's git writes it
       expect(plainGit('status', '--porcelain').toString().trim()).toBe('');
     } finally {
       rmrf(path.dirname(repo2));
@@ -333,7 +333,7 @@ describe('approved merges are made as the user', () => {
 
 // An agent can rewrite or delete its worktree's `.git` link (or move HEAD). The Foreman's own git
 // writes in a worktree (commitAll: at merge, abandon and hand-off) must never follow it into
-// Blendi's checkout or another repository, and must only ever move the agent's own branch.
+// the user's checkout or another repository, and must only ever move the agent's own branch.
 describe('worktree .git tampering and a moved HEAD', () => {
   let outer: string;
   let h3: Harness;
@@ -405,13 +405,13 @@ describe('worktree .git tampering and a moved HEAD', () => {
 
   it("HEAD moved to another branch: the work is committed on the agent's own branch, the other branch is untouched", async () => {
     const wt = await worktreeWithWork('moved head');
-    await git(wt.path, ['checkout', '-q', '-b', 'blendi-feature']);
-    const other = await gitOut(repo, ['rev-parse', 'refs/heads/blendi-feature']);
+    await git(wt.path, ['checkout', '-q', '-b', 'alex-feature']);
+    const other = await gitOut(repo, ['rev-parse', 'refs/heads/alex-feature']);
     const own = await gitOut(repo, ['rev-parse', `refs/heads/${wt.branch}`]);
     const before = await userState();
     expect(await h3.fm.repos.commitAll('demo-app', wt.id, 'agentcraft: snapshot test')).toBe(true);
-    expect(await gitOut(repo, ['rev-parse', 'refs/heads/blendi-feature'])).toBe(other);
-    expect(await gitOut(wt.path, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/blendi-feature');
+    expect(await gitOut(repo, ['rev-parse', 'refs/heads/alex-feature'])).toBe(other);
+    expect(await gitOut(wt.path, ['symbolic-ref', 'HEAD'])).toBe('refs/heads/alex-feature');
     const tip = await gitOut(repo, ['rev-parse', `refs/heads/${wt.branch}`]);
     expect(tip).not.toBe(own);
     expect(await gitOut(repo, ['rev-parse', `${tip}^`])).toBe(own);

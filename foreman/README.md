@@ -72,6 +72,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--backend sim\|claude` / `AGENTCRAFT_BACKEND` | `claude` | |
 | `--port` / `AGENTCRAFT_PORT` | `7878` | WebSocket port (127.0.0.1 only) |
 | `--home` / `AGENTCRAFT_HOME` | `~/.agentcraft` | state root |
+| `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
 | `--profile` | backend name | state lives in `<home>/<profile>` |
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
 | `--goal "<text>"` | | submit a goal right away |

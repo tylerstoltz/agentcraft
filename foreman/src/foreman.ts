@@ -28,6 +28,7 @@ import type {
 import { RepoError, RepoManager } from './repos.js';
 import { Store } from './store.js';
 import { TaskError, TaskGraph } from './taskgraph.js';
+import { setUserName, userName } from './user.js';
 import { truncate } from './util/text.js';
 
 export interface Backend {
@@ -42,7 +43,7 @@ export interface Backend {
   /**
    * An approved merge conflicts with the base branch (another task merged first). Return true when
    * the backend sent the task back to its worker to merge the base and resolve it; false (or no
-   * method) leaves the merge decision open with the reason, for Blendi to handle.
+   * method) leaves the merge decision open with the reason, for the user to handle.
    */
   onMergeConflict?(task: Task, info: { base: string; branch: string; files: string[]; reason: string }): boolean;
   onTaskAction(task: Task, action: 'reassign' | 'cancel' | 'retry' | 'prioritize', arg?: string): void;
@@ -100,7 +101,8 @@ export class Foreman {
     const { cast, source } = loadCast(opts.config.projectRoot);
     this.cast = cast;
     this.log.debug(`cast from ${source}`);
-    this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown' };
+    setUserName(opts.config.userName);
+    this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', userName: userName() };
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
     this.initRoster();
     this.decisions.onCreated((d) => this.onDecisionCreated(d));
@@ -179,7 +181,7 @@ export class Foreman {
   }
 
   nameOf(id: string): string {
-    if (id === 'user') return 'Blendi';
+    if (id === 'user') return `${userName()}`;
     return this.agent(id)?.name ?? id;
   }
 
@@ -370,7 +372,7 @@ export class Foreman {
       throw e;
     }
     const answerText = [d.answer?.option, d.answer?.text].filter(Boolean).join(' — ');
-    this.bus.feed('decision', `Blendi answered ${this.nameOf(d.agentId)}: ${answerText}`, { agentId: 'user', to: d.agentId });
+    this.bus.feed('decision', `${userName()} answered ${this.nameOf(d.agentId)}: ${answerText}`, { agentId: 'user', to: d.agentId });
     if (d.kind === 'merge') await this.applyMergeAnswer(d);
     if (d.status === 'answered' || d.status === 'cancelled') {
       this.decisions.settle(d.id);
@@ -571,7 +573,7 @@ export class Foreman {
       case 'cancel':
         this.tasks.setStatus(t.id, 'cancelled', { force: true });
         for (const d of this.decisions.open().filter((d) => d.taskId === t.id)) this.decisions.cancel(d.id, 'task cancelled');
-        this.bus.feed('task', `Task ${t.id} cancelled by Blendi: ${t.title}`, { agentId: 'user' });
+        this.bus.feed('task', `Task ${t.id} cancelled by ${userName()}: ${t.title}`, { agentId: 'user' });
         break;
       case 'retry':
         this.tasks.update(t.id, { ci: 'unknown', blockedReason: null });

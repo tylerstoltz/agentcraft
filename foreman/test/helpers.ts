@@ -8,6 +8,9 @@ import { Foreman } from '../src/foreman.js';
 import { Notifier } from '../src/notifier.js';
 import type { Outbound } from '../src/protocol.js';
 
+/** The user name every test Foreman runs with (the default would be the OS account name). */
+export const TEST_USER = 'Alex';
+
 export function tempDir(prefix = 'ac-test-'): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
@@ -31,7 +34,7 @@ export async function demoRepo(): Promise<string> {
 }
 
 export function testConfig(home: string, args: string[] = []): Config {
-  const cfg = loadConfig(['--home', home, '--no-notify', ...args], {});
+  const cfg = loadConfig(['--home', home, '--no-notify', '--user-name', TEST_USER, ...args], {});
   return cfg;
 }
 

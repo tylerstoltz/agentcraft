@@ -10,6 +10,7 @@ import type { AgentState, Decision, TaskStatus } from '../../protocol.js';
 import { MERGE_OPTIONS } from '../../protocol.js';
 import { truncate } from '../../util/text.js';
 import { boardSummary } from './prompts.js';
+import { userName } from '../../user.js';
 
 export const MCP_SERVER = 'agentcraft';
 
@@ -37,7 +38,7 @@ type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: bo
 
 /**
  * A task in review whose worktree changed nothing (a report, an investigation): there is nothing
- * to merge, so it is closed as done (worktree abandoned, branch kept) instead of asking Blendi to
+ * to merge, so it is closed as done (worktree abandoned, branch kept) instead of asking the user to
  * approve an empty merge. Returns true if it was closed.
  */
 export async function closeIfNoChanges(fm: Foreman, taskId: string): Promise<boolean> {
@@ -71,7 +72,7 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
   const tools: Array<SdkMcpToolDefinition<any>> = [
     tool(
       'send_message',
-      'Send a short message to a teammate (id or name), "lead", "all", or "user" (Blendi; not a question — use ask_user for questions).',
+      `Send a short message to a teammate (id or name), "lead", "all", or "user" (${userName()}; not a question — use ask_user for questions).`,
       { to: z.string().describe('agent id/name, "lead", "all" or "user"'), text: z.string().describe('the message (1-3 sentences)') },
       async ({ to, text }) => {
         let target = to.trim().toLowerCase();
@@ -88,7 +89,7 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
     ),
     tool(
       'ask_user',
-      'Ask Blendi a question and WAIT for the answer. Only for decisions that are genuinely the user\'s. Put the recommended option first.',
+      `Ask ${userName()} a question and WAIT for the answer. Only for decisions that are genuinely the user's. Put the recommended option first.`,
       {
         question: z.string(),
         options: z.array(z.string()).max(6).optional().describe('2-4 short choices, recommended first'),
@@ -115,11 +116,11 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
         const done = await fm.decisions.wait(d.id);
         turn?.signal.removeEventListener('abort', onAbort);
         hooks.onWaiting(agentId, false);
-        if (turn?.signal.aborted) return withInbox('Your turn was stopped before Blendi answered.', true);
+        if (turn?.signal.aborted) return withInbox(`Your turn was stopped before ${userName()} answered.`, true);
         fm.setAgent(agentId, { state: prevState.state as AgentState, station: prevState.station, activity: 'got your answer' });
         if (done.status === 'cancelled') return withInbox('The question was cancelled. Use your best judgement and note the assumption.');
         const ans = [done.answer?.option, done.answer?.text].filter(Boolean).join(' — ');
-        return withInbox(`Blendi answered: ${ans}`);
+        return withInbox(`${userName()} answered: ${ans}`);
       },
     ),
     tool(
@@ -254,18 +255,18 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
       ),
       tool(
         'request_merge',
-        'After reviewing a task in "review": send Blendi a merge decision for its branch. Blendi decides; you do not wait.',
-        { task_id: z.string(), summary: z.string().describe('2-4 lines for Blendi: what changed, how it was tested, risks') },
+        `After reviewing a task in "review": send ${userName()} a merge decision for its branch. ${userName()} decides; you do not wait.`,
+        { task_id: z.string(), summary: z.string().describe(`2-4 lines for ${userName()}: what changed, how it was tested, risks`) },
         async ({ task_id, summary }) => {
           const t = fm.tasks.get(task_id);
           if (!t) return fail(`no task ${task_id}`);
           if (t.status !== 'review') return fail(`${t.id} is ${t.status}, not in review`);
           if (!t.worktree || !t.repoId) return fail(`${t.id} has no worktree to merge`);
           const open = fm.decisions.open().find((d) => d.kind === 'merge' && d.taskId === t.id);
-          if (open) return withInbox(`Merge decision ${open.id} for ${t.id} is already waiting for Blendi.`);
+          if (open) return withInbox(`Merge decision ${open.id} for ${t.id} is already waiting for ${userName()}.`);
           if (await closeIfNoChanges(fm, t.id)) {
             hooks.onTasksChanged();
-            return withInbox(`${t.id} changed no files, so there is nothing to merge: it is closed as done. Tell Blendi the result with send_message if you have not yet.`);
+            return withInbox(`${t.id} changed no files, so there is nothing to merge: it is closed as done. Tell ${userName()} the result with send_message if you have not yet.`);
           }
           const wt = fm.repos.requireWorktree(t.repoId, t.worktree);
           const d = fm.createDecision({
@@ -279,7 +280,7 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
             worktree: wt.id,
           });
           hooks.onMergeRequested(t.id, d);
-          return withInbox(`Merge decision ${d.id} sent to Blendi.`);
+          return withInbox(`Merge decision ${d.id} sent to ${userName()}.`);
         },
       ),
     );
@@ -292,5 +293,5 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
   }
 
   // alwaysLoad: never hide our tools behind tool search
-  return createSdkMcpServer({ name: MCP_SERVER, version: '0.1.0', tools, alwaysLoad: true, instructions: 'AgentCraft team tools: coordinate with teammates, ask Blendi, keep memory and the task board up to date.' });
+  return createSdkMcpServer({ name: MCP_SERVER, version: '0.1.0', tools, alwaysLoad: true, instructions: `AgentCraft team tools: coordinate with teammates, ask ${userName()}, keep memory and the task board up to date.` });
 }

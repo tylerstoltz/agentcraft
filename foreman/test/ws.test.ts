@@ -108,7 +108,7 @@ describe('WebSocket server + sim backend', () => {
     const tasks = h.fm.tasks.list();
     expect(tasks.length).toBe(9);
     expect(tasks.filter((t) => t.status === 'done').length).toBe(7);
-    // t7 (npm publish) was blocked until Blendi closed it at the end; t9 was parked
+    // t7 (npm publish) was blocked until the user closed it at the end; t9 was parked
     const taskStatuses = new Set(a.msgs.filter((m) => m.type === 'task.upsert').map((m) => (m.type === 'task.upsert' ? m.task.status : '')));
     for (const s of ['todo', 'doing', 'review', 'done', 'blocked', 'cancelled']) expect(taskStatuses.has(s as never), s).toBe(true);
     expect(tasks.filter((t) => t.status === 'cancelled').map((t) => t.id).sort()).toEqual(['t7', 't9']);

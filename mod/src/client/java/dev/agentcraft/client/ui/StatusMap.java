@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li>todo: {@code idle} grey</li>
  *   <li>doing: {@code working} teal</li>
- *   <li>review, or any open task with an open decision on it (a merge waiting for Blendi, a
+ *   <li>review, or any open task with an open decision on it (a merge waiting for the user, a
  *       question about it): {@code waiting} clay, pulsing; review without a decision (an agent is
  *       still reviewing): {@code thinking} brass</li>
  *   <li>blocked: {@code error} red</li>

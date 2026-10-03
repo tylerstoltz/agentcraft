@@ -1,8 +1,8 @@
 // Restart recovery for the claude backend (fake SDK). A Foreman shutdown can happen at any point
 // of a goal; after the restart nothing may wait forever:
 //  - a worker turn interrupted mid-way resumes with its persisted session id
-//  - an ask_user question left open resumes the session with the answer once Blendi replies
-//  - the LEAD's planning turn interrupted (asking Blendi, mid-exploration, or before it even had
+//  - an ask_user question left open resumes the session with the answer once the user replies
+//  - the LEAD's planning turn interrupted (asking the user, mid-exploration, or before it even had
 //    a session) still ends with an active goal and workers starting
 //  - a task left "doing" with no turn behind it is re-queued and its session resumed
 import fs from 'node:fs';
@@ -24,8 +24,8 @@ const WORK_S = '22222222-2222-4222-8222-222222222222';
 
 /**
  * hang        worker hangs mid-turn (killed by the restart)
- * ask         worker asks Blendi and waits
- * lead-ask    lead asks Blendi during planning and waits
+ * ask         worker asks the user and waits
+ * lead-ask    lead asks the user during planning and waits
  * lead-hang   lead hangs mid-plan after it got a session
  * lead-early  lead hangs before it has a session id (no init message yet)
  * finish      everyone completes their turn
@@ -129,16 +129,16 @@ describe('claude backend restart recovery (fake SDK)', () => {
     ({ h } = await boot(home, repo, 'finish', calls2));
     expect(h.fm.decisions.get(q.id)!.status).toBe('open');
     expect(h.fm.agent('kit')!.state).toBe('waiting_user');
-    expect(calls2.length).toBe(0); // nothing resumed until Blendi answers
+    expect(calls2.length).toBe(0); // nothing resumed until the user answers
     await h.fm.answerDecision(q.id, 'Long');
     await until(() => calls2.length > 0);
     expect(calls2[0]!.resume).toBe(WORK_S);
-    expect(calls2[0]!.prompt).toContain('Blendi answered: Long');
+    expect(calls2[0]!.prompt).toContain('Alex answered: Long');
     await until(() => h.fm.decisions.open().some((d) => d.kind === 'merge'), 60_000);
     await h.fm.close();
   });
 
-  it('the lead asking Blendi during planning, across a restart: the goal becomes active and work starts', async () => {
+  it('the lead asking Alex during planning, across a restart: the goal becomes active and work starts', async () => {
     const { home, repo } = await fresh();
     const calls: Call[] = [];
     let { h } = await boot(home, repo, 'lead-ask', calls);
@@ -156,7 +156,7 @@ describe('claude backend restart recovery (fake SDK)', () => {
     await until(() => calls2.some((c) => c.lead));
     const lead = calls2.find((c) => c.lead)!;
     expect(lead.resume).toBe(LEAD_S);
-    expect(lead.prompt).toContain('Blendi answered: --version');
+    expect(lead.prompt).toContain('Alex answered: --version');
     // the resumed turn is still the plan: the goal goes active and the worker picks up t1
     await until(() => h.fm.goal(goal.id)!.status === 'active');
     await until(() => calls2.some((c) => !c.lead && c.prompt.startsWith('Your task: t1')));

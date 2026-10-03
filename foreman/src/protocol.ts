@@ -92,7 +92,7 @@ export const Agent = z.object({
   repoId: Id.optional(),
   worktree: Id.optional().describe('id of the worktree the agent is working in (see Repo.worktrees)'),
   paused: z.boolean(),
-  active: z.boolean().describe('false = off shift (not on the current team, or stopped by Blendi); render idle in the lounge'),
+  active: z.boolean().describe('false = off shift (not on the current team, or stopped by the user); render idle in the lounge'),
 });
 export type Agent = z.infer<typeof Agent>;
 
@@ -217,6 +217,7 @@ export const ForemanStatus = z.object({
   speed: z.number().optional().describe('sim: speed multiplier'),
   showcase: z.boolean().optional().describe('sim: holding a static showcase state (`--showcase` or `--showcase late`)'),
   costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
+  userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
 

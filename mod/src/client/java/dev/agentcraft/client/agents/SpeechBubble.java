@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The speech bubble of one agent ({@code agent.say}): the kit {@code bubble} nine-slice with its
  * tail pointing down at the nameplate, ink text wrapped to at most three lines (then an ellipsis),
- * and the addressee first ("@Juniper", "@Blendi") in that agent's paper colour, so you can tell who
+ * and the addressee first ("@Juniper", "@Alex") in that agent's paper colour, so you can tell who
  * talks to whom. It pops in, stays for a time that grows with the text (3.5-11 s), then fades out.
  * Drawn in plate space right above the plate; {@link PlateLayout} reserves its height, so the
  * plates around it move out of its way instead of being covered.
@@ -156,7 +156,7 @@ public final class SpeechBubble {
 		return new Layout(lines, widths, width, height);
 	}
 
-	/** "@Juniper" / "@Blendi" / "" (said to the room). */
+	/** "@Juniper" / "@Alex" / "" (said to the room). */
 	static String prefix(@Nullable String to) {
 		if (to == null || to.equals("all") || to.isEmpty()) {
 			return "";

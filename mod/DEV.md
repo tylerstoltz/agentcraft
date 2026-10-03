@@ -57,7 +57,8 @@ GRADLE_USER_HOME=C:/Projects/agentcraft/.gradle-home ./gradlew --stop       # st
    `guiScale:3` (1080p), render distance 16, chunk fade-in off (so screenshots are never half-faded),
    no tutorial, accessibility onboarding or narrator, no Realms notifications, and the
    inactivity FPS limit set to "minimized" only. Delete `mod/run/options.txt` to reset it.
-2. Program args: `--username Blendi --width 1920 --height 1080`.
+2. Program args: `--username <you> --width 1920 --height 1080`, where `<you>` is `AGENTCRAFT_PLAYER`
+   or else your OS user name (letters, digits and `_`, at most 16 characters).
 3. **AutoWorld** (client) runs the first time the title screen appears. It loads the world folder
    `AgentCraft HQ` if it exists, and otherwise creates it: creative, peaceful, commands allowed, no
    structures, no bonus chest, superflat plains meadow (bedrock / 124 stone / 3 dirt / grass), so
@@ -88,7 +89,9 @@ Delete `mod/run/saves/AgentCraft HQ` to start over with a fresh world.
 | `AGENTCRAFT_FOREMAN` | 1 | `0` disables the Foreman link (the HUD says so) |
 
 The defaults (muted, no focus) suit unattended agent runs. `tools/launch.ps1` should set
-`AGENTCRAFT_MUTE=0 AGENTCRAFT_FOCUS=1` when Blendi launches the game himself.
+`AGENTCRAFT_MUTE=0 AGENTCRAFT_FOCUS=1` for real use (when you launch the game yourself; it does
+without `-Dev`). The name the agents call you comes from the Foreman (`--user-name`, see
+foreman/README.md) and reaches the mod in `foreman.status`.
 
 ### Focus behaviour (what was verified)
 `RenderSystemMixin` sets the SDL hints `SDL_WINDOW_ACTIVATE_WHEN_SHOWN=0`,

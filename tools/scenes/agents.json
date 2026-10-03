@@ -16,7 +16,7 @@
     { "name": "room", "title": "The whole test room", "anchor": ["cam_room"], "waitMs": 1200 },
     {
       "name": "bubble",
-      "title": "Marlow answers a message from Blendi (speech bubble addressed @Blendi)",
+      "title": "Marlow answers a message from the user (speech bubble addressed @the user)",
       "anchor": ["cam_agents"],
       "foreman": [{ "type": "user.message", "to": "marlow", "text": "How is it going?" }],
       "waitMs": 2600

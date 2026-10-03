@@ -71,7 +71,7 @@ describe('git safety env', () => {
   });
 
   it("agents' commits are never signed, even when the user's config (or -S) asks for it", async () => {
-    // the repo's own config signs every commit with a (fake, always-working) gpg: like Blendi's
+    // the repo's own config signs every commit with a (fake, always-working) gpg: like the user's
     // global commit.gpgsign=true
     const signer = path.join(root, 'fake-gpg.sh');
     fs.writeFileSync(signer, ['#!/bin/sh', 'cat >/dev/null', 'echo "" >&2', 'echo "[GNUPG:] SIG_CREATED D 1 8 00 0 0" >&2', 'echo "-----BEGIN PGP SIGNATURE-----"', 'echo "ZmFrZQ=="', 'echo "-----END PGP SIGNATURE-----"', ''].join('\n'));

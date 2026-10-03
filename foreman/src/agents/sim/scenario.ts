@@ -4,7 +4,7 @@
 //
 // Exercises: lead planning + shared memory, ~9 tasks with deps, real worktrees and edits,
 // agent<->agent messages, a permission decision, a question decision, CI fail -> fix -> pass,
-// a blocked task (npm publish needs Blendi) with a blocked agent, an agent error + recovery
+// a blocked task (npm publish needs the user) with a blocked agent, an agent error + recovery
 // (API overload), reviews, five merge decisions with real diffs, a cancelled task, QA on the
 // merged main branch, and a final question that decides how the goal ends. Across the run every
 // agent state and station appears; the two checkpoints hold static states for screenshots:
@@ -14,6 +14,7 @@ import type { ShowcaseCheckpoint } from '../../config.js';
 import { PERMISSION_OPTIONS } from '../../protocol.js';
 import type { SimDirector } from './director.js';
 import * as E from './edits.js';
+import { userName } from '../../user.js';
 
 export interface Beat {
   name: string;
@@ -40,10 +41,10 @@ export const BEATS: Beat[] = [
       for (const a of d.fm.agents()) d.fm.setAgent(a.id, { active: true, paused: false });
       const goal = d.fm.goal(d.goalId)!;
       d.act('marlow', 'thinking', 'meeting', 'reading the goal');
-      d.log('marlow', 'text', `New goal from Blendi: ${goal.text}`);
+      d.log('marlow', 'text', `New goal from ${userName()}: ${goal.text}`);
       for (const w of ['juniper', 'kit', 'wren', 'rowan', 'tove']) d.act(w, 'idle', 'meeting', 'listening to Marlow');
       await d.sleep(1200);
-      d.say('marlow', 'all', `Morning, team. New goal from Blendi: ${goal.text}. Give me a minute with the repo.`);
+      d.say('marlow', 'all', `Morning, team. New goal from ${userName()}: ${goal.text}. Give me a minute with the repo.`);
       await d.sleep(1500);
       for (const w of ['juniper', 'kit', 'wren', 'rowan', 'tove']) d.act(w, 'idle', 'lounge', 'waiting for the plan');
     },
@@ -85,8 +86,8 @@ export const BEATS: Beat[] = [
       const t6 = d.ensureTask('t6', { title: 'README + help text for tags', description: 'Document tags; update `notes help`; enable colors on a TTY.', deps: ['t3', 't4'], assignee: 'tove', createdBy: 'marlow' });
       d.log('marlow', 'tool', `create_task "${t6.title}"`);
       await d.sleep(400);
-      const t7 = d.ensureTask('t7', { title: 'Publish 0.3.0 to npm', description: 'Needs Blendi: agents never publish or push.', deps: ['t6'], createdBy: 'marlow', priority: -1 });
-      d.setTask('t7', 'blocked', { reason: "needs Blendi's npm credentials - agents never publish" });
+      const t7 = d.ensureTask('t7', { title: 'Publish 0.3.0 to npm', description: `Needs ${userName()}: agents never publish or push.`, deps: ['t6'], createdBy: 'marlow', priority: -1 });
+      d.setTask('t7', 'blocked', { reason: `needs ${userName()}'s npm credentials - agents never publish` });
       d.log('marlow', 'tool', `create_task "${t7.title}" (blocked)`);
       await d.sleep(400);
       const t8 = d.ensureTask('t8', { title: 'QA: full test run + CLI smoke on main', description: 'After merges: npm test on main, smoke the CLI with tagged notes, draft release notes.', deps: ['t5', 't6'], assignee: 'tove', createdBy: 'marlow' });
@@ -117,12 +118,12 @@ export const BEATS: Beat[] = [
 - ${t4.id} Highlight tags in output - Wren
 - ${t5.id} Unicode & punctuation edge cases - Kit (after ${t2.id})
 - ${t6.id} README + help text - Tove (after ${t3.id}, ${t4.id})
-- ${t7.id} Publish to npm - **blocked: needs Blendi**
+- ${t7.id} Publish to npm - **blocked: needs ${userName()}**
 - ${t8.id} QA on main - Tove (after ${t5.id}, ${t6.id})
 - ${t9.id} Stretch: shell completion - Rowan
 
 ## Review
-Rowan reviews every branch; then it goes to Blendi as a merge decision. Nothing merges without Blendi.
+Rowan reviews every branch; then it goes to ${userName()} as a merge decision. Nothing merges without ${userName()}.
 `,
         'replace',
         'plan',
@@ -176,7 +177,7 @@ Rowan reviews every branch; then it goes to Blendi as a merge decision. Nothing 
       await d.think('wren', 'Colors: a tiny dependency or plain ANSI escapes?', 'desk', 1000);
       d.act('wren', 'running', 'terminal', '$ npm install chalk@5');
       d.log('wren', 'tool', '$ npm install chalk@5');
-      d.log('wren', 'text', 'Permission needed: network access + a new dependency. Asking Blendi.');
+      d.log('wren', 'text', `Permission needed: network access + a new dependency. Asking ${userName()}.`);
       d.openDecision('p1', () => ({
         agentId: 'wren',
         kind: 'permission',
@@ -207,7 +208,7 @@ Rowan reviews every branch; then it goes to Blendi as a merge decision. Nothing 
         d.log('wren', 'result', '(sim) install skipped - the demo stays offline');
         d.log('wren', 'text', 'Thanks! On reflection plain ANSI escapes are 4 lines; keeping pocket-notes zero-dependency.');
       } else {
-        d.log('wren', 'result', 'Permission denied by Blendi');
+        d.log('wren', 'result', `Permission denied by ${userName()}`);
         d.log('wren', 'text', 'No problem - plain ANSI escapes it is, zero dependencies.');
       }
       d.memory('wren', 'shared', 'Decisions', `# Decisions\n\n- Tag colors use plain ANSI escapes, no chalk (${allowed ? 'install allowed, not needed' : 'install denied'}).`, 'append', 'decisions');
@@ -305,7 +306,7 @@ Rowan reviews every branch; then it goes to Blendi as a merge decision. Nothing 
       const includeDone = q1IncludesDone(d);
       const answer = [q.answer?.option, q.answer?.text].filter(Boolean).join(' - ');
       d.act('marlow', 'thinking', 'meeting', 'relaying your answer');
-      d.say('marlow', 'juniper', includeDone ? 'Blendi says: count completed notes too.' : 'Blendi says: open notes only; `notes tags --all` includes completed ones.');
+      d.say('marlow', 'juniper', includeDone ? `${userName()} says: count completed notes too.` : `${userName()} says: open notes only; \`notes tags --all\` includes completed ones.`);
       d.memory('marlow', 'shared', 'Decisions', `- \`notes tags\`: ${answer} (asked by Marlow).`, 'append', 'decisions');
       const jun = d.wt('t3');
       await d.patch('juniper', jun.path, E.t3CliTags(includeDone), 1200);
@@ -369,14 +370,14 @@ Rowan reviews every branch; then it goes to Blendi as a merge decision. Nothing 
       d.say('kit', 'all', 'Both my branches are merged. Shout if the parser misbehaves.');
       // Wren takes the release task and hits the wall agents never cross: publishing
       const t7 = d.task('t7');
-      d.say('marlow', 'wren', `Wren, can you take ${t7.id} (0.3.0 release)? Publishing itself is Blendi's call.`);
+      d.say('marlow', 'wren', `Wren, can you take ${t7.id} (0.3.0 release)? Publishing itself is ${userName()}'s call.`);
       d.fm.tasks.update(t7.id, { assignee: 'wren' });
       d.fm.setAgent('wren', { taskId: t7.id, repoId: d.repoId, worktree: null });
       await d.read('wren', d.repoPath, 'package.json', 700);
       await d.think('wren', 'npm publish needs an npm login - agents never log in or publish', 'desk', 900);
-      d.act('wren', 'blocked', 'desk', `${t7.id}: needs Blendi's npm login`);
-      d.log('wren', 'error', `${t7.id} blocked: publishing needs Blendi's npm credentials`);
-      d.say('wren', 'marlow', `${t7.id} is blocked: npm publish needs Blendi's login. Version bump and notes can wait for that.`);
+      d.act('wren', 'blocked', 'desk', `${t7.id}: needs ${userName()}'s npm login`);
+      d.log('wren', 'error', `${t7.id} blocked: publishing needs ${userName()}'s npm credentials`);
+      d.say('wren', 'marlow', `${t7.id} is blocked: npm publish needs ${userName()}'s login. Version bump and notes can wait for that.`);
       // Juniper smoke-tests the merged CLI on main (real run of the CLI)
       await d.cli('juniper', ['add', 'triage inbox #work #today'], ['tags']);
       d.act('juniper', 'running', 'terminal', '$ notes tags (smoke test on main)');
@@ -434,7 +435,7 @@ Rowan reviews every branch; then it goes to Blendi as a merge decision. Nothing 
   {
     name: 'wrap-up',
     async run(d) {
-      await d.think('marlow', 'Wrapping up: what is left for Blendi?', 'meeting', 1200);
+      await d.think('marlow', `Wrapping up: what is left for ${userName()}?`, 'meeting', 1200);
       if (!d.vars.rejected) {
         d.setTask('t9', 'cancelled', { summary: 'Stretch goal parked for a later goal.' });
         d.log('marlow', 'tool', `update_task ${d.task('t9').id} cancelled`);
@@ -443,11 +444,11 @@ Rowan reviews every branch; then it goes to Blendi as a merge decision. Nothing 
       await d.sleep(800);
       const t7 = d.task('t7');
       if (d.vars.rejected) {
-        // the goal stays active: the rejected work and its dependents are on the wall for Blendi
+        // the goal stays active: the rejected work and its dependents are on the wall for the user
         d.say('marlow', 'user', 'Stopped after your rejection. Everything that was approved is merged; the rest is on the wall.');
       } else {
         d.say('marlow', 'user', `All merged into main: parser, --tag filter, tags command, highlighting, docs; QA is green. Only ${t7.id} (npm publish) is left, and that needs you.`);
-        await d.think('marlow', `Asking Blendi what to do with ${t7.id}`, 'user', 800);
+        await d.think('marlow', `Asking ${userName()} what to do with ${t7.id}`, 'user', 800);
         d.openDecision('q2', () => ({
           agentId: 'marlow',
           kind: 'question',
@@ -461,11 +462,11 @@ Rowan reviews every branch; then it goes to Blendi as a merge decision. Nothing 
         const close = q.answer?.option === q2Options(t7.id)[0] || (!q.answer?.option && q.status === 'answered');
         if (close) {
           // cancelled tasks do not count towards the goal: the task graph completes it (100%)
-          d.setTask('t7', 'cancelled', { summary: 'Blendi publishes 0.3.0 by hand.' });
-          d.log('marlow', 'tool', `update_task ${t7.id} cancelled (Blendi publishes)`);
-          d.say('marlow', 'all', `Blendi will publish ${t7.id} by hand. That's the goal - thanks, team.`);
+          d.setTask('t7', 'cancelled', { summary: `${userName()} publishes 0.3.0 by hand.` });
+          d.log('marlow', 'tool', `update_task ${t7.id} cancelled (${userName()} publishes)`);
+          d.say('marlow', 'all', `${userName()} will publish ${t7.id} by hand. That's the goal - thanks, team.`);
         } else {
-          d.say('marlow', 'all', `${t7.id} stays on the wall for Blendi; the goal stays open until it is published.`);
+          d.say('marlow', 'all', `${t7.id} stays on the wall for ${userName()}; the goal stays open until it is published.`);
         }
         await d.sleep(600);
       }

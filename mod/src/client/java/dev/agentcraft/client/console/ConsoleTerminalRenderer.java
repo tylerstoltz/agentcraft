@@ -159,8 +159,8 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 				name = UiBits.agentName(agent);
 				nameColor = UiBits.nameOnLight(agent);
 			}
-			// "Kit: tests fail" / "Blendi answered" -> the name line already says who
-			for (String who : new String[] {name, "Blendi"}) {
+			// "Kit: tests fail" / "<user> answered" -> the name line already says who
+			for (String who : new String[] {name, UiBits.userName()}) {
 				if (text.startsWith(who + ": ")) {
 					text = text.substring(who.length() + 2);
 				} else if (text.startsWith(who + " ")) {

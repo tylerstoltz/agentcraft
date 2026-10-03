@@ -20,7 +20,7 @@ public final class AgentView {
 	/**
 	 * Status family to <b>show</b> for this agent (nameplate dot, lamps, monitors, the "!" marker):
 	 * idle thinking working waiting error done. Already accounts for everything: {@code waiting}
-	 * when a decision waits on Blendi for this agent ({@link #awaitingUser}), {@code idle} while it
+	 * when a decision waits on the user for this agent ({@link #awaitingUser}), {@code idle} while it
 	 * is off shift or the Foreman is offline. Lamp/monitor owners: read this, not
 	 * {@code state.family()}.
 	 */
@@ -38,7 +38,7 @@ public final class AgentView {
 	public AgentPose pose = AgentPose.STAND;
 	public @Nullable String taskId;
 	/**
-	 * An open decision is waiting on Blendi for this agent's work (a merge of its task, a question it
+	 * An open decision is waiting on the user for this agent's work (a merge of its task, a question it
 	 * asked, a permission prompt), even when the Foreman shows the agent as idle meanwhile.
 	 */
 	public boolean awaitingUser;
@@ -46,7 +46,7 @@ public final class AgentView {
 	 * The decision behind {@link #awaitingUser} (for the agent card), or null. Every open decision
 	 * has exactly one owner agent ({@link AgentManager}): a merge belongs to the worker whose task it
 	 * merges, a question or permission prompt to the agent that asked. So the number of "!" markers
-	 * in the HQ matches the number of decisions waiting on Blendi.
+	 * in the HQ matches the number of decisions waiting on the user.
 	 */
 	public @Nullable String awaitingDecision;
 	/** How many open decisions this agent owns (the card shows the first, "+n more"). */
@@ -83,7 +83,7 @@ public final class AgentView {
 
 	/**
 	 * The status family shown for an agent (dot, lamp colour, "!" marker). The Foreman reports a
-	 * worker whose finished task waits for Blendi's merge as {@code idle} ("t4 awaiting your merge");
+	 * worker whose finished task waits for the user's merge as {@code idle} ("t4 awaiting your merge");
 	 * that is the user's turn, so it shows as {@code waiting} (clay), like {@code waiting_user}.
 	 * Errors and real work keep their own family.
 	 */
@@ -114,7 +114,7 @@ public final class AgentView {
 		return family;
 	}
 
-	/** Paused by Blendi (and otherwise live): the plate shows a pause glyph instead of the dot. */
+	/** Paused by the user (and otherwise live): the plate shows a pause glyph instead of the dot. */
 	public boolean showsPaused() {
 		return paused && active && !stale;
 	}

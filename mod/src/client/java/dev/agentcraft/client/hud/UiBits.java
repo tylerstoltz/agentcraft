@@ -98,7 +98,17 @@ public final class UiBits {
 	}
 
 	public static boolean isUser(@Nullable String id) {
-		return id != null && (id.equals("user") || id.equals("you") || id.equals("blendi"));
+		return id != null && (id.equals("user") || id.equals("you") || id.equalsIgnoreCase(userName()));
+	}
+
+	/**
+	 * The person the team works for, as the Foreman reports it (foreman.status userName, set with
+	 * --user-name / AGENTCRAFT_USER_NAME; default the OS account name). "You" before the first status.
+	 */
+	public static String userName() {
+		var st = Foreman.state().status();
+		String n = st == null ? null : st.userName();
+		return n == null || n.isBlank() ? "You" : n;
 	}
 
 	/** Display name of an agent id (Foreman name, then cast name, then the id). */

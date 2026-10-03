@@ -51,7 +51,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `repoId` | string | no |  |
 | `worktree` | string | no | id of the worktree the agent is working in (see Repo.worktrees) |
 | `paused` | boolean | yes |  |
-| `active` | boolean | yes | false = off shift (not on the current team, or stopped by Blendi); render idle in the lounge |
+| `active` | boolean | yes | false = off shift (not on the current team, or stopped by the user); render idle in the lounge |
 
 ### <a id="logentry"></a>LogEntry
 
@@ -183,6 +183,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `speed` | number | no | sim: speed multiplier |
 | `showcase` | boolean | no | sim: holding a static showcase state (`--showcase` or `--showcase late`) |
 | `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
+| `userName` | string | no | the person the team works for, as the agents address them (UI: "<name> answered") |
 
 ### <a id="agentlogs"></a>AgentLogs
 

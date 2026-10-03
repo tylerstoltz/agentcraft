@@ -23,13 +23,13 @@ export interface GitOptions {
   timeoutMs?: number;
 }
 
-// No core.autocrlf override: in Blendi's own checkout the Foreman must see and write files exactly
-// as Blendi's git does (with autocrlf=true, forcing false made CRLF files look modified, so merges
+// No core.autocrlf override: in the user's own checkout the Foreman must see and write files exactly
+// as the user's git does (with autocrlf=true, forcing false made CRLF files look modified, so merges
 // were refused as "dirty", and an ff-only merge would have written LF files). Agent worktrees are
 // checked out with LF explicitly (RepoManager.createWorktree); both configs read them as clean.
 //
 // The Foreman's own git calls (worktree add, commits, merges) never run repository hooks and never
-// use a transport: a hook in Blendi's repo (post-commit, post-checkout, reference-transaction, husky)
+// use a transport: a hook in the user's repo (post-commit, post-checkout, reference-transaction, husky)
 // could otherwise push or run arbitrary code with the Foreman's environment. core.hooksPath points at
 // a directory that never exists; protocol.allow=never + pushInsteadOf block every remote. The Foreman
 // needs no network: everything it does is local.

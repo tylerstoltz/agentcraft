@@ -10,7 +10,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The order in which open decisions are put in front of Blendi (HUD badge, J key, podium, decision
+ * The order in which open decisions are put in front of the user (HUD badge, J key, podium, decision
  * screen): permission prompts first (an agent is blocked mid-tool-call), then questions (planning
  * waits on them), then merges (work is done and can wait), oldest first within a kind.
  */

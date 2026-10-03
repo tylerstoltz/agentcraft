@@ -68,7 +68,7 @@ async function boot(workers: string, calls: Call[], worker: Record<string, Worke
   return { h, repo };
 }
 
-/** Kit starts t1, leaves a partial edit, then asks Blendi and waits. */
+/** Kit starts t1, leaves a partial edit, then asks the user and waits. */
 const kitAsks: WorkerScript = async function* (o, p, aborted) {
   yield init(sid(2));
   if (p.startsWith('Your task')) {
@@ -208,7 +208,7 @@ describe('claude backend steering (fake SDK)', () => {
     const calls: Call[] = [];
     let pausedPrompt = '';
     const kit: WorkerScript = async function* (o, p, aborted) {
-      if (p.startsWith('Blendi paused you')) {
+      if (p.startsWith('Alex paused you')) {
         pausedPrompt = p;
         yield* kitAsks(o, 'continue', aborted);
         return;

@@ -213,7 +213,7 @@ public final class AgentManager {
 
 	/**
 	 * agentId -> the first open decision that agent <b>owns</b>. Every open decision has exactly one
-	 * owner, so the HQ shows one "!" per decision waiting on Blendi:
+	 * owner, so the HQ shows one "!" per decision waiting on the user:
 	 * <ul>
 	 *   <li>a merge belongs to the worker whose task it merges (the lead files it, but it is the
 	 *       worker's finished work that waits; "t4 awaiting your merge"), or to the agent that filed

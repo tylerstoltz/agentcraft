@@ -123,7 +123,7 @@ public final class HqWorldDriver {
 	}
 
 	/**
-	 * Agent id -> an open decision waiting on Blendi for that agent: its own question / permission
+	 * Agent id -> an open decision waiting on the user for that agent: its own question / permission
 	 * prompt first, then merges it asked for, then decisions about its task (the same rule as the
 	 * agents' nameplates, so a lamp and its agent's status dot always agree).
 	 */

@@ -10,9 +10,9 @@
 //   protocol.allow=never                  same, via env-scoped config (if the variable is removed)
 //   url.<dead>.pushInsteadOf=""           every push URL is rewritten to a URL git cannot use
 //
-// It also keeps agents' git away from Blendi's identity and repositories:
+// It also keeps agents' git away from the user's identity and repositories:
 //
-//   commit.gpgsign=false, tag.gpgsign=false  agents' commits are never signed with Blendi's key
+//   commit.gpgsign=false, tag.gpgsign=false  agents' commits are never signed with the user's key
 //   gpg[.ssh|.x509].program=<missing>        and an explicit `-S` fails instead of signing
 //   GIT_CEILING_DIRECTORIES=<parent of cwd>  git never walks up out of the agent's worktree: if
 //                                            its `.git` link is removed, git stops instead of
@@ -21,7 +21,7 @@
 //                                            are removed (they would point git elsewhere)
 //
 // Env-scoped config (GIT_CONFIG_COUNT/KEY/VALUE) has a higher precedence than the repository's
-// own .git/config and Blendi's global config, so neither can re-enable pushes or signing. Agents
+// own .git/config and the user's global config, so neither can re-enable pushes or signing. Agents
 // do not need git network access: the Foreman does every git operation they rely on (worktrees,
 // diffs, merges) itself, locally. The Foreman's own git calls (util/git.ts) do not use this
 // environment. The agents' git identity ("AgentCraft Kit <kit@agentcraft.local>") is set by the

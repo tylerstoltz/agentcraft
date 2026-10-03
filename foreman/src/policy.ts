@@ -14,7 +14,7 @@
 // refuse every transport in agent and CI processes, and the CLI gets
 // `disallowedTools: Bash(git push:*)`.
 //
-// Blendi's checked-out branch only moves through an approved merge. Agents' git is kept on their
+// the user's checked-out branch only moves through an approved merge. Agents' git is kept on their
 // own worktree: commands that mention GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE / ... ask, writes,
 // moves and deletes of a `.git` entry inside the worktree ask, git run from a directory outside
 // the worktree (after `cd`, `-C`, or through a link) is checked as an outside repository, and
@@ -77,7 +77,7 @@ const DENIED_TOOLS: Record<string, string> = {
   EnterWorktree: 'You already work in a dedicated git worktree.',
 };
 
-const PUSH_DENY = 'git push is never allowed in AgentCraft (Blendi pushes; agents only work in local worktrees)';
+const PUSH_DENY = 'git push is never allowed in AgentCraft (the user pushes; agents only work in local worktrees)';
 const TAMPER_DENY = "that would change AgentCraft's git safety settings (pushes and git network access are disabled for agents)";
 const DYNAMIC_PUSH_DENY = 'a git subcommand that comes from a variable or substitution cannot be checked and could be a push';
 
@@ -831,7 +831,7 @@ function pathAsks(tokens: string[], mode: 'r' | 'w' | 'x', sc: SegCtx, opts: Are
         continue;
       }
       // the `.git` link decides which repository git works on: writing, moving or deleting it
-      // could point the worktree at Blendi's checkout
+      // could point the worktree at the user's checkout
       if (mode === 'w' && touchesGitLink(ctx, r.abs)) {
         j = merge(j, exact(sc.env, `${sc.cmd} changes git internals (.git): ${r.abs}`));
         continue;
@@ -948,7 +948,7 @@ function mentionsSafetyVars(cmd: string): boolean {
 
 /** GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, ...: point git at another repository (gitsafety.ts) */
 const REDIRECT_VAR_RE = new RegExp(`\\b(${GIT_REDIRECT_VARS.join('|')})\\b`, 'i');
-const REDIRECT_REASON = "points git at another repository, work tree or index (it could move Blendi's checked-out branch)";
+const REDIRECT_REASON = "points git at another repository, work tree or index (it could move the user's checked-out branch)";
 
 /** `.git` (and the spellings Windows treats as `.git`: `.git.`, `.git `, the 8.3 name `GIT~1`) */
 function isGitName(component: string): boolean {
@@ -1000,7 +1000,7 @@ const GIT_READ = new Set(['status', 'diff', 'log', 'show', 'rev-parse', 'ls-file
 const GIT_WORKTREE = new Set(['add', 'commit', 'restore', 'mv', 'rm', 'apply', 'revert', 'cherry-pick', 'merge', 'format-patch', 'am', 'stage', 'merge-file', 'read-tree', 'write-tree', 'update-index', 'hash-object', 'mktree', 'commit-tree', 'checkout-index', 'sparse-checkout']);
 /** git transports are disabled for agents (gitsafety.ts): these fail anyway, so only exact approvals */
 const GIT_NETWORK = new Set(['fetch', 'pull', 'clone', 'ls-remote', 'remote-https', 'remote-http', 'remote-ext', 'remote-fd', 'upload-pack', 'receive-pack', 'upload-archive', 'fetch-pack', 'http-fetch', 'credential', 'daemon', 'instaweb', 'send-email', 'imap-send', 'web--browse', 'shell', 'cvsserver', 'cvsimport', 'quiltimport', 'archimport']);
-/** subcommands that create commits (and so could be signed with Blendi's key) */
+/** subcommands that create commits (and so could be signed with the user's key) */
 const GIT_SIGNING_SUBS = new Set(['commit', 'merge', 'revert', 'cherry-pick', 'am', 'commit-tree', 'rebase', 'pull']);
 /** option values that are text, not paths (commit messages, patterns, dates): `-m msg` or `--grep=x` */
 const GIT_TEXT_OPTS = new Set(['-m', '--message', '--author', '--date', '--grep', '-S', '-G', '--since', '--until', '--after', '--before', '--committer', '-n', '--max-count', '--skip', '--trailer', '--cleanup', '--depth', '-L', '--subject-prefix', '--reroll-count', '--shallow-since', '--shallow-exclude']);
@@ -1008,9 +1008,9 @@ const GIT_TEXT_OPTS = new Set(['-m', '--message', '--author', '--date', '--grep'
 const GIT_GLUED_TEXT_OPTS = new Set(['--format', '--pretty', '--abbrev', '--encoding', '-U', '--unified', '--diff-filter', '--decorate', '--sort', '--word-diff-regex', '--color-words', '--stat', '--dirstat', '--since-as-filter']);
 /** `git -c key=value` keys whose value is a command git runs */
 const GIT_EXEC_CONFIG = /^(core\.(pager|editor|sshcommand|askpass|fsmonitor|hookspath|gitproxy|alternaterefscommand|worktree)|pager\..+|sequence\.editor|diff\..*(external|textconv|command)|diff\.external|merge\..+\.driver|filter\..+|credential\..*|include\.path|includeif\..+|uploadpack\..+|sendemail\..+|interactive\.difffilter|.*\.textconv|.*\.cmd|.*\.tool|.*\.helper|alias\..+)$/i;
-/** `git -c key=value` keys that sign commits with Blendi's key (agents' commits are never signed) */
+/** `git -c key=value` keys that sign commits with the user's key (agents' commits are never signed) */
 const GIT_SIGN_CONFIG = /^((commit|tag|push|merge|rebase)\.gpgsign|user\.signingkey|gpg\..+)$/i;
-const SIGN_DENY = "agents' commits are never signed (Blendi's approved merge is the signed commit): run it without -S / --gpg-sign";
+const SIGN_DENY = "agents' commits are never signed (the user's approved merge is the signed commit): run it without -S / --gpg-sign";
 /** the filter-branch options whose value is a shell command */
 const FILTER_BRANCH_CMD_OPTS = ['--tree-filter', '--index-filter', '--msg-filter', '--commit-filter', '--env-filter', '--parent-filter', '--tag-name-filter', '--setup'];
 
@@ -1163,7 +1163,7 @@ function classifyGit(args: string[], sc: SegCtx): J {
     i += GIT_GLOBAL_VALUE_OPTS.has(a) ? 2 : 1;
   }
   // git works on the repository that contains its cwd: after `cd` / `-C` out of the worktree
-  // that is someone else's repository (Blendi's checkout, another worktree)
+  // that is someone else's repository (the user's checkout, another worktree)
   if (!inArea(ctx, gitCwd, 'w')) outsideRepo = gitCwd;
   const subWord = args[i] ?? '';
   if (isDynamic(subWord)) return refuse(DYNAMIC_PUSH_DENY);
@@ -1216,7 +1216,7 @@ function classifyGit(args: string[], sc: SegCtx): J {
   if (sub === 'help') return done('git help', true);
   if (sub === 'difftool' || sub === 'mergetool') return merge(j, exact(sc.env, `git ${sub} launches an external tool`));
   if (sub === 'citool' || sub === 'gui' || sub === 'gitk') return merge(j, exact(sc.env, `git ${sub} opens a GUI window`));
-  if (sub === 'filter-branch' || sub === 'filter-repo') return merge(j, exact(sc.env, `git ${sub} rewrites the history of every branch it is given (that can include Blendi's)`));
+  if (sub === 'filter-branch' || sub === 'filter-repo') return merge(j, exact(sc.env, `git ${sub} rewrites the history of every branch it is given (that can include the user's)`));
   if (sub === 'grep' && rest.some((a) => /^-O|^--open-files-in-pager/.test(a))) return merge(j, exact(sc.env, 'git grep -O runs a pager command'));
   if (GIT_READ.has(sub)) {
     const names = rest.some((a) => /^(--name-only|--name-status|-l|-L|--files-with-matches|--files-without-match|--porcelain(=\S+)?|-s|--short|-z)$/.test(a));
@@ -1235,7 +1235,7 @@ function classifyGit(args: string[], sc: SegCtx): J {
       return capability('git clean deletes untracked files in the worktree', 'Bash:git clean');
     case 'checkout':
     case 'switch': {
-      if (flagged(/^--ignore-other-worktrees$/)) return merge(j, exact(sc.env, `git ${sub} --ignore-other-worktrees checks out a branch that is checked out elsewhere (Blendi's checkout)`));
+      if (flagged(/^--ignore-other-worktrees$/)) return merge(j, exact(sc.env, `git ${sub} --ignore-other-worktrees checks out a branch that is checked out elsewhere (the user's checkout)`));
       if (sub === 'checkout' && flagged(/^-[a-zA-Z]*B$/)) return merge(j, exact(sc.env, 'git checkout -B resets a branch in the shared repository'));
       if (sub === 'switch' && flagged(/^(-C|--force-create)$/)) return merge(j, exact(sc.env, 'git switch -C resets a branch in the shared repository'));
       if ((sub === 'checkout' && (flagged(/^-[a-zA-Z]*b$/) || rest.includes('--orphan'))) || (sub === 'switch' && flagged(/^(-c|--create|--orphan)$/))) {
@@ -1261,7 +1261,7 @@ function classifyGit(args: string[], sc: SegCtx): J {
     case 'submodule':
       if (sub2 === 'foreach') return done('git submodule foreach (the command is checked like any other)', false);
       if (!sub2 || sub2 === 'status' || sub2 === 'summary') return done(`git submodule ${sub2 || 'status'}`, true);
-      return merge(j, exact(sc.env, `git submodule ${sub2} changes submodules in the repository shared with Blendi's checkout, or uses the network`));
+      return merge(j, exact(sc.env, `git submodule ${sub2} changes submodules in the repository shared with the user's checkout, or uses the network`));
     case 'lfs':
       if (sub2 === 'push' || sub2 === 'pre-push') return refuse(PUSH_DENY);
       if (['ls-files', 'status', 'env', 'version', 'logs', 'ext', 'pointer'].includes(sub2)) return done(`git lfs ${sub2}`, true);
@@ -1291,11 +1291,11 @@ function classifyGit(args: string[], sc: SegCtx): J {
     case 'config':
       if (rest.some((a) => a === '--global' || a === '--system')) return configReadOnly(rest) ? done('git config --global (read)', true) : merge(j, exact(sc.env, 'changes your global git config'));
       if (configReadOnly(rest)) return done('git config (read)', true);
-      return merge(j, exact(sc.env, "git config writes the shared repository's config (worktrees share it with Blendi's checkout)"));
+      return merge(j, exact(sc.env, "git config writes the shared repository's config (worktrees share it with the user's checkout)"));
     case 'stash': {
       const s = (rest.find((a) => !a.startsWith('-')) ?? '').toLowerCase();
       if (s === 'list' || s === 'show') return done(`git stash ${s}`, true);
-      return merge(j, exact(sc.env, "git stash uses the stash stack shared with Blendi's checkout"));
+      return merge(j, exact(sc.env, "git stash uses the stash stack shared with the user's checkout"));
     }
     case 'notes': {
       const s = (rest.find((a) => !a.startsWith('-')) ?? 'list').toLowerCase();
@@ -1430,7 +1430,7 @@ function classifySegment(seg: Segment, vcwd: string, env: Env, substs: Subst[], 
 
   if (uw.clearsEnv) return refuse(`env -i would drop ${TAMPER_DENY.replace(/^that would change /, '')}`);
   // variables whose NAME cannot be checked (`export "${x}DIR=..."`, `read "$v"`, namerefs) could be
-  // a git variable that points git at Blendi's repository
+  // a git variable that points git at the user's repository
   if (VAR_SETTERS.has(cmd)) {
     const names = rest.filter((a) => !/^[-+][A-Za-z]+$/.test(a)).map((a) => (a.includes('=') ? a.slice(0, a.indexOf('=')) : a));
     const nameref = rest.some((a) => /^-[A-Za-z]*n/.test(a)) && ['declare', 'typeset', 'local'].includes(cmd);
@@ -1916,7 +1916,7 @@ function classifyCommand(command: string, vcwd: string, parent: Env): J {
   const substs: Subst[] = [];
   const outer = extractSubst(text, substs);
   let j = ok('safe command inside the worktree', true);
-  // GIT_DIR=<Blendi's .git> git commit, export GIT_WORK_TREE=..., read GIT_INDEX_FILE, ...
+  // GIT_DIR=<the user's .git> git commit, export GIT_WORK_TREE=..., read GIT_INDEX_FILE, ...
   const redirect = REDIRECT_VAR_RE.exec(command);
   if (redirect) j = merge(j, exact(env, `${redirect[1]!.toUpperCase()} ${REDIRECT_REASON}`));
   let cwd = vcwd;
@@ -1972,7 +1972,7 @@ export function classifyBash(command: string, ctx: PolicyContext): Verdict {
   return { action: 'allow', reason: j.reason || 'safe command inside the worktree' };
 }
 
-/** Read-only check used for the lead (who works in Blendi's own checkout). */
+/** Read-only check used for the lead (who works in the user's own checkout). */
 export function isReadOnlyCommand(command: string, ctx: PolicyContext): boolean {
   const j = classifyCommand(command, ctx.cwd, rootEnv(command, ctx));
   return !j.deny && !j.asks.length && j.readOnly;
@@ -2056,7 +2056,7 @@ export function classifyToolUse(toolName: string, input: Record<string, unknown>
     const command = typeof input.command === 'string' ? input.command : '';
     const v = classifyBash(command, ctx);
     if (ctx.role !== 'lead' || v.action === 'deny') return v;
-    // the lead works in Blendi's checkout: only inspection commands run without asking, and an
+    // the lead works in the user's checkout: only inspection commands run without asking, and an
     // approval covers exactly that command
     if (v.action === 'allow' && isReadOnlyCommand(command, ctx)) return v;
     const key = `lead:${exactKey(command)}`;

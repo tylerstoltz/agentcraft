@@ -139,10 +139,10 @@ describe('persistence', () => {
     const home = tempDir();
     dirs.push(home);
     const a = makeForeman(home, ['--backend', 'sim']);
-    fs.writeFileSync(path.join(a.fm.memory.dir, 'shared', 'notes-from-blendi.md'), '# Notes from Blendi\n\nPrefer small PRs.\n');
+    fs.writeFileSync(path.join(a.fm.memory.dir, 'shared', 'notes-from-alex.md'), '# Notes from Alex\n\nPrefer small PRs.\n');
     a.fm.memory.reload();
-    const e = a.fm.memory.get('shared/notes-from-blendi')!;
-    expect(e.title).toBe('Notes from Blendi');
+    const e = a.fm.memory.get('shared/notes-from-alex')!;
+    expect(e.title).toBe('Notes from Alex');
     expect(e.body).toContain('small PRs');
     await a.fm.close();
   });

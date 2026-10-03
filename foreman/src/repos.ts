@@ -122,7 +122,7 @@ export interface RepoOptions {
   signMerges?: boolean;
 }
 
-/** Blendi's git identity as his own git sees it in that repo (falls back to AgentCraft). */
+/** the user's git identity as their own git sees it in that repo (falls back to AgentCraft). */
 async function userIdentity(repoPath: string): Promise<{ env: NodeJS.ProcessEnv; who: string }> {
   const name = await gitConfigGet(repoPath, 'user.name');
   const email = await gitConfigGet(repoPath, 'user.email');
@@ -263,7 +263,7 @@ export class RepoManager {
 
   /**
    * Cheap check of the main checkout (head + dirty) that broadcasts only when something changed,
-   * so `repo.dirty` follows Blendi's own edits even when no agent touches the repo.
+   * so `repo.dirty` follows the user's own edits even when no agent touches the repo.
    */
   async pollStatus(repoId: string): Promise<boolean> {
     const r = this.get(repoId);
@@ -452,7 +452,7 @@ export class RepoManager {
 
   /**
    * Is the worktree's git still this repository's worktree at w.path? An agent can rewrite the
-   * `.git` link file (to Blendi's checkout, another worktree or another repo) or delete it (git
+   * `.git` link file (to the user's checkout, another worktree or another repo) or delete it (git
    * then walks up to an enclosing repository). Checked before the Foreman writes with git in a
    * worktree (commits) or shows its diff for review. `head` is the symbolic ref HEAD points at.
    */
@@ -572,7 +572,7 @@ export class RepoManager {
     const check = await this.canMerge(r.id, w.id);
     if (!check.ok) throw new RepoError(check.reason, check.code, check.files);
 
-    // 3. build the merge commit off-tree, as Blendi (he approved it): his git identity, and
+    // 3. build the merge commit off-tree, as the user (they approved it): their git identity, and
     //    signed if his git config signs commits (commit-tree ignores commit.gpgsign by itself)
     const baseSha = await gitOut(r.path, ['rev-parse', `refs/heads/${w.base}`]);
     const branchSha = await gitOut(r.path, ['rev-parse', `refs/heads/${w.branch}`]);
@@ -639,7 +639,7 @@ export class RepoManager {
       return false;
     });
     w.status = 'abandoned';
-    // a worktree whose .git was tampered with is left in place for Blendi to look at
+    // a worktree whose .git was tampered with is left in place for the user to look at
     if (tampered) this.ctx.log.error(`worktree ${w.id}: left in place at ${w.path} (its git link was changed; nothing was committed)`);
     else await this.removeWorktreeDir(r, w);
     await this.refresh(r.id);

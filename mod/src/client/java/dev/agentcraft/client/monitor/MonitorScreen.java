@@ -3,6 +3,7 @@ package dev.agentcraft.client.monitor;
 import dev.agentcraft.Cast;
 import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol.Agent;
+import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.foreman.Protocol.FeedItem;
 import dev.agentcraft.client.foreman.Protocol.Goal;
 import dev.agentcraft.client.foreman.Protocol.LogEntry;
@@ -379,8 +380,8 @@ final class MonitorScreen {
 			if (text.startsWith(":")) {
 				text = text.substring(1).stripLeading();
 			}
-		} else if (who.equals("You") && text.startsWith("Blendi ")) {
-			text = text.substring("Blendi ".length());
+		} else if (who.equals("You") && text.startsWith(UiBits.userName() + " ")) {
+			text = text.substring(UiBits.userName().length() + 1);
 		}
 		int whoW = lead.isEmpty() ? 0 : font.width(lead + " ");
 		int indent = 8;

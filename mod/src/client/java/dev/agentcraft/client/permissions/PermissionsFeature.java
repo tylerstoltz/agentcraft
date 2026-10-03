@@ -10,7 +10,7 @@ import dev.agentcraft.client.foreman.Protocol.DecisionStatus;
 import java.util.List;
 
 /**
- * Permission prompts. A permission decision (an agent's risky tool call, held until Blendi answers)
+ * Permission prompts. A permission decision (an agent's risky tool call, held until the user answers)
  * is shown by the decision screen with {@link PermissionBody}: the tool and exact command, the
  * Foreman's reason with a colour-coded risk chip ({@link PermissionInfo#classify}), the working
  * directory and what "Always allow for this agent" covers; buttons Allow once / Always allow /

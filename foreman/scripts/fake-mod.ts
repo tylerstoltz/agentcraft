@@ -67,10 +67,10 @@ const S = {
   memory: new Map<string, MemoryEntry>(),
   goals: new Map<string, Goal>(),
   feed: [] as FeedItem[],
-  status: undefined as undefined | { backend: string; auth: string; message?: string; costUsd?: number },
+  status: undefined as undefined | { backend: string; auth: string; message?: string; costUsd?: number; userName?: string },
 };
 const counts = new Map<string, number>();
-const name = (id?: string) => (id ? (id === 'user' ? 'Blendi' : (S.agents.get(id)?.name ?? id)) : '?');
+const name = (id?: string) => (id ? (id === 'user' ? (S.status?.userName ?? 'you') : (S.agents.get(id)?.name ?? id)) : '?');
 
 function agentLine(a: Agent): string {
   const st = a.state === 'waiting_user' ? paint('yellow', a.state) : a.state === 'error' || a.state === 'blocked' ? paint('red', a.state) : a.state === 'done' ? paint('green', a.state) : paint('cyan', a.state);

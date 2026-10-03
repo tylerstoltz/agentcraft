@@ -37,6 +37,7 @@ import { truncate } from '../../util/text.js';
 import { leadSystemPrompt, planPrompt, RESUME_PROMPT, reviewPrompt, workerSystemPrompt, workPrompt } from './prompts.js';
 import { StreamMapper, type TurnStats } from './stream.js';
 import { buildMcpServer, MCP_SERVER, type ToolHooks, type TurnHandle } from './tools.js';
+import { userName } from '../../user.js';
 
 type JobKind = 'plan' | 'work' | 'review' | 'followup';
 type AbortReason = 'pause' | 'stop' | 'shutdown' | 'cancel' | 'timeout';
@@ -67,7 +68,7 @@ interface Inflight {
 interface ClaudeState {
   inflight: Record<string, Inflight>;
   ciFixes: Record<string, number>;
-  /** agents Blendi stopped (off shift until resume/spawn) */
+  /** agents the user stopped (off shift until resume/spawn) */
   stopped: string[];
 }
 
@@ -102,7 +103,7 @@ const LEAD = 'marlow';
  * Environment for an agent's CLI process (and every command it runs): git refuses all
  * transports (no push, ever) and never signs; git does not walk up out of the agent's cwd; the
  * agent's commits carry its own placeholder identity ("AgentCraft Kit <kit@agentcraft.local>"),
- * never Blendi's; and each Bash call starts in the agent's own cwd, so a `cd` in one command
+ * never the user's; and each Bash call starts in the agent's own cwd, so a `cd` in one command
  * cannot carry the next one out of the worktree.
  */
 export function agentEnv(base: NodeJS.ProcessEnv = process.env, who: { agentId?: string; cwd?: string } = {}): Record<string, string | undefined> {
@@ -213,7 +214,7 @@ export class ClaudeBackend implements Backend {
     } else {
       this.recover();
     }
-    // Blendi's messages that no agent read before the restart
+    // the user's messages that no agent read before the restart
     for (const id of [LEAD, ...this.team]) this.deliverPending(id);
     void this.fm.repos.sweepPendingRemovals().catch((e) => this.fm.log.debug(`sweep: ${(e as Error).message}`));
     this.tick();
@@ -597,7 +598,7 @@ export class ClaudeBackend implements Backend {
   private canUseTool(agentId: string, role: 'lead' | 'worker', cwd: string, turn: TurnHandle): CanUseTool {
     return async (toolName, input, opts): Promise<PermissionResult> => {
       // a stopped/paused/cancelled turn runs nothing more, even if its CLI has not exited yet
-      if (turn.signal.aborted) return { behavior: 'deny', message: 'Your turn was stopped by Blendi.', interrupt: true };
+      if (turn.signal.aborted) return { behavior: 'deny', message: `Your turn was stopped by ${userName()}.`, interrupt: true };
       const verdict = classifyToolUse(toolName, input, {
         role,
         cwd,
@@ -640,11 +641,11 @@ export class ClaudeBackend implements Backend {
           for (const k of verdict.ruleKeys) if (!rules.includes(k)) rules.push(k);
           this.fm.store.markDirty();
         }
-        this.fm.agentLog(agentId, 'result', `Blendi allowed: ${describeToolCall(toolName, input)}`);
+        this.fm.agentLog(agentId, 'result', `${userName()} allowed: ${describeToolCall(toolName, input)}`);
         return { behavior: 'allow', updatedInput: input };
       }
-      this.fm.agentLog(agentId, 'error', `${res.status === 'cancelled' ? 'Permission request withdrawn' : 'Blendi denied'}: ${describeToolCall(toolName, input)}`);
-      return { behavior: 'deny', message: `Blendi denied this${res.answer?.text ? `: ${res.answer.text}` : ''}. Find another way or ask_user.` };
+      this.fm.agentLog(agentId, 'error', `${res.status === 'cancelled' ? 'Permission request withdrawn' : `${userName()} denied`}: ${describeToolCall(toolName, input)}`);
+      return { behavior: 'deny', message: `${userName()} denied this${res.answer?.text ? `: ${res.answer.text}` : ''}. Find another way or ask_user.` };
     };
   }
 
@@ -762,7 +763,7 @@ export class ClaudeBackend implements Backend {
     delete this.st.inflight[agentId];
     this.fm.store.markDirty();
     if (reason === 'pause') {
-      const next: Job = { ...job, fresh: false, resumed: true, prompt: 'Blendi paused you and has now resumed you. Any question you had open was withdrawn; ask again if you still need it. Continue your current job.' };
+      const next: Job = { ...job, fresh: false, resumed: true, prompt: `${userName()} paused you and has now resumed you. Any question you had open was withdrawn; ask again if you still need it. Continue your current job.` };
       // resume may already have arrived while the aborted turn was unwinding
       if (this.fm.agent(agentId)?.paused) {
         this.pausedJobs.set(agentId, next);
@@ -780,13 +781,13 @@ export class ClaudeBackend implements Backend {
       await this.afterTurn(job, stats).catch((e) => this.fm.log.error(`afterTurn ${agentId}: ${(e as Error).stack ?? e}`));
     }
     this.pump(agentId);
-    // Blendi's messages that came after the agent's last tool call: answer them now
+    // the user's messages that came after the agent's last tool call: answer them now
     if (reason !== 'stop' && reason !== 'pause') this.deliverPending(agentId);
     this.tick();
   }
 
   /**
-   * Messages from Blendi to this agent that nobody has read yet (they arrived after its last
+   * Messages from the user to this agent that nobody has read yet (they arrived after its last
    * agentcraft tool call, or while it was off shift): start a follow-up turn for them.
    */
   private deliverPending(agentId: string): void {
@@ -795,7 +796,7 @@ export class ClaudeBackend implements Backend {
     if (!a?.active || a.paused) return;
     const fromUser = this.fm.bus.inbox(agentId).filter((m) => m.from === 'user' && m.to === agentId);
     if (!fromUser.length) return;
-    this.fm.log.info(`delivering ${fromUser.length} message(s) from Blendi to ${agentId} that arrived after its last turn`);
+    this.fm.log.info(`delivering ${fromUser.length} message(s) from ${userName()} to ${agentId} that arrived after its last turn`);
     this.onUserMessage(agentId, fromUser[fromUser.length - 1]!.text);
   }
 
@@ -839,7 +840,7 @@ export class ClaudeBackend implements Backend {
           this.fm.setGoal(goal.id, { status: 'failed' });
           this.fm.bus.feed('error', `Marlow's planning turn ended without tasks${stats?.errors.length ? `: ${stats.errors.join('; ')}` : ''}`, { agentId: LEAD });
         } else if (job.kind === 'plan') {
-          // nothing to do (e.g. Blendi said "ignore it"): close the goal instead of leaving it
+          // nothing to do (e.g. the user said "ignore it"): close the goal instead of leaving it
           // "active" at 0% forever; a task the lead adds to it later makes it active again
           this.fm.setGoal(goal.id, { status: 'cancelled', progress: 0 });
           this.fm.bus.feed('goal', `Marlow planned no tasks: goal closed (${truncate(goal.text, 80)})`, { agentId: LEAD });
@@ -975,18 +976,18 @@ export class ClaudeBackend implements Backend {
     const a = this.fm.agent(id);
     if (!a) return;
     if (this.isStopped(id)) {
-      // stays unread; delivered when Blendi resumes the agent (deliverPending)
+      // stays unread; delivered when the user resumes the agent (deliverPending)
       this.fm.bus.send(id, 'user', `(${this.fm.nameOf(id)} is off shift - /resume @${id} to bring them back; your message is queued.)`);
       return;
     }
     // in a turn: delivered with its next agentcraft tool result, or right after the turn ends
     // (deliverPending). Paused mid-turn: delivered with the resumed job's prompt.
     if (this.running.has(id) || this.pausedJobs.has(id)) return;
-    // every unread message from Blendi to this agent goes into one follow-up
+    // every unread message from the user to this agent goes into one follow-up
     const mine = this.fm.bus.inbox(id).filter((m) => m.from === 'user' && (m.to === id || (to === 'all' && m.to === 'all')));
     const body = mine.length ? mine.map((m) => m.text).join('\n\n') : text;
     const consume = () => this.fm.bus.markRead(id, mine.map((m) => m.id));
-    const prompt = `Message from Blendi: ${body}\n\nRespond briefly with send_message(to "user") and act on it if needed (lead: create or update tasks; worker: adjust your work).`;
+    const prompt = `Message from ${userName()}: ${body}\n\nRespond briefly with send_message(to "user") and act on it if needed (lead: create or update tasks; worker: adjust your work).`;
     if (id === LEAD) {
       const goal = this.fm.currentGoal();
       if (!goal) {
@@ -1027,7 +1028,7 @@ export class ClaudeBackend implements Backend {
             resumed: true,
             ...(t ? { taskId: t.id } : inf?.taskId ? { taskId: inf.taskId } : {}),
             ...(goalId ? { goalId } : {}),
-            prompt: `Earlier you asked Blendi: "${d.question}". Blendi answered: ${ans}. (Your ask_user call was interrupted by an orchestrator restart.) Continue.`,
+            prompt: `Earlier you asked ${userName()}: "${d.question}". ${userName()} answered: ${ans}. (Your ask_user call was interrupted by an orchestrator restart.) Continue.`,
           });
         }
       }
@@ -1047,7 +1048,7 @@ export class ClaudeBackend implements Backend {
         }
         this.tick();
       } else if (d.answer?.option === 'Request changes') {
-        this.sendBackToWorker(t.id, `Blendi reviewed ${t.id} and requested changes:\n${d.answer.text ?? '(no details given - ask_user if unclear)'}\n\nMake the changes, re-run the tests, then update_task("${t.id}", status "review", summary).`);
+        this.sendBackToWorker(t.id, `${userName()} reviewed ${t.id} and requested changes:\n${d.answer.text ?? '(no details given - ask_user if unclear)'}\n\nMake the changes, re-run the tests, then update_task("${t.id}", status "review", summary).`);
       } else if (d.answer?.option === 'Reject') {
         if (t.assignee && this.fm.agent(t.assignee)?.taskId === t.id) this.fm.setAgent(t.assignee, { state: 'idle', station: 'lounge', activity: `${t.id} rejected`, taskId: null, worktree: null });
         this.tick();
@@ -1056,11 +1057,11 @@ export class ClaudeBackend implements Backend {
   }
 
   onMergeConflict(task: Task, info: { base: string; branch: string; files: string[]; reason: string }): boolean {
-    if (!task.assignee || this.isStopped(task.assignee)) return false; // Blendi decides (decision stays open)
+    if (!task.assignee || this.isStopped(task.assignee)) return false; // the user decides (decision stays open)
     const files = info.files.length ? info.files.join(', ') : '(see git status)';
     this.sendBackToWorker(
       task.id,
-      `Blendi approved merging ${task.id}, but ${info.branch} now conflicts with ${info.base} (other work was merged into ${info.base} after you started) in: ${files}.\n` +
+      `${userName()} approved merging ${task.id}, but ${info.branch} now conflicts with ${info.base} (other work was merged into ${info.base} after you started) in: ${files}.\n` +
         `In your worktree run \`git merge ${info.base}\`, resolve every conflict so that both sides' changes are kept, run the tests, and commit the merge (git commit --no-edit). ` +
         `Do not rebase, reset or check out other branches. Then update_task("${task.id}", status "review", summary).`,
     );
@@ -1082,7 +1083,7 @@ export class ClaudeBackend implements Backend {
     this.tick();
   }
 
-  /** Withdraw an agent's open questions and permission prompts (not merge decisions: those are Blendi's). */
+  /** Withdraw an agent's open questions and permission prompts (not merge decisions: those are the user's). */
   private withdrawDecisions(agentId: string, why: string): void {
     for (const d of this.fm.decisions.open().filter((x) => x.agentId === agentId && x.kind !== 'merge')) this.fm.decisions.cancel(d.id, why);
   }
@@ -1106,7 +1107,7 @@ export class ClaudeBackend implements Backend {
       if (job) this.enqueue(job);
       else this.pump(agentId);
       if (agentId === LEAD && wasStopped) this.reconcile();
-      // messages Blendi sent while the agent was off shift or paused
+      // messages the user sent while the agent was off shift or paused
       this.deliverPending(agentId);
     } else if (action === 'stop') {
       this.setStopped(agentId, true);

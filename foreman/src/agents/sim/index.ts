@@ -5,11 +5,12 @@ import type { Decision, Goal, Task } from '../../protocol.js';
 import { truncate } from '../../util/text.js';
 import { SimDirector, Stopped, type SimState } from './director.js';
 import { BEATS, DEFAULT_SIM_GOAL } from './scenario.js';
+import { userName } from '../../user.js';
 
 const CANNED_REPLIES = [
   'Got it - noted.',
   'On it. I will fold that into what I am doing.',
-  'Thanks, Blendi. Adding it to my notes.',
+  'Thanks! Adding it to my notes.',
   'Understood. I will flag anything that conflicts with the plan.',
 ];
 
@@ -146,7 +147,7 @@ export class SimBackend implements Backend {
     for (const id of agents) {
       const a = this.fm.agent(id);
       if (!a) continue;
-      this.fm.agentLog(id, 'text', `Message from Blendi: ${text}`);
+      this.fm.agentLog(id, 'text', `Message from ${userName()}: ${text}`);
       const reply = CANNED_REPLIES[this.replyCount++ % CANNED_REPLIES.length]!;
       setTimeout(() => this.fm.bus.send(id, 'user', reply), 1200 / this.cfg.speed).unref?.();
     }
@@ -157,11 +158,11 @@ export class SimBackend implements Backend {
   }
 
   onTaskAction(task: Task, action: string): void {
-    this.fm.agentLog('marlow', 'text', `Blendi: ${action} ${task.id} (${task.title}). The sim script keeps its own course.`);
+    this.fm.agentLog('marlow', 'text', `${userName()}: ${action} ${task.id} (${task.title}). The sim script keeps its own course.`);
   }
 
   onAgentAction(agentId: string, action: string): void {
-    if (action === 'pause') this.fm.agentLog(agentId, 'text', 'Paused by Blendi.');
+    if (action === 'pause') this.fm.agentLog(agentId, 'text', `Paused by ${userName()}.`);
     if (action === 'resume' || action === 'spawn') {
       const a = this.fm.agent(agentId);
       if (a && !a.active) this.fm.setAgent(agentId, { active: true, activity: 'back on shift' });
@@ -170,7 +171,7 @@ export class SimBackend implements Backend {
     if (action === 'stop') {
       // off shift: the scripted team waits for this agent's next step until /resume
       this.fm.setAgent(agentId, { active: false, state: 'idle', station: 'lounge', activity: 'stopped - off shift' });
-      this.fm.agentLog(agentId, 'text', 'Stopped by Blendi (off shift). The script waits for /resume.');
+      this.fm.agentLog(agentId, 'text', `Stopped by ${userName()} (off shift). The script waits for /resume.`);
     }
   }
 }

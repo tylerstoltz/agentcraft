@@ -342,7 +342,7 @@ except the submit nodes themselves.
   to the worker whose task it merges (the lead files it), a question or permission prompt to the
   agent that asked. The owner gets `AgentView.awaitingUser` / `awaitingDecision` (`awaitingCount`
   when it owns several) and the pulsing clay "!" (`AgentView.needsYou()`: owns an open decision or
-  is `waiting_user`), so the number of "!" in the HQ is the number of decisions waiting on Blendi.
+  is `waiting_user`), so the number of "!" in the HQ is the number of decisions waiting on the user.
 - **Status family** (`AgentView.family`): the family to show everywhere. An idle/done agent that
   owns an open decision is `waiting` (clay), e.g. the showcase's "t4 awaiting your merge"; an
   off-shift agent or any agent while the Foreman is offline is `idle`. **Lamps and monitors: read

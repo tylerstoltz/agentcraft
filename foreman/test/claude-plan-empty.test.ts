@@ -1,4 +1,4 @@
-// A planning turn that deliberately creates no tasks (Blendi said "ignore it", or the goal needs no
+// A planning turn that deliberately creates no tasks (the user said "ignore it", or the goal needs no
 // code) closes the goal instead of leaving it "active" at 0% on the HUD forever.
 import path from 'node:path';
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk';

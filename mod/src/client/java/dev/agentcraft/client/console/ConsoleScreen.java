@@ -948,7 +948,8 @@ public class ConsoleScreen extends Screen {
 			}
 		} else {
 			FeedKind kind = l.kind() == null ? FeedKind.UNKNOWN : l.kind();
-			if (agent != null && UiBits.isUser(agent) && !body.startsWith("Blendi")) {
+			String user = UiBits.userName();
+			if (agent != null && UiBits.isUser(agent) && !body.startsWith(user)) {
 				// the Foreman's echo of your own actions ("Kit: pause") reads as "You paused Kit"
 				java.util.regex.Matcher am = AGENT_ACTION.matcher(body);
 				if (am.matches()) {
@@ -959,7 +960,7 @@ public class ConsoleScreen extends Screen {
 				agent = null;
 				stripe = UiStyle.CLAY;
 			}
-			String name = agent != null ? (UiBits.isUser(agent) ? "Blendi" : UiBits.agentName(agent)) : null;
+			String name = agent != null ? (UiBits.isUser(agent) ? user : UiBits.agentName(agent)) : null;
 			if (agent != null) {
 				stripe = identity(agent, s);
 			}
@@ -976,9 +977,9 @@ public class ConsoleScreen extends Screen {
 				lead.add(new Run(name, UiBits.nameOnLight(agent)));
 				body = body.substring(name.length());
 				bodyColor = muted;
-			} else if (name != null && body.startsWith("Blendi")) {
-				lead.add(new Run("Blendi", UiStyle.CLAY_DARK));
-				body = body.substring("Blendi".length());
+			} else if (name != null && body.startsWith(user)) {
+				lead.add(new Run(user, UiStyle.CLAY_DARK));
+				body = body.substring(user.length());
 				bodyColor = muted;
 			} else {
 				bodyColor = muted;
