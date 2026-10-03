@@ -23,6 +23,10 @@ Fabric API is downloaded automatically. The first start downloads Minecraft and 
 world and builds the HQ (a few seconds on the classic meadow, about 15 s on real terrain while the
 site is chosen).
 
+Players connect with **Multiplayer → Add Server** and the host's LAN IP (`localhost` on the host
+itself); everyone, you included, must be in `MC_WHITELIST`. Installing the mod in a regular launcher,
+firewall notes and the Open to LAN alternative: [docs/multiplayer.md](../docs/multiplayer.md).
+
 ## Who can do what
 
 - `MC_WHITELIST`: who may join. `MC_OPS`: ops.

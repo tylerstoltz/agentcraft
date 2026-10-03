@@ -250,7 +250,12 @@ need only the mod. Name the server's world `AgentCraft HQ` (or set `AGENTCRAFT_H
 allowlist the players who may drive the agents, and everyone sees the same team, lamps and podium.
 Only ops can build or break on the HQ site (`/agentcraft protect off` lifts that).
 [server-docker/](server-docker/README.md) has a ready Docker setup; details in
-[mod/DEV.md](mod/DEV.md) "Multiplayer".
+[mod/DEV.md](mod/DEV.md) "Multiplayer". You can also host from your own game with **Open to LAN**.
+
+**Your own launcher.** To play with the regular Minecraft launcher instead of the development client,
+build the jar, put it in your `mods` folder with Fabric API, and start only the Foreman
+(`tools/launch.sh --no-game ...`). [docs/multiplayer.md](docs/multiplayer.md) walks through that,
+the Docker server and Open to LAN, including how other players connect.
 
 <br>
 
@@ -350,7 +355,7 @@ the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim b
 | [`mod/`](mod) | The Fabric mod: HQ builder, agents, displays, screens, HUD |
 | [`assets-src/`](assets-src) | Scripts that generate every skin, block texture and UI sprite |
 | [`tools/`](tools) | Launcher, stop script, DevBridge CLI, screenshot and QA runner |
-| [`docs/`](docs) | Protocol reference, QA guide, design notes |
+| [`docs/`](docs) | Protocol reference, launcher and multiplayer guide, QA guide, design notes |
 
 <br>
 
@@ -377,9 +382,10 @@ AgentCraft is young and has been used by one person on one machine. Today it is:
 - **Windows, macOS and Linux development launchers.** All three have desktop notifications when
   the agents need a decision (Linux via `notify-send`). macOS has been tested on Apple Silicon;
   Intel Macs are not yet tested. Linux support is new and lightly tested.
-- **Singleplayer,** one studio per world, on **Minecraft 26.3**.
-- **Run through the development client** (`gradlew runClient`). A regular mod release for normal
-  launchers is planned.
+- **One studio per world,** on **Minecraft 26.3**: singleplayer, Open to LAN, or a dedicated server.
+- **Launched through the development client** (`gradlew runClient`) by the scripts. A built jar
+  also runs in the regular launcher ([docs/multiplayer.md](docs/multiplayer.md)); a published mod
+  release is planned.
 
 Issues and ideas are welcome.
 

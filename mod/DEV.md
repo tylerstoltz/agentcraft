@@ -343,6 +343,9 @@ HQ on first start like singleplayer. Fabric clients with the mod join it normall
   building, grounds and everything `/agentcraft hq` owns stay intact. Doors, chests and stations
   stay usable; the earthworks ring and the world beyond are ordinary ground. `/agentcraft protect
   on|off` (saved in the world marker).
+- **Open to LAN**: the relay is registered on the integrated server too, so LAN guests use it like a
+  dedicated server's players (same op/allowlist gate, the host's `config/`); the host stays on the
+  direct link and its client drives the world blocks. Player-facing steps: `docs/multiplayer.md`.
 - **Docker**: `server-docker/` runs this as an itzg Fabric server with `network_mode: host`; see its
   README.
 
