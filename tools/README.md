@@ -66,6 +66,7 @@ node tools/foremancli.mjs diff --decision d3 --port 27878
 node tools/foremancli.mjs send user.message to=kit "text=hi there" --port 27878   # any client message, prints the ack
 node tools/shoot.mjs tools/scenes/qa.json --only qa01_exterior_hero --port 7889 --foreman 27878 --prefix wip/
 node tools/qa.mjs --port 27878 --dev-port 7889 --home C:\Projects\agentcraft\.agentcraft-home
+node tools/record.mjs tools/shots/desk_story.json --port 7889 --hold 3000   # play a camera shot for OBS (shots/README.md)
 npm test --prefix tools
 ```
 
@@ -79,5 +80,6 @@ Screenshot QA (scene format, anchor contract, judging): [docs/QA.md](../docs/QA.
 | `devcli.mjs`, `lib/devclient.mjs` | DevBridge client |
 | `foremancli.mjs`, `lib/foremanclient.mjs` | Foreman WS client (hello, acks, diff, live state mirror) |
 | `shoot.mjs`, `lib/scene.mjs` | scene runner (anchors, screens, Foreman messages, waits) |
+| `record.mjs`, `shots/*.json` | real-time shot player for screen recording (`dev.play`: camera paths, timed Foreman injections, typing); format in `shots/README.md` |
 | `qa.mjs`, `lib/contactsheet.mjs`, `scenes/qa.json` | QA suite, contact sheet (pngjs) |
 | `scenes/phase1.json`, `scenes/qa-selftest.json` | Phase 1 proof scene, runner self-test |

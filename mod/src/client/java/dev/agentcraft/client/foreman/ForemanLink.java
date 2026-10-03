@@ -363,7 +363,7 @@ public final class ForemanLink {
 					// parse + apply on the client thread, then mark the link live
 					clientThread.execute(() -> {
 						try {
-							state.apply(type, json);
+							state.receive(type, json);
 						} catch (Exception e) {
 							AgentCraft.LOGGER.warn("Bad snapshot from the Foreman", e);
 						}
@@ -376,7 +376,7 @@ public final class ForemanLink {
 				}
 				default -> clientThread.execute(() -> {
 					try {
-						state.apply(type, json);
+						state.receive(type, json);
 					} catch (Exception e) {
 						AgentCraft.LOGGER.warn("Bad '{}' message from the Foreman", type, e);
 					}
