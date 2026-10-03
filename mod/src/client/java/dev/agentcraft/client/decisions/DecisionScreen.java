@@ -402,6 +402,14 @@ public class DecisionScreen extends Screen {
 		return d.kind() == DecisionKind.PERMISSION ? PermissionBody.buttonLabel(option) : option;
 	}
 
+	/** "Merge" -> "merge" for the footer hint, but the agent's own words keep their case ("CLI", "JSON"). */
+	static String decap(String s) {
+		if (s.isEmpty() || (s.length() > 1 && Character.isUpperCase(s.charAt(1)))) {
+			return s;
+		}
+		return Character.toLowerCase(s.charAt(0)) + s.substring(1);
+	}
+
 	private void choose(Decision d, String option) {
 		if (preview != null) {
 			setStatus("Preview: \"" + labelOf(d, option) + "\" was not sent", false);
@@ -1042,7 +1050,7 @@ public class DecisionScreen extends Screen {
 				hints.add(new String[] {n == 1 ? "1" : "1-" + n, "choose", "5"});
 			}
 			if (highlight >= 0 && highlight < n && !readOnlyNow(d)) {
-				hints.add(new String[] {"Enter", labelOf(d, d.options().get(highlight)).toLowerCase(Locale.ROOT), "4"});
+				hints.add(new String[] {"Enter", decap(labelOf(d, d.options().get(highlight))), "4"});
 			}
 			if (d.kind() == DecisionKind.MERGE) {
 				hints.add(new String[] {"D", "diff", "2"});

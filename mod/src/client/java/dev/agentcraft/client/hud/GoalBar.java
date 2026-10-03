@@ -144,6 +144,18 @@ public final class GoalBar implements HudElement {
 		return new int[] {x, y, w};
 	}
 
+	/** While planning: the lead is planning, unless it is waiting on your answer (a question before the plan). */
+	static String planningLine(ForemanState s) {
+		for (var a : s.agents().values()) {
+			if (a.role() == dev.agentcraft.client.foreman.Protocol.AgentRole.LEAD) {
+				return a.state() == dev.agentcraft.client.foreman.Protocol.AgentState.WAITING_USER
+					? a.name() + " needs your answer before planning"
+					: a.name() + " is planning the tasks…";
+			}
+		}
+		return "Marlow is planning the tasks…";
+	}
+
 	private int drawGoal(GuiGraphicsExtractor g, Font font, ForemanState s, Goal goal, int y0, int alpha, boolean stale) {
 		recount(s, goal);
 		Kit.Padding p = Kit.padding("tooltip");
@@ -215,7 +227,7 @@ public final class GoalBar implements HudElement {
 		int cx = ix;
 		int act = UiStyle.withAlpha(UiBits.activityOnInk(), alpha);
 		if (totalTasks == 0) {
-			g.text(font, goal.status() == GoalStatus.PLANNING ? "Marlow is planning the tasks…" : "no tasks yet", cx, cy, act, false);
+			g.text(font, goal.status() == GoalStatus.PLANNING ? planningLine(s) : "no tasks yet", cx, cy, act, false);
 		} else {
 			// done count on the right ("2/9 done"), the open columns on the left with labels when they fit
 			String done = counts[4] + "/" + totalTasks + " done";

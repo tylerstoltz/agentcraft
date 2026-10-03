@@ -295,7 +295,7 @@ the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim b
 
 | Path | What lives there |
 |---|---|
-| [`foreman/`](foreman) | The orchestrator: agents, task graph, memory, decisions, git safety, 481 tests |
+| [`foreman/`](foreman) | The orchestrator: agents, task graph, memory, decisions, git safety, 482 tests |
 | [`mod/`](mod) | The Fabric mod: HQ builder, agents, displays, screens, HUD |
 | [`assets-src/`](assets-src) | Scripts that generate every skin, block texture and UI sprite |
 | [`tools/`](tools) | Launcher, stop script, DevBridge CLI, screenshot and QA runner |
@@ -306,7 +306,7 @@ the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim b
 ## Development
 
 ```powershell
-cd foreman; npm test                       # 481 tests
+cd foreman; npm test                       # 482 tests
 cd mod; .\gradlew.bat build                # the mod
 node tools/qa.mjs --home .agentcraft-home  # capture the 10 shot QA gallery
 ```
