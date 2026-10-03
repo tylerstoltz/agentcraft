@@ -5,8 +5,8 @@ import dev.agentcraft.AgentCraft;
 import dev.agentcraft.client.decisions.DecisionsFeature;
 import dev.agentcraft.client.dev.DevBridge;
 import dev.agentcraft.client.dev.Fields;
-import dev.agentcraft.client.foreman.Protocol.Notify;
-import dev.agentcraft.client.foreman.Protocol.NotifyLevel;
+import dev.agentcraft.foreman.Protocol.Notify;
+import dev.agentcraft.foreman.Protocol.NotifyLevel;
 import java.util.Locale;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 

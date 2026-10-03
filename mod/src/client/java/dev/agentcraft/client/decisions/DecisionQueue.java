@@ -1,9 +1,9 @@
 package dev.agentcraft.client.decisions;
 
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol.Decision;
-import dev.agentcraft.client.foreman.Protocol.DecisionKind;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.DecisionKind;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;

@@ -1,31 +1,31 @@
-package dev.agentcraft.client.foreman;
+package dev.agentcraft.foreman;
 
 import com.google.gson.JsonObject;
 import dev.agentcraft.AgentCraft;
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.AgentLog;
-import dev.agentcraft.client.foreman.Protocol.AgentLogs;
-import dev.agentcraft.client.foreman.Protocol.AgentSay;
-import dev.agentcraft.client.foreman.Protocol.AgentUpsert;
-import dev.agentcraft.client.foreman.Protocol.Decision;
-import dev.agentcraft.client.foreman.Protocol.DecisionKind;
-import dev.agentcraft.client.foreman.Protocol.DecisionUpsert;
-import dev.agentcraft.client.foreman.Protocol.FeedAdd;
-import dev.agentcraft.client.foreman.Protocol.FeedItem;
-import dev.agentcraft.client.foreman.Protocol.ForemanStatus;
-import dev.agentcraft.client.foreman.Protocol.ForemanStatusMsg;
-import dev.agentcraft.client.foreman.Protocol.Goal;
-import dev.agentcraft.client.foreman.Protocol.GoalUpsert;
-import dev.agentcraft.client.foreman.Protocol.LogEntry;
-import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
-import dev.agentcraft.client.foreman.Protocol.MemoryUpsert;
-import dev.agentcraft.client.foreman.Protocol.Notify;
-import dev.agentcraft.client.foreman.Protocol.Repo;
-import dev.agentcraft.client.foreman.Protocol.RepoUpsert;
-import dev.agentcraft.client.foreman.Protocol.Snapshot;
-import dev.agentcraft.client.foreman.Protocol.Task;
-import dev.agentcraft.client.foreman.Protocol.TaskStatus;
-import dev.agentcraft.client.foreman.Protocol.TaskUpsert;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.AgentLog;
+import dev.agentcraft.foreman.Protocol.AgentLogs;
+import dev.agentcraft.foreman.Protocol.AgentSay;
+import dev.agentcraft.foreman.Protocol.AgentUpsert;
+import dev.agentcraft.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.DecisionKind;
+import dev.agentcraft.foreman.Protocol.DecisionUpsert;
+import dev.agentcraft.foreman.Protocol.FeedAdd;
+import dev.agentcraft.foreman.Protocol.FeedItem;
+import dev.agentcraft.foreman.Protocol.ForemanStatus;
+import dev.agentcraft.foreman.Protocol.ForemanStatusMsg;
+import dev.agentcraft.foreman.Protocol.Goal;
+import dev.agentcraft.foreman.Protocol.GoalUpsert;
+import dev.agentcraft.foreman.Protocol.LogEntry;
+import dev.agentcraft.foreman.Protocol.MemoryEntry;
+import dev.agentcraft.foreman.Protocol.MemoryUpsert;
+import dev.agentcraft.foreman.Protocol.Notify;
+import dev.agentcraft.foreman.Protocol.Repo;
+import dev.agentcraft.foreman.Protocol.RepoUpsert;
+import dev.agentcraft.foreman.Protocol.Snapshot;
+import dev.agentcraft.foreman.Protocol.Task;
+import dev.agentcraft.foreman.Protocol.TaskStatus;
+import dev.agentcraft.foreman.Protocol.TaskUpsert;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -79,7 +79,7 @@ public final class ForemanState {
 
 	private final List<ForemanListener> listeners = new CopyOnWriteArrayList<>();
 
-	ForemanState(LinkStatus initial) {
+	public ForemanState(LinkStatus initial) {
 		this.link = initial;
 	}
 
@@ -365,7 +365,7 @@ public final class ForemanState {
 	}
 
 	/** Apply one parsed Foreman message. Returns false for types the model does not keep (ack, diff, error...). */
-	boolean apply(String type, JsonObject json) {
+	public boolean apply(String type, JsonObject json) {
 		lastMessageAt = System.currentTimeMillis();
 		switch (type) {
 			case "snapshot" -> applySnapshot(ForemanJson.read(json, Snapshot.class));

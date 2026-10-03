@@ -1,11 +1,11 @@
 package dev.agentcraft.client.taskwall;
 
 import dev.agentcraft.AgentCraft;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.CiStatus;
-import dev.agentcraft.client.foreman.Protocol.Task;
-import dev.agentcraft.client.foreman.Protocol.TaskStatus;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.CiStatus;
+import dev.agentcraft.foreman.Protocol.Task;
+import dev.agentcraft.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.monitor.DisplayDraw;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.StatusMap;

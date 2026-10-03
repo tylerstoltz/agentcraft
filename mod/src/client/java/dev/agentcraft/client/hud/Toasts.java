@@ -2,12 +2,12 @@ package dev.agentcraft.client.hud;
 
 import dev.agentcraft.client.decisions.DecisionScreen;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanListener;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.Decision;
-import dev.agentcraft.client.foreman.Protocol.Notify;
-import dev.agentcraft.client.foreman.Protocol.NotifyLevel;
+import dev.agentcraft.foreman.ForemanListener;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.Notify;
+import dev.agentcraft.foreman.Protocol.NotifyLevel;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;

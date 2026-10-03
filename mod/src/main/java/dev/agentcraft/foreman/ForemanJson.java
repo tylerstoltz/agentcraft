@@ -1,4 +1,4 @@
-package dev.agentcraft.client.foreman;
+package dev.agentcraft.foreman;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;

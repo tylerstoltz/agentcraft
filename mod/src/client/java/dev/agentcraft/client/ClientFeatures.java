@@ -13,6 +13,7 @@ import dev.agentcraft.client.monitor.MonitorFeature;
 import dev.agentcraft.client.permissions.PermissionsFeature;
 import dev.agentcraft.client.taskwall.TaskWallFeature;
 import dev.agentcraft.client.world.AnchorsDev;
+import dev.agentcraft.client.world.RemoteLayout;
 import dev.agentcraft.client.world.ItemsDev;
 
 /**
@@ -28,6 +29,7 @@ public final class ClientFeatures {
 
 	public static void init() {
 		ForemanFeature.init();   // link + state model (dev.foreman, dev.state.foreman)
+		RemoteLayout.init();     // HQ anchors from a dedicated server
 		AnchorsDev.init();       // dev.anchors, dev.camera {anchor}
 		ItemsDev.init();         // dev.screen creative_agentcraft
 		AgentsFeature.init();    // agent NPCs, nameplates, dev.agents

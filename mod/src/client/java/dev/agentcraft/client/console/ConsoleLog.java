@@ -2,9 +2,9 @@ package dev.agentcraft.client.console;
 
 import dev.agentcraft.AgentCraft;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol.FeedItem;
-import dev.agentcraft.client.foreman.Protocol.FeedKind;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.FeedItem;
+import dev.agentcraft.foreman.Protocol.FeedKind;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

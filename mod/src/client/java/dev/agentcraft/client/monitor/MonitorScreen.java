@@ -1,12 +1,12 @@
 package dev.agentcraft.client.monitor;
 
 import dev.agentcraft.Cast;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.Agent;
 import dev.agentcraft.client.hud.UiBits;
-import dev.agentcraft.client.foreman.Protocol.FeedItem;
-import dev.agentcraft.client.foreman.Protocol.Goal;
-import dev.agentcraft.client.foreman.Protocol.LogEntry;
+import dev.agentcraft.foreman.Protocol.FeedItem;
+import dev.agentcraft.foreman.Protocol.Goal;
+import dev.agentcraft.foreman.Protocol.LogEntry;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
@@ -361,7 +361,7 @@ final class MonitorScreen {
 			Agent a = s.agent(id);
 			who = a != null ? a.name() : id;
 			whoColor = st.name(id);
-		} else if ("user".equals(id) || f.kind() == dev.agentcraft.client.foreman.Protocol.FeedKind.USER) {
+		} else if ("user".equals(id) || f.kind() == dev.agentcraft.foreman.Protocol.FeedKind.USER) {
 			who = "You";
 			whoColor = st.text();
 		}

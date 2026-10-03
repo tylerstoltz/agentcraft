@@ -3,7 +3,7 @@ package dev.agentcraft.client.hud;
 import dev.agentcraft.AgentCraft;
 import dev.agentcraft.Cast;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.Agent;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;

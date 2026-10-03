@@ -1,12 +1,12 @@
-package dev.agentcraft.client.foreman;
+package dev.agentcraft.foreman;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.agentcraft.AgentCraft;
-import dev.agentcraft.client.foreman.LinkStatus.Phase;
-import dev.agentcraft.client.foreman.Protocol.Ack;
-import dev.agentcraft.client.foreman.Protocol.Diff;
+import dev.agentcraft.foreman.LinkStatus.Phase;
+import dev.agentcraft.foreman.Protocol.Ack;
+import dev.agentcraft.foreman.Protocol.Diff;
 import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpTimeoutException;
@@ -54,6 +54,7 @@ public final class ForemanLink {
 	private final ForemanSocket.Connector direct;
 	private volatile Supplier<ForemanSocket.Connector> connectors;
 	private volatile ForemanSocket.@Nullable Connector active;
+	private volatile String clientName = "mod";
 	private final AtomicInteger generation = new AtomicInteger();
 	private final AtomicLong ids = new AtomicLong();
 	private final Map<String, CompletableFuture<Ack>> pendingAcks = new ConcurrentHashMap<>();
@@ -88,8 +89,13 @@ public final class ForemanLink {
 		this.connectors = chooser;
 	}
 
-	ForemanSocket.Connector direct() {
+	public ForemanSocket.Connector direct() {
 		return direct;
+	}
+
+	/** How this link introduces itself in {@code hello} (the Foreman log names it); default {@code mod}. */
+	public void setClientName(String name) {
+		this.clientName = name;
 	}
 
 	/** Reconnect now if the chooser would now pick a different connector (joined / left a relay server). */
@@ -195,7 +201,7 @@ public final class ForemanLink {
 					lastInbound = System.currentTimeMillis();
 					lastPing = lastInbound;
 					publish(status.with(Phase.HANDSHAKE, null, 0));
-					JsonObject hello = ForemanJson.msg("hello").put("modVersion", modVersion).put("protocol", Protocol.VERSION).put("client", "mod").json();
+					JsonObject hello = ForemanJson.msg("hello").put("modVersion", modVersion).put("protocol", Protocol.VERSION).put("client", clientName).json();
 					sendRaw(socket, hello.toString());
 				});
 		} catch (Throwable t) {
@@ -266,6 +272,9 @@ public final class ForemanLink {
 		}
 		if (c instanceof HttpTimeoutException) {
 			return "connect timed out";
+		}
+		if (c instanceof IllegalStateException && c.getMessage() != null) {
+			return c.getMessage(); // our own reasons (e.g. from the server relay)
 		}
 		if (c instanceof WebSocketHandshakeException h) {
 			return "handshake refused (HTTP " + h.getResponse().statusCode() + ")";
@@ -353,7 +362,7 @@ public final class ForemanLink {
 					});
 					if (status.phase() != Phase.SYNCED) {
 						attempt = 0;
-						AgentCraft.LOGGER.info("Foreman link synced ({})", uri);
+						AgentCraft.LOGGER.info("Foreman link synced ({})", status.url());
 						publish(status.with(Phase.SYNCED, null, 0));
 					}
 				}

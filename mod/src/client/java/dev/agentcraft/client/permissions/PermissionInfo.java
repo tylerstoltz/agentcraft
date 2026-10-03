@@ -1,7 +1,7 @@
 package dev.agentcraft.client.permissions;
 
-import dev.agentcraft.client.foreman.Protocol;
-import dev.agentcraft.client.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol;
+import dev.agentcraft.foreman.Protocol.Decision;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;

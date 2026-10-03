@@ -1,7 +1,7 @@
 package dev.agentcraft.client.agents;
 
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.Station;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.Station;
 import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;

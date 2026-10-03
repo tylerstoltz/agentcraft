@@ -1,12 +1,12 @@
 package dev.agentcraft.client.hud;
 
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.LinkStatus;
-import dev.agentcraft.client.foreman.LinkStatus.Phase;
-import dev.agentcraft.client.foreman.Protocol.AuthStatus;
-import dev.agentcraft.client.foreman.Protocol.BackendName;
-import dev.agentcraft.client.foreman.Protocol.ForemanStatus;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.LinkStatus;
+import dev.agentcraft.foreman.LinkStatus.Phase;
+import dev.agentcraft.foreman.Protocol.AuthStatus;
+import dev.agentcraft.foreman.Protocol.BackendName;
+import dev.agentcraft.foreman.Protocol.ForemanStatus;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;

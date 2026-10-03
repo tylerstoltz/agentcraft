@@ -6,7 +6,7 @@ import dev.agentcraft.Cast;
 import dev.agentcraft.block.entity.DecisionPodiumBlockEntity;
 import dev.agentcraft.client.agents.PlateLayout;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.Decision;
 import dev.agentcraft.client.hud.Keys;
 import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.ui.Kit;

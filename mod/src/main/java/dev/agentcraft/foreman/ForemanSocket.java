@@ -1,4 +1,4 @@
-package dev.agentcraft.client.foreman;
+package dev.agentcraft.foreman;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -7,7 +7,7 @@ import java.util.concurrent.CompletableFuture;
  * ({@link DirectConnector}) or the multiplayer server's relay ({@link RelayConnector}). At most one
  * send is outstanding at a time (the link chains them).
  */
-interface ForemanSocket {
+public interface ForemanSocket {
 	CompletableFuture<?> sendText(String text);
 
 	/** A keep-alive; the far end answers through {@link Events#onAlive()}. */

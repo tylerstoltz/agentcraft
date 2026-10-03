@@ -7,7 +7,7 @@ import dev.agentcraft.block.entity.MemoryArchiveBlockEntity;
 import dev.agentcraft.block.entity.StationBlockEntity;
 import dev.agentcraft.client.diff.ReviewKit;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
+import dev.agentcraft.foreman.Protocol.MemoryEntry;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;

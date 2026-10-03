@@ -1,6 +1,6 @@
 package dev.agentcraft.client.monitor;
 
-import dev.agentcraft.client.foreman.Protocol.LogEntry;
+import dev.agentcraft.foreman.Protocol.LogEntry;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
 import java.util.ArrayList;

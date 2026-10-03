@@ -2,12 +2,12 @@ package dev.agentcraft.client.hud;
 
 import dev.agentcraft.client.ClientEnv;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanListener;
-import dev.agentcraft.client.foreman.Protocol.Decision;
-import dev.agentcraft.client.foreman.Protocol.Goal;
-import dev.agentcraft.client.foreman.Protocol.GoalStatus;
-import dev.agentcraft.client.foreman.Protocol.Task;
-import dev.agentcraft.client.foreman.Protocol.TaskStatus;
+import dev.agentcraft.foreman.ForemanListener;
+import dev.agentcraft.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.Goal;
+import dev.agentcraft.foreman.Protocol.GoalStatus;
+import dev.agentcraft.foreman.Protocol.Task;
+import dev.agentcraft.foreman.Protocol.TaskStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;

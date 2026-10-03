@@ -3,11 +3,11 @@ package dev.agentcraft.client.hud;
 import dev.agentcraft.client.decisions.DecisionScreen;
 import dev.agentcraft.client.decisions.DecisionsFeature;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol.Goal;
-import dev.agentcraft.client.foreman.Protocol.GoalStatus;
-import dev.agentcraft.client.foreman.Protocol.Task;
-import dev.agentcraft.client.foreman.Protocol.TaskStatus;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.Goal;
+import dev.agentcraft.foreman.Protocol.GoalStatus;
+import dev.agentcraft.foreman.Protocol.Task;
+import dev.agentcraft.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
@@ -80,7 +80,7 @@ public final class GoalBar implements HudElement {
 	/** The connection feature draws a loud paper banner at the top centre when auth failed: stack below it. */
 	private static int authBannerOffset(ForemanState s, Font font, GuiGraphicsExtractor g) {
 		var fs = s.status();
-		if (fs == null || fs.auth() != dev.agentcraft.client.foreman.Protocol.AuthStatus.FAILED || !s.link().synced()) {
+		if (fs == null || fs.auth() != dev.agentcraft.foreman.Protocol.AuthStatus.FAILED || !s.link().synced()) {
 			return 0;
 		}
 		String msg = fs.message() != null ? fs.message() : "run `claude` and /login, then restart the Foreman";
@@ -147,8 +147,8 @@ public final class GoalBar implements HudElement {
 	/** While planning: the lead is planning, unless it is waiting on your answer (a question before the plan). */
 	static String planningLine(ForemanState s) {
 		for (var a : s.agents().values()) {
-			if (a.role() == dev.agentcraft.client.foreman.Protocol.AgentRole.LEAD) {
-				return a.state() == dev.agentcraft.client.foreman.Protocol.AgentState.WAITING_USER
+			if (a.role() == dev.agentcraft.foreman.Protocol.AgentRole.LEAD) {
+				return a.state() == dev.agentcraft.foreman.Protocol.AgentState.WAITING_USER
 					? a.name() + " needs your answer before planning"
 					: a.name() + " is planning the tasks…";
 			}

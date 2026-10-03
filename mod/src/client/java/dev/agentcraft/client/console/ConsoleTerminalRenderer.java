@@ -7,9 +7,9 @@ import dev.agentcraft.Cast;
 import dev.agentcraft.block.entity.ConsoleTerminalBlockEntity;
 import dev.agentcraft.client.decisions.DecisionsFeature;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.FeedItem;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.FeedItem;
 import dev.agentcraft.client.hud.Keys;
 import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.ui.Kit;
@@ -167,7 +167,7 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 					text = text.substring(who.length() + 1);
 				}
 			}
-			if (!f.kind().equals(dev.agentcraft.client.foreman.Protocol.FeedKind.MESSAGE) && !text.isEmpty()) {
+			if (!f.kind().equals(dev.agentcraft.foreman.Protocol.FeedKind.MESSAGE) && !text.isEmpty()) {
 				text = Character.toUpperCase(text.charAt(0)) + text.substring(1);
 			}
 			int color = switch (f.kind()) {

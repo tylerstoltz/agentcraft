@@ -1,7 +1,7 @@
 package dev.agentcraft.client.monitor;
 
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.LinkStatus;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.LinkStatus;
 import org.jspecify.annotations.Nullable;
 
 /**

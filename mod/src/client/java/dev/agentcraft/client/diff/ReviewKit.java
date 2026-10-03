@@ -3,7 +3,7 @@ package dev.agentcraft.client.diff;
 import dev.agentcraft.AgentCraft;
 import dev.agentcraft.Cast;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.Protocol;
+import dev.agentcraft.foreman.Protocol;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;

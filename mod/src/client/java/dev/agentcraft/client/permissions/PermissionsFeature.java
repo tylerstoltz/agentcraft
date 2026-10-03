@@ -3,10 +3,10 @@ package dev.agentcraft.client.permissions;
 import dev.agentcraft.client.decisions.DecisionQueue;
 import dev.agentcraft.client.decisions.DecisionScreen;
 import dev.agentcraft.client.dev.DevBridge;
-import dev.agentcraft.client.foreman.Protocol;
-import dev.agentcraft.client.foreman.Protocol.Decision;
-import dev.agentcraft.client.foreman.Protocol.DecisionKind;
-import dev.agentcraft.client.foreman.Protocol.DecisionStatus;
+import dev.agentcraft.foreman.Protocol;
+import dev.agentcraft.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.DecisionKind;
+import dev.agentcraft.foreman.Protocol.DecisionStatus;
 import java.util.List;
 
 /**

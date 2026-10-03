@@ -1,16 +1,16 @@
-package dev.agentcraft.client.foreman;
+package dev.agentcraft.foreman;
 
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.AgentSay;
-import dev.agentcraft.client.foreman.Protocol.Decision;
-import dev.agentcraft.client.foreman.Protocol.FeedItem;
-import dev.agentcraft.client.foreman.Protocol.ForemanStatus;
-import dev.agentcraft.client.foreman.Protocol.Goal;
-import dev.agentcraft.client.foreman.Protocol.LogEntry;
-import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
-import dev.agentcraft.client.foreman.Protocol.Notify;
-import dev.agentcraft.client.foreman.Protocol.Repo;
-import dev.agentcraft.client.foreman.Protocol.Task;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.AgentSay;
+import dev.agentcraft.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.FeedItem;
+import dev.agentcraft.foreman.Protocol.ForemanStatus;
+import dev.agentcraft.foreman.Protocol.Goal;
+import dev.agentcraft.foreman.Protocol.LogEntry;
+import dev.agentcraft.foreman.Protocol.MemoryEntry;
+import dev.agentcraft.foreman.Protocol.Notify;
+import dev.agentcraft.foreman.Protocol.Repo;
+import dev.agentcraft.foreman.Protocol.Task;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 

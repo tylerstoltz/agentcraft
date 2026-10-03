@@ -1,7 +1,7 @@
 package dev.agentcraft.client.agents;
 
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.AgentState;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.AgentState;
 import dev.agentcraft.client.ui.UiStyle;
 import org.jspecify.annotations.Nullable;
 

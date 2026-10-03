@@ -265,8 +265,9 @@ common (src/main)                          client (src/client)
 ```
 
 ### Foreman link
-`client.foreman.ForemanLink`: `java.net.http` WebSocket to `ws://127.0.0.1:${AGENTCRAFT_PORT:-7878}`
-(no Origin header; the Foreman refuses any). On open it sends `hello`; the `snapshot` reply makes the
+`foreman.ForemanLink` (common code, so a dedicated server can run one too): a `java.net.http`
+WebSocket to `ws://127.0.0.1:${AGENTCRAFT_PORT:-7878}` (no Origin header; the Foreman refuses any),
+or on a multiplayer server the relay below; the connector is picked again on every connect. On open it sends `hello`; the `snapshot` reply makes the
 link `synced`. Frames are reassembled and parsed on the link's own daemon threads and applied to
 `ForemanState` on the client thread with `Minecraft.execute`, in order, so the render and server
 threads never block on the network. Requests (`Foreman.send` / `submitGoal` / `answer` / ...)
@@ -278,6 +279,29 @@ A killed Foreman is noticed at once (connection reset) and its restart is picked
 backoff (about 3 s in the Phase 2 test). The model keeps the last known state while disconnected
 (`isStale()`): agents stay in place with a dimmed "Foreman offline" plate and the HUD says
 "Reconnecting to the Foreman".
+
+### Multiplayer (dedicated server)
+A dedicated server whose `level-name` is `AgentCraft HQ` (superflat meadow, see `HqWorld`) builds the
+HQ on first start like singleplayer. Fabric clients with the mod join it normally:
+
+- **Relay** (`relay.ForemanRelay`, `RelayPayloads`; client `RelayConnector`): for each modded player
+  the server opens its own Foreman WebSocket on loopback and pipes text through custom payloads
+  (chunked to 8000 chars). The Foreman sees one client per player (`hello` from `mc:<name>`) and stays
+  loopback-only next to the server. Watching (`hello`, `diff.request`) is open to everyone; every other
+  intent needs op level 2 or the player's name/UUID in `config/agentcraft-allowlist.json` (a JSON array,
+  re-read when it changes). Refusals get an `ack` with `ok:false`; forwarded intents are logged with the
+  player's name (`[relay] Alice -> decision.answer ...`).
+- **Layout** (`layout.LayoutSync`; client `RemoteLayout`): the published `Anchors` layout is sent on
+  join and on every publish, so remote clients' agents, seats and screens work as in singleplayer.
+- **World blocks** (`foreman.ServerForeman`): the server runs its own link + `ForemanState` and drives
+  `hq.HqWorldDriver` (lamps, podium, merge stations, monitors) each tick. In singleplayer the client
+  still drives the integrated server (so `dev.foreman.inject` choreography keeps moving the blocks).
+- **Agents** stay client-side (below): every client runs the same deterministic simulation from the
+  same Foreman state and layout, so they agree up to a few ticks of message timing.
+
+Dev loop: `./gradlew runServer` (set `level-name=AgentCraft HQ`, `level-type=minecraft\:flat` and the
+meadow `generator-settings` in `run/server/server.properties`), then `runClient --no-configuration-cache
+--args="--username Alice --quickPlayMultiplayer localhost:<port>"` with `AGENTCRAFT_AUTOWORLD=0`.
 
 ### Agents: client-side entities (architecture A), decided by measurement
 Two options were prototyped in the Phase 2 test room on the same six anchor-to-anchor routes

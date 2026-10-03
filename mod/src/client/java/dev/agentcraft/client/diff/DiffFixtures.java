@@ -1,11 +1,11 @@
 package dev.agentcraft.client.diff;
 
-import dev.agentcraft.client.foreman.Protocol;
-import dev.agentcraft.client.foreman.Protocol.DiffFile;
-import dev.agentcraft.client.foreman.Protocol.DiffFileStatus;
-import dev.agentcraft.client.foreman.Protocol.DiffHunk;
-import dev.agentcraft.client.foreman.Protocol.DiffLine;
-import dev.agentcraft.client.foreman.Protocol.DiffLineKind;
+import dev.agentcraft.foreman.Protocol;
+import dev.agentcraft.foreman.Protocol.DiffFile;
+import dev.agentcraft.foreman.Protocol.DiffFileStatus;
+import dev.agentcraft.foreman.Protocol.DiffHunk;
+import dev.agentcraft.foreman.Protocol.DiffLine;
+import dev.agentcraft.foreman.Protocol.DiffLineKind;
 import java.util.ArrayList;
 import java.util.List;
 

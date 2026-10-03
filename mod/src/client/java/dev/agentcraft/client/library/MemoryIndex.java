@@ -3,9 +3,9 @@ package dev.agentcraft.client.library;
 import dev.agentcraft.Cast;
 import dev.agentcraft.client.diff.ReviewKit;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol;
-import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol;
+import dev.agentcraft.foreman.Protocol.MemoryEntry;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -33,7 +33,7 @@ public final class MemoryIndex {
 
 	/** Wire the unread model: notes that exist at the first snapshot of the session count as read. */
 	static void init() {
-		Foreman.addListener(new dev.agentcraft.client.foreman.ForemanListener() {
+		Foreman.addListener(new dev.agentcraft.foreman.ForemanListener() {
 			@Override
 			public void onSnapshot(ForemanState state) {
 				if (!seenInitialised) {

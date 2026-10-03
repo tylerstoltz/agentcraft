@@ -1,4 +1,4 @@
-package dev.agentcraft.client.hq;
+package dev.agentcraft.hq;
 
 import dev.agentcraft.block.DecisionPodiumBlock;
 import dev.agentcraft.block.LampStatus;
@@ -9,14 +9,12 @@ import dev.agentcraft.block.entity.DecisionPodiumBlockEntity;
 import dev.agentcraft.block.entity.MergeStationBlockEntity;
 import dev.agentcraft.block.entity.MonitorBlockEntity;
 import dev.agentcraft.block.entity.StatusLampBlockEntity;
-import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol;
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.DecisionKind;
-import dev.agentcraft.client.foreman.Protocol.Goal;
-import dev.agentcraft.client.foreman.Protocol.Repo;
-import dev.agentcraft.client.world.ServerTasks;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.DecisionKind;
+import dev.agentcraft.foreman.Protocol.Goal;
+import dev.agentcraft.foreman.Protocol.Repo;
 import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;
@@ -25,7 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import net.minecraft.client.Minecraft;
+import java.util.function.Consumer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
@@ -36,8 +34,10 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Drives the HQ's world blocks from the Foreman state (client thread computes, the integrated
- * server applies, see {@link ServerTasks}):
+ * Drives the HQ's world blocks from a Foreman state model: {@link #tick} computes on the caller's thread
+ * and hands the block writes to a runner for the server thread. In singleplayer the client drives it
+ * from its own model (onto the integrated server); on a dedicated server the server's own Foreman link
+ * does ({@code dev.agentcraft.foreman.ServerForeman}). Shows:
  * <ul>
  *   <li>status lamps by binding: {@code agent:<id>} (the agent's status family, the same one its
  *       nameplate shows: an idle/done agent with a decision waiting on you is {@code waiting}; off
@@ -62,7 +62,7 @@ public final class HqWorldDriver {
 	private static final int SIGNAL_REACH = 3;
 
 	/** What the world should show, by binding. Immutable once built. */
-	record Wanted(Map<String, LampStatus> lamps, boolean podiumOpen, boolean mergeActive, Map<String, Boolean> monitorLit) {
+	public record Wanted(Map<String, LampStatus> lamps, boolean podiumOpen, boolean mergeActive, Map<String, Boolean> monitorLit) {
 	}
 
 	private static @Nullable Wanted last;
@@ -83,11 +83,8 @@ public final class HqWorldDriver {
 		return last;
 	}
 
-	static void tick(Minecraft mc) {
-		if (mc.level == null || mc.getSingleplayerServer() == null) {
-			return;
-		}
-		ForemanState st = Foreman.state();
+	/** Once per tick. {@code onServer} runs a world task on the server thread with the overworld. */
+	public static void tick(@Nullable ForemanState st, Consumer<Consumer<ServerLevel>> onServer) {
 		Anchors.Layout layout = Anchors.current();
 		if (st == null || !st.hasData() || st.isStale() || layout.isEmpty() || layout.bounds() == null) {
 			return;
@@ -106,7 +103,7 @@ public final class HqWorldDriver {
 			Anchors.Bounds b = layout.bounds();
 			List<BlockPos> podiumSignals = signalCenters(layout, AnchorNames.DECISION_PODIUM);
 			List<BlockPos> mergeSignals = signalCenters(layout, AnchorNames.MERGESTATION);
-			ServerTasks.run(level -> lastChanged = apply(level, w, b, podiumSignals, mergeSignals));
+			onServer.accept(level -> lastChanged = apply(level, w, b, podiumSignals, mergeSignals));
 		}
 	}
 

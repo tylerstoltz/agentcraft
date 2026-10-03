@@ -4,7 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import dev.agentcraft.block.MonitorBlock;
 import dev.agentcraft.block.entity.MonitorBlockEntity;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
+import dev.agentcraft.foreman.ForemanState;
 import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;

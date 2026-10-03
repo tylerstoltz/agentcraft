@@ -1,9 +1,9 @@
 package dev.agentcraft.client.ui;
 
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol.Decision;
-import dev.agentcraft.client.foreman.Protocol.Task;
-import dev.agentcraft.client.foreman.Protocol.TaskStatus;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.Task;
+import dev.agentcraft.foreman.Protocol.TaskStatus;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -66,7 +66,7 @@ public final class StatusMap {
 	 * Status family of an agent, the same rule as its nameplate and desk lamp: a worker whose finished
 	 * task waits on an open decision (merge) is {@code waiting}, not idle.
 	 */
-	public static String agent(@Nullable ForemanState s, dev.agentcraft.client.foreman.Protocol.Agent a) {
+	public static String agent(@Nullable ForemanState s, dev.agentcraft.foreman.Protocol.Agent a) {
 		String f = a.state().family();
 		if (s != null && (f.equals("idle") || f.equals("done"))) {
 			for (Decision d : s.openDecisions()) {

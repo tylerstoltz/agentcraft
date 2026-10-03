@@ -1,16 +1,16 @@
 package dev.agentcraft.client.console;
 
 import dev.agentcraft.client.decisions.DecisionQueue;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol;
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.Decision;
-import dev.agentcraft.client.foreman.Protocol.DecisionKind;
-import dev.agentcraft.client.foreman.Protocol.Repo;
-import dev.agentcraft.client.foreman.Protocol.Task;
-import dev.agentcraft.client.foreman.Protocol.TaskStatus;
-import dev.agentcraft.client.foreman.Protocol.Worktree;
-import dev.agentcraft.client.foreman.Protocol.WorktreeStatus;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.Decision;
+import dev.agentcraft.foreman.Protocol.DecisionKind;
+import dev.agentcraft.foreman.Protocol.Repo;
+import dev.agentcraft.foreman.Protocol.Task;
+import dev.agentcraft.foreman.Protocol.TaskStatus;
+import dev.agentcraft.foreman.Protocol.Worktree;
+import dev.agentcraft.foreman.Protocol.WorktreeStatus;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

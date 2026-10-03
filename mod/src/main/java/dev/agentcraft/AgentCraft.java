@@ -5,8 +5,10 @@ import dev.agentcraft.block.ModItems;
 import dev.agentcraft.block.entity.ModBlockEntities;
 import dev.agentcraft.command.AgentCraftCommands;
 import dev.agentcraft.entity.ModEntities;
+import dev.agentcraft.foreman.ServerForeman;
 import dev.agentcraft.hq.HqFeature;
 import dev.agentcraft.layout.Anchors;
+import dev.agentcraft.layout.LayoutSync;
 import dev.agentcraft.relay.ForemanRelay;
 import dev.agentcraft.world.HqWorld;
 import net.fabricmc.api.ModInitializer;
@@ -32,9 +34,11 @@ public class AgentCraft implements ModInitializer {
 		ModEntities.init();
 		HqWorld.init();
 		Anchors.init();
+		LayoutSync.init();
 		AgentCraftCommands.init();
 		HqFeature.init();
 		ForemanRelay.init();
+		ServerForeman.init();
 		LOGGER.info("AgentCraft common init done ({} blocks, cast {})", ModBlocks.all().size(), Cast.ids());
 	}
 

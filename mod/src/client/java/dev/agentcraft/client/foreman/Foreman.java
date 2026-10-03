@@ -1,8 +1,12 @@
 package dev.agentcraft.client.foreman;
 
 import com.google.gson.JsonObject;
-import dev.agentcraft.client.foreman.Protocol.Ack;
-import dev.agentcraft.client.foreman.Protocol.Diff;
+import dev.agentcraft.foreman.ForemanJson;
+import dev.agentcraft.foreman.ForemanLink;
+import dev.agentcraft.foreman.ForemanListener;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol.Ack;
+import dev.agentcraft.foreman.Protocol.Diff;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
 

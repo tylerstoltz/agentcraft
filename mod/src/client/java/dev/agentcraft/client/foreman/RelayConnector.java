@@ -1,5 +1,6 @@
 package dev.agentcraft.client.foreman;
 
+import dev.agentcraft.foreman.ForemanSocket;
 import dev.agentcraft.relay.RelayPayloads;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;

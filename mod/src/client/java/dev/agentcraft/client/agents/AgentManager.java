@@ -2,10 +2,10 @@ package dev.agentcraft.client.agents;
 
 import dev.agentcraft.AgentCraft;
 import dev.agentcraft.client.foreman.Foreman;
-import dev.agentcraft.client.foreman.ForemanState;
-import dev.agentcraft.client.foreman.Protocol;
-import dev.agentcraft.client.foreman.Protocol.Agent;
-import dev.agentcraft.client.foreman.Protocol.AgentState;
+import dev.agentcraft.foreman.ForemanState;
+import dev.agentcraft.foreman.Protocol;
+import dev.agentcraft.foreman.Protocol.Agent;
+import dev.agentcraft.foreman.Protocol.AgentState;
 import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;

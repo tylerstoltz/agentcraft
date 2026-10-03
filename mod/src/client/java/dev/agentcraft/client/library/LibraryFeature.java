@@ -5,7 +5,7 @@ import dev.agentcraft.block.ModBlocks;
 import dev.agentcraft.block.entity.ModBlockEntities;
 import dev.agentcraft.client.dev.DevBridge;
 import dev.agentcraft.client.dev.Fields;
-import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
+import dev.agentcraft.foreman.Protocol.MemoryEntry;
 import dev.agentcraft.client.world.StationInteractions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
