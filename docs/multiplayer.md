@@ -21,7 +21,7 @@ Java, so players do not need a JDK.
 
 ```sh
 cd mod
-./gradlew build            # Windows: .\gradlew.bat build
+sh ./gradlew build         # Windows: .\gradlew.bat build
 ```
 
 This needs JDK 25 (if Gradle picks an older Java, set `JAVA_HOME` to the JDK 25 folder first). The
@@ -84,7 +84,7 @@ reconnecting to `127.0.0.1:7878` and the HUD shows "Reconnecting to the Foreman"
 [server-docker/](../server-docker/README.md) runs a Fabric 26.3 server with the mod. On the host:
 
 ```sh
-(cd mod && ./gradlew build) && mkdir -p server-docker/mods && cp mod/build/libs/agentcraft-0.1.0.jar server-docker/mods/
+(cd mod && sh ./gradlew build) && mkdir -p server-docker/mods && cp mod/build/libs/agentcraft-0.1.0.jar server-docker/mods/
 cp server-docker/.env.example server-docker/.env      # then edit it, see below
 tools/launch.sh --no-game --backend sim               # or --repo /path/to/repo
 cd server-docker && docker compose up -d
