@@ -1,0 +1,41 @@
+# Dedicated MC 26.3 Fabric server in Docker, running the AgentCraft mod for LAN multiplayer.
+#
+# network_mode: host is LOAD-BEARING. The mod's Foreman relay dials ws://127.0.0.1:${AGENTCRAFT_PORT}
+# and the Foreman only accepts loopback, so the container shares the desktop's network namespace and
+# the Foreman (run on the host: it needs the repo, git worktrees and your claude login) stays
+# unreachable from the LAN. Consequence: `ports:` is ignored; the game port binds on every interface.
+#
+#   cp ../mod/build/libs/agentcraft-*.jar mods/   # plus fabric-api, see README.md
+#   docker compose up -d && docker attach agentcraft-mc   (detach: Ctrl-P Ctrl-Q)
+services:
+  mc:
+    image: itzg/minecraft-server:java25
+    container_name: agentcraft-mc
+    tty: true
+    stdin_open: true
+    network_mode: host
+    environment:
+      EULA: "TRUE"
+      TYPE: "FABRIC"
+      VERSION: "26.3"
+      FABRIC_LOADER_VERSION: "0.19.5"
+      MEMORY: "4G"
+      SERVER_PORT: "${MC_PORT:-25565}"
+      MOTD: "AgentCraft studio"
+      # Port of the Foreman on the host; the relay reads it from the environment.
+      AGENTCRAFT_PORT: "${AGENTCRAFT_PORT:-7878}"
+      LEVEL: "${MC_LEVEL:-world}"
+      # Trusted LAN players only: whitelist the people who may join. Ops (and names in
+      # data/config/agentcraft-allowlist.json) may drive agents; everyone else can only watch.
+      ENABLE_WHITELIST: "TRUE"
+      WHITELIST: "${MC_WHITELIST:-}"
+      OPS: "${MC_OPS:-}"
+      # RCON stays off: with host networking it would listen on every interface.
+      ENABLE_RCON: "FALSE"
+      UID: 1000
+      GID: 1000
+    volumes:
+      - ./data:/data
+      - ./mods:/data/mods
+    stop_grace_period: 2m
+    restart: "no"

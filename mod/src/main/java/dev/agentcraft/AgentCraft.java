@@ -7,6 +7,7 @@ import dev.agentcraft.command.AgentCraftCommands;
 import dev.agentcraft.entity.ModEntities;
 import dev.agentcraft.hq.HqFeature;
 import dev.agentcraft.layout.Anchors;
+import dev.agentcraft.relay.ForemanRelay;
 import dev.agentcraft.world.HqWorld;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
@@ -15,7 +16,8 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Common (both sides) entrypoint: registries (blocks, block entities, items + creative tab, the agent
- * entity type), the HQ world rules, the anchor registry and the {@code /agentcraft} command. Client
+ * entity type), the HQ world rules, the anchor registry, the {@code /agentcraft} command and the
+ * multiplayer Foreman relay. Client
  * features are wired in {@code dev.agentcraft.client.ClientFeatures}.
  */
 public class AgentCraft implements ModInitializer {
@@ -32,6 +34,7 @@ public class AgentCraft implements ModInitializer {
 		Anchors.init();
 		AgentCraftCommands.init();
 		HqFeature.init();
+		ForemanRelay.init();
 		LOGGER.info("AgentCraft common init done ({} blocks, cast {})", ModBlocks.all().size(), Cast.ids());
 	}
 

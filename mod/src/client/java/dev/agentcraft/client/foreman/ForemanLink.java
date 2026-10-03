@@ -9,16 +9,11 @@ import dev.agentcraft.client.foreman.Protocol.Ack;
 import dev.agentcraft.client.foreman.Protocol.Diff;
 import java.net.ConnectException;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpTimeoutException;
-import java.net.http.WebSocket;
 import java.net.http.WebSocketHandshakeException;
-import java.nio.ByteBuffer;
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
@@ -29,11 +24,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * WebSocket client to the Foreman ({@code ws://127.0.0.1:${AGENTCRAFT_PORT:-7878}}), using
- * {@code java.net.http} (no Origin header, as the Foreman requires). Sends {@code hello} on every
+ * Client of the Foreman: directly over its WebSocket ({@code ws://127.0.0.1:${AGENTCRAFT_PORT:-7878}},
+ * {@link DirectConnector}) or, on a server running the relay, through the game connection
+ * ({@link RelayConnector}); the connector is chosen again on every connect. Sends {@code hello} on every
  * connect, hands each received message to {@link ForemanState} on the client thread, matches acks
  * and diffs to requests, and reconnects forever with backoff (0.25 s doubling up to 5 s). It never
  * blocks the render or server thread: all network work happens on its own daemon threads.
@@ -54,14 +51,16 @@ public final class ForemanLink {
 	private final Executor clientThread;
 	private final ScheduledExecutorService sched;
 	private final ExecutorService io;
-	private final HttpClient http;
+	private final ForemanSocket.Connector direct;
+	private volatile Supplier<ForemanSocket.Connector> connectors;
+	private volatile ForemanSocket.@Nullable Connector active;
 	private final AtomicInteger generation = new AtomicInteger();
 	private final AtomicLong ids = new AtomicLong();
 	private final Map<String, CompletableFuture<Ack>> pendingAcks = new ConcurrentHashMap<>();
 	private final Map<String, CompletableFuture<Diff>> pendingDiffs = new ConcurrentHashMap<>();
 	private final java.util.List<Consumer<Diff>> diffListeners = new CopyOnWriteArrayList<>();
 
-	private volatile @Nullable WebSocket ws;
+	private volatile @Nullable ForemanSocket ws;
 	private volatile boolean running;
 	private volatile LinkStatus status;
 	private volatile long lastInbound;
@@ -80,7 +79,26 @@ public final class ForemanLink {
 			System.currentTimeMillis(), System.currentTimeMillis(), false);
 		this.sched = Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "AgentCraft-ForemanLink"));
 		this.io = Executors.newCachedThreadPool(r -> daemon(r, "AgentCraft-ForemanLink-io"));
-		this.http = HttpClient.newBuilder().executor(io).connectTimeout(Duration.ofSeconds(3)).build();
+		this.direct = new DirectConnector(uri, io);
+		this.connectors = () -> direct;
+	}
+
+	/** The connector to use for the next connect ({@link #direct()} unless told otherwise). */
+	public void setConnectors(Supplier<ForemanSocket.Connector> chooser) {
+		this.connectors = chooser;
+	}
+
+	ForemanSocket.Connector direct() {
+		return direct;
+	}
+
+	/** Reconnect now if the chooser would now pick a different connector (joined / left a relay server). */
+	public void reconnectIfTransportChanged() {
+		sched.execute(() -> {
+			if (running && connectors.get() != active) {
+				reconnectNow();
+			}
+		});
 	}
 
 	private static Thread daemon(Runnable r, String name) {
@@ -103,11 +121,11 @@ public final class ForemanLink {
 
 	public synchronized void stop() {
 		running = false;
-		WebSocket s = ws;
+		ForemanSocket s = ws;
 		ws = null;
 		if (s != null) {
 			try {
-				s.sendClose(WebSocket.NORMAL_CLOSURE, "game closing").orTimeout(500, TimeUnit.MILLISECONDS).exceptionally(t -> null).join();
+				s.sendClose("game closing").orTimeout(500, TimeUnit.MILLISECONDS).exceptionally(t -> null).join();
 			} catch (Throwable ignored) {
 				// closing anyway
 			}
@@ -121,7 +139,7 @@ public final class ForemanLink {
 	/** Drop the current connection (if any) and connect again right away. */
 	public void reconnectNow() {
 		sched.execute(() -> {
-			WebSocket s = ws;
+			ForemanSocket s = ws;
 			if (s != null) {
 				s.abort();
 			}
@@ -159,11 +177,11 @@ public final class ForemanLink {
 		}
 		int gen = generation.incrementAndGet();
 		attempt++;
-		publish(status.with(Phase.CONNECTING, status.lastError(), 0).attempt(attempt));
 		try {
-			http.newWebSocketBuilder()
-				.connectTimeout(Duration.ofSeconds(3))
-				.buildAsync(uri, new Listener(gen))
+			ForemanSocket.Connector connector = connectors.get();
+			active = connector;
+			publish(status.url(connector.label()).with(Phase.CONNECTING, status.lastError(), 0).attempt(attempt));
+			connector.open(new Events(gen))
 				.whenComplete((socket, err) -> {
 					if (err != null) {
 						fail(gen, describe(err), -1);
@@ -191,7 +209,7 @@ public final class ForemanLink {
 			return; // a stale socket's late callback
 		}
 		generation.incrementAndGet();
-		WebSocket s = ws;
+		ForemanSocket s = ws;
 		ws = null;
 		if (s != null) {
 			s.abort();
@@ -215,7 +233,7 @@ public final class ForemanLink {
 	}
 
 	private void watchdog() {
-		WebSocket s = ws;
+		ForemanSocket s = ws;
 		if (s == null) {
 			return;
 		}
@@ -228,7 +246,7 @@ public final class ForemanLink {
 		} else if (now - lastPing >= PING_MS) {
 			lastPing = now;
 			synchronized (sendLock) {
-				sendChain = sendChain.handle((v, e) -> null).thenCompose(v -> s.sendPing(ByteBuffer.allocate(0))).exceptionally(t -> null);
+				sendChain = sendChain.handle((v, e) -> null).thenCompose(v -> s.sendPing()).exceptionally(t -> null);
 			}
 		}
 	}
@@ -238,7 +256,7 @@ public final class ForemanLink {
 		clientThread.execute(() -> state.setLink(s));
 	}
 
-	private static String describe(Throwable t) {
+	static String describe(Throwable t) {
 		Throwable c = t;
 		while ((c instanceof CompletionException || c.getClass() == RuntimeException.class) && c.getCause() != null) {
 			c = c.getCause();
@@ -258,63 +276,28 @@ public final class ForemanLink {
 
 	// ------------------------------------------------------------------ receive
 
-	private final class Listener implements WebSocket.Listener {
+	private final class Events implements ForemanSocket.Events {
 		private final int gen;
-		private final StringBuilder buf = new StringBuilder();
 
-		Listener(int gen) {
+		Events(int gen) {
 			this.gen = gen;
 		}
 
 		@Override
-		public void onOpen(WebSocket webSocket) {
-			webSocket.request(1);
-		}
-
-		@Override
-		public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-			buf.append(data);
-			if (last) {
-				String text = buf.toString();
-				buf.setLength(0);
-				if (gen == generation.get()) {
-					handle(text);
-				}
+		public void onText(String text) {
+			if (gen == generation.get()) {
+				handle(text);
 			}
-			webSocket.request(1);
-			return null;
 		}
 
 		@Override
-		public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
-			webSocket.request(1);
-			return null;
-		}
-
-		@Override
-		public CompletionStage<?> onPing(WebSocket webSocket, ByteBuffer message) {
-			// java.net.http answers pings with a pong automatically
+		public void onAlive() {
 			lastInbound = System.currentTimeMillis();
-			webSocket.request(1);
-			return null;
 		}
 
 		@Override
-		public CompletionStage<?> onPong(WebSocket webSocket, ByteBuffer message) {
-			lastInbound = System.currentTimeMillis();
-			webSocket.request(1);
-			return null;
-		}
-
-		@Override
-		public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
-			fail(gen, "closed by Foreman (" + statusCode + (reason == null || reason.isEmpty() ? "" : ": " + reason) + ")", -1);
-			return null;
-		}
-
-		@Override
-		public void onError(WebSocket webSocket, Throwable error) {
-			fail(gen, describe(error), -1);
+		public void onClose(String reason) {
+			fail(gen, reason, -1);
 		}
 	}
 
@@ -396,7 +379,7 @@ public final class ForemanLink {
 	 */
 	public CompletableFuture<Ack> send(JsonObject message) {
 		CompletableFuture<Ack> raw = new CompletableFuture<>();
-		WebSocket s = ws;
+		ForemanSocket s = ws;
 		if (s == null || status.phase() != Phase.SYNCED) {
 			raw.completeExceptionally(new IllegalStateException("Foreman not connected (" + status.phaseName() + ")"));
 			return onClientThread(raw);
@@ -451,9 +434,9 @@ public final class ForemanLink {
 	}
 
 	/** java.net.http allows one outstanding send per socket: chain them. */
-	private CompletableFuture<?> sendRaw(WebSocket s, String text) {
+	private CompletableFuture<?> sendRaw(ForemanSocket s, String text) {
 		synchronized (sendLock) {
-			CompletableFuture<?> next = sendChain.handle((v, e) -> null).thenCompose(v -> s.sendText(text, true));
+			CompletableFuture<?> next = sendChain.handle((v, e) -> null).thenCompose(v -> s.sendText(text));
 			sendChain = next.exceptionally(t -> null);
 			return next;
 		}

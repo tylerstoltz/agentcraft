@@ -12,11 +12,13 @@ import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import java.net.URI;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 
 /**
- * Wires the Foreman link: creates the state model and the WebSocket client at startup, starts it
+ * Wires the Foreman link: creates the state model and the link (direct WebSocket, or the server's
+ * relay while on a multiplayer server that has it) at startup, starts it
  * when the client has started, stops it on shutdown, and exposes it to the DevBridge
  * ({@code dev.state.foreman}, {@code dev.foreman}).
  *
@@ -40,6 +42,12 @@ public final class ForemanFeature {
 		// Executor: the client thread. Minecraft.getInstance() is resolved lazily (it does not exist yet during init).
 		ForemanLink link = new ForemanLink(uri, modVersion, state, r -> Minecraft.getInstance().execute(r), enabled);
 		Foreman.install(state, link);
+		// On a server with the relay, reach the Foreman through it; switch transport whenever we join or leave.
+		RelayConnector relay = new RelayConnector();
+		relay.install();
+		link.setConnectors(() -> RelayConnector.available() ? relay : link.direct());
+		ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> link.reconnectIfTransportChanged());
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> link.reconnectIfTransportChanged());
 		ClientLifecycleEvents.CLIENT_STARTED.register(mc -> link.start());
 		ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> link.stop());
 

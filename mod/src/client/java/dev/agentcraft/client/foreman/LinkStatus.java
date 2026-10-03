@@ -6,7 +6,7 @@ import org.jspecify.annotations.Nullable;
  * Connection state of the Foreman link.
  *
  * @param phase        see {@link Phase}
- * @param url          the Foreman URL
+ * @param url          the Foreman URL, or {@code relay:<server>} when going through the server
  * @param attempt      connect attempts since the last successful sync (0 while synced)
  * @param lastError    why the last connection failed or closed (null if none)
  * @param sinceMs      wall-clock ms when the current phase began
@@ -39,6 +39,10 @@ public record LinkStatus(Phase phase, String url, int attempt, @Nullable String 
 
 	LinkStatus with(Phase p, @Nullable String error, long nextRetry) {
 		return new LinkStatus(p, url, p == Phase.SYNCED ? 0 : attempt, error, System.currentTimeMillis(), nextRetry, everSynced || p == Phase.SYNCED);
+	}
+
+	LinkStatus url(String u) {
+		return new LinkStatus(phase, u, attempt, lastError, sinceMs, nextRetryAtMs, everSynced);
 	}
 
 	LinkStatus attempt(int n) {
