@@ -1,25 +1,33 @@
 # tools/
 
-## macOS
+## macOS and Linux
 
-Requires Node 22+, git, and Java 25. Install Java with `brew install openjdk@25`;
-`mac.mjs` uses Homebrew's JDK directly, so no system Java changes are needed.
+Requires Node 22+, git, and Java 25. On macOS install Java with `brew install openjdk@25`;
+`unix.mjs` uses Homebrew's JDK directly, so no system Java changes are needed. On Linux install
+any JDK 25 (Temurin 25 from https://adoptium.net, your distro's `openjdk-25` package, or SDKMAN
+`sdk install java 25-tem`); the launcher finds it in `$JAVA_HOME`, `/usr/lib/jvm`, `/opt`,
+`~/.sdkman` or `~/.jdks` without changing your default `java`.
 
 ```sh
-node tools/mac.mjs launch --backend sim             # free simulated team
-node tools/mac.mjs stop --profile sim
-node tools/mac.mjs launch --repo /path/to/repo --use-claude-login
-node tools/mac.mjs stop                            # save/quit game, stop Foreman
+tools/launch.sh --backend sim                      # free simulated team
+tools/stop.sh --profile sim
+tools/launch.sh --repo /path/to/repo --use-claude-login
+tools/stop.sh                                      # save/quit game, stop Foreman
 ```
+
+`tools/launch.sh` / `tools/stop.sh` are shorthands for `node tools/unix.mjs launch|stop ...`
+(`tools/mac.mjs` still works as an alias).
 
 The launcher installs npm dependencies on first use, runs the Fabric development client,
 and waits for the studio world. It reuses a running Foreman or game from the same profile.
 Use `--dev` for mute/no focus/no notifications; `--no-game` or `--no-foreman` to run just
 one component; `--no-wait` to return immediately while Minecraft builds. Repeat
 `--foreman-arg VALUE` to pass extra Foreman options. Logs and process records live in
-`artifacts/logs/mac-*.log` and `artifacts/run/mac-*.json`. `stop` only signals processes
-recorded by this launcher. macOS uses Notification Center for agent decisions.
-The screenshot QA command, `node tools/qa.mjs`, also uses this launcher on macOS.
+`artifacts/logs/unix-*.log` and `artifacts/run/unix-*.json`. `stop` only signals processes
+recorded by this launcher. Agent decisions show up in macOS Notification Center, or on Linux
+through `notify-send` (package `libnotify-bin` / `libnotify`; without it there is no desktop
+notification, only the console bell). The screenshot QA command, `node tools/qa.mjs`, also uses
+this launcher on macOS and Linux.
 
 ## Windows
 

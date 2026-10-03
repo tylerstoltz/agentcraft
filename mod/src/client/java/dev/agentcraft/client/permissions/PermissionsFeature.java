@@ -33,9 +33,10 @@ public final class PermissionsFeature {
 
 	/** A representative permission prompt (the sim's "npm install" one), for previews. */
 	public static Decision sample() {
-		String worktree = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")
-			? "C:\\Users\\you\\.agentcraft\\claude\\worktrees\\pocket-notes\\wren-t4"
-			: "/Users/you/.agentcraft/claude/worktrees/pocket-notes/wren-t4";
+		String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+		String worktree = os.contains("win") ? "C:\\Users\\you\\.agentcraft\\claude\\worktrees\\pocket-notes\\wren-t4"
+			: os.contains("mac") ? "/Users/you/.agentcraft/claude/worktrees/pocket-notes/wren-t4"
+			: "/home/you/.agentcraft/claude/worktrees/pocket-notes/wren-t4";
 		String ctx = "npm install downloads packages (network) and changes dependencies\n"
 			+ "cwd: " + worktree + "\n"
 			+ "\"" + Protocol.ALWAYS_ALLOW + "\" covers: `npm install` inside this agent's worktree (paths outside still ask); network access to "

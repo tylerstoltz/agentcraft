@@ -165,13 +165,14 @@ AgentCraft is built to point at code you care about.
 
 ## Quick start
 
-**You need:** Windows 10 or 11, or macOS, Java 25, Node 22+, git, and a copy of
+**You need:** Windows 10 or 11, macOS, or Linux (X11 or Wayland desktop), Java 25, Node 22+, git, and a copy of
 Minecraft: Java Edition.
 
 **For the real agents** you need Claude API access, either of these:
 
 - `ANTHROPIC_API_KEY`: create a key at [console.anthropic.com](https://console.anthropic.com), then
-  `setx ANTHROPIC_API_KEY sk-ant-...` and open a new terminal.
+  `setx ANTHROPIC_API_KEY sk-ant-...` (Windows) or `export ANTHROPIC_API_KEY=sk-ant-...` in your
+  shell profile (macOS/Linux) and open a new terminal.
 - A cloud provider supported by the Agent SDK: Amazon Bedrock (`CLAUDE_CODE_USE_BEDROCK=1`), Google
   Vertex AI (`CLAUDE_CODE_USE_VERTEX=1`) or Microsoft Foundry (`CLAUDE_CODE_USE_FOUNDRY=1`), with that
   provider's usual credentials.
@@ -187,17 +188,18 @@ tools\launch.ps1 -Repo C:\path\to\your\repo      # real agents on your repo
 tools\stop.ps1                                   # stop everything launch.ps1 started
 ```
 
-On macOS, install Java 25 with `brew install openjdk@25`, then run from the checkout
-(the script selects that JDK without changing your system Java):
+On macOS, install Java 25 with `brew install openjdk@25`; on Linux, install any JDK 25 (for
+example Temurin 25 from [adoptium.net](https://adoptium.net) or your distro's `openjdk-25`).
+Then run from the checkout (the script finds that JDK without changing your system Java):
 
 ```sh
-node tools/mac.mjs launch --backend sim                 # try the studio without API usage
-node tools/mac.mjs stop --profile sim
-node tools/mac.mjs launch --repo /path/to/your/repo --use-claude-login
-node tools/mac.mjs stop
+tools/launch.sh --backend sim                    # try the studio without API usage
+tools/stop.sh --profile sim
+tools/launch.sh --repo /path/to/your/repo --use-claude-login
+tools/stop.sh
 ```
 
-The macOS launcher installs npm dependencies on first run, downloads Minecraft and Fabric
+The macOS/Linux launcher installs npm dependencies on first run, downloads Minecraft and Fabric
 through Gradle, starts the Foreman and game in the background, and waits for the studio world.
 Use `--dev` for a muted client that does not take focus; `--no-game` starts only the Foreman.
 See [tools/README.md](tools/README.md) for options and logs.
@@ -338,8 +340,9 @@ screenshot suite.
 
 AgentCraft is young and has been used by one person on one machine. Today it is:
 
-- **Windows and macOS development launchers.** Both platforms have desktop notifications when
-  the agents need a decision. macOS has been tested on Apple Silicon; Intel Macs are not yet tested.
+- **Windows, macOS and Linux development launchers.** All three have desktop notifications when
+  the agents need a decision (Linux via `notify-send`). macOS has been tested on Apple Silicon;
+  Intel Macs are not yet tested. Linux support is new and lightly tested.
 - **Singleplayer,** one studio per world, on **Minecraft 26.3**.
 - **Run through the development client** (`gradlew runClient`). A regular mod release for normal
   launchers is planned.
