@@ -7,6 +7,8 @@ independent judges who score each shot on the rubric. Nothing ships until every 
 
 ## Run it
 
+In a fresh clone, install the QA runner's dependencies first with `npm ci --prefix tools`.
+
 ```sh
 # the normal QA run: starts what is missing, shoots, writes the sheet, stops what it started
 node tools/qa.mjs --port 27878 --dev-port 7889 --home /path/to/agentcraft/.agentcraft-home

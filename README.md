@@ -339,7 +339,7 @@ screenshot suite.
 AgentCraft is young and has been used by one person on one machine. Today it is:
 
 - **Windows and macOS development launchers.** Both platforms have desktop notifications when
-  the agents need a decision.
+  the agents need a decision. macOS has been tested on Apple Silicon; Intel Macs are not yet tested.
 - **Singleplayer,** one studio per world, on **Minecraft 26.3**.
 - **Run through the development client** (`gradlew runClient`). A regular mod release for normal
   launchers is planned.

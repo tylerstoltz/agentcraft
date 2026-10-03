@@ -267,7 +267,11 @@ async function stop(opt) {
     console.log(`${kind}: stopped`);
   }
   if (opt['stop-daemon'] && kinds.includes('game')) {
-    const env = { ...process.env, JAVA_HOME: javaHome(), GRADLE_USER_HOME: process.env.GRADLE_USER_HOME || path.join(root, '.gradle-home') };
+    const localGradleHome = path.join(root, '.gradle-home');
+    if (process.env.GRADLE_USER_HOME && path.resolve(process.env.GRADLE_USER_HOME) !== localGradleHome) {
+      throw new Error('--stop-daemon requires this checkout\'s .gradle-home to avoid stopping other projects');
+    }
+    const env = { ...process.env, JAVA_HOME: javaHome(), GRADLE_USER_HOME: localGradleHome };
     const result = spawnSync('/bin/sh', [path.join(root, 'mod', 'gradlew'), '--stop'], { cwd: path.join(root, 'mod'), env, stdio: 'inherit' });
     if (result.status !== 0) throw new Error('could not stop the Gradle daemon');
   }

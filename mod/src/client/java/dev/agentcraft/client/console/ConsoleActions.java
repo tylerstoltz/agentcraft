@@ -348,7 +348,9 @@ public final class ConsoleActions {
 	private static void repos(ForemanState s) {
 		ConsoleLog.add(Tone.HEADER, "Repos");
 		if (s.repos().isEmpty()) {
-			ConsoleLog.add(Tone.INFO, "none yet: /repo add C:\\path\\to\\repo");
+			String example = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")
+				? "C:\\path\\to\\repo" : "/path/to/repo";
+			ConsoleLog.add(Tone.INFO, "none yet: /repo add " + example);
 			return;
 		}
 		for (Repo r : s.repos().values()) {
