@@ -1000,7 +1000,13 @@ public class ConsoleScreen extends Screen {
 				}
 				case MERGE -> bodyColor = UiBits.okText();
 				case GOAL, USER -> {
-					if (lead.isEmpty()) {
+					// goal lines without an author are the Foreman's ("Goal complete: ...", "Goal
+					// closed: ..."), not yours; only a goal you typed (agentId "user", handled above,
+					// or an older Foreman's bare "New goal: ...") reads as "You"
+					boolean yours = kind == FeedKind.USER || body.startsWith("New goal");
+					if (lead.isEmpty() && !yours) {
+						bodyColor = body.startsWith("Goal complete") ? UiBits.okText() : ink;
+					} else if (lead.isEmpty()) {
 						lead.add(new Run("You", UiStyle.CLAY_DARK));
 						if (kind == FeedKind.USER && l.to() != null && !UiBits.isUser(l.to())) {
 							lead.add(new Run(" \u2192 ", muted));

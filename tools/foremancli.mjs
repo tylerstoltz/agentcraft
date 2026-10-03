@@ -58,6 +58,13 @@ try {
           what: 'the showcase hold (foreman.status.showcase)',
         });
       }
+      if (cmd === 'status') {
+        // a Foreman that just started is still checking Claude access ("auth unknown/checking"):
+        // give that a few seconds so launch.ps1's banner shows the real result
+        await fm
+          .waitForState((s) => !['unknown', 'checking'].includes(s.foreman?.auth), { timeoutMs: 15_000, what: 'the auth check' })
+          .catch(() => undefined);
+      }
       res = { ok: true, ...fm.summary() };
       break;
     }

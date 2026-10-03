@@ -984,7 +984,8 @@ export class ClaudeBackend implements Backend {
 
   // ---- user intents -------------------------------------------------------------------------
 
-  onUserMessage(to: string, text: string): void {
+  /** `note`: extra instructions for the agent only (not shown in the feed). */
+  onUserMessage(to: string, text: string, note?: string): void {
     const id = to === 'all' ? LEAD : to;
     const a = this.fm.agent(id);
     if (!a) return;
@@ -1000,7 +1001,7 @@ export class ClaudeBackend implements Backend {
     const mine = this.fm.bus.inbox(id).filter((m) => m.from === 'user' && (m.to === id || (to === 'all' && m.to === 'all')));
     const body = mine.length ? mine.map((m) => m.text).join('\n\n') : text;
     const consume = () => this.fm.bus.markRead(id, mine.map((m) => m.id));
-    const prompt = `Message from ${userName()}: ${body}\n\nRespond briefly with send_message(to "user") and act on it if needed (lead: create or update tasks; worker: adjust your work).`;
+    const prompt = `Message from ${userName()}: ${body}\n\n${note ? `${note}\n\n` : ''}Respond briefly with send_message(to "user") and act on it if needed (lead: create or update tasks; worker: adjust your work).`;
     if (id === LEAD) {
       const goal = this.fm.currentGoal();
       if (!goal) {
@@ -1017,7 +1018,12 @@ export class ClaudeBackend implements Backend {
     if (!t) {
       this.fm.bus.send(id, 'user', 'I am not on a task right now - Marlow will pick that up.');
       this.fm.bus.send('user', LEAD, `(for ${this.fm.nameOf(id)}) ${body}`);
-      this.onUserMessage(LEAD, `(originally for ${this.fm.nameOf(id)}) ${body}`);
+      const name = this.fm.nameOf(id);
+      this.onUserMessage(
+        LEAD,
+        `(originally for ${name}) ${body}`,
+        `${name} is not on a task, and workers only read messages while they work on one. If this needs ${name} to do something, create a task for it with create_task (assignee "${id}"); a send_message alone will not reach ${name}.`,
+      );
       return;
     }
     this.enqueue({ kind: 'followup', agentId: id, taskId: t.id, ...(t.goalId ? { goalId: t.goalId } : {}), sessionKey: `${id}:${t.id}`, prompt });

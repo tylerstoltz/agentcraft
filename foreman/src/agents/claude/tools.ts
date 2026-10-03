@@ -84,6 +84,14 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
         }
         if (target === agentId) return fail('you cannot message yourself');
         fm.bus.send(agentId, target, text);
+        // A worker reads messages only while it works on a task: one with no task would read this
+        // whenever its next task starts, so a request sent this way silently never happens.
+        if (role === 'lead' && !['all', 'user'].includes(target) && !fm.agent(target)?.taskId) {
+          return withInbox(
+            `Sent to ${target}, but ${fm.nameOf(target)} is not on a task, so they will only read it when their next task starts. ` +
+              `To have ${fm.nameOf(target)} do something now, create a task for it with create_task (assignee "${target}").`,
+          );
+        }
         return withInbox(`Sent to ${target}.`);
       },
     ),

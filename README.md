@@ -10,7 +10,7 @@
 [![Minecraft 26.3](https://img.shields.io/badge/Minecraft-26.3-8fa98b)](https://www.minecraft.net)
 [![Fabric](https://img.shields.io/badge/mod%20loader-Fabric-d97757)](https://fabricmc.net)
 [![Claude Agent SDK](https://img.shields.io/badge/agents-Claude%20Agent%20SDK-2fa3a0)](https://code.claude.com/docs/en/agent-sdk/overview)
-[![Tests](https://img.shields.io/badge/tests-481%20passing-3b2a20)](foreman/test)
+[![Tests](https://img.shields.io/badge/tests-482%20passing-3b2a20)](foreman/test)
 
 <img src="docs/img/readme/hero.jpg" alt="The AgentCraft HQ at golden hour" width="100%">
 
@@ -295,7 +295,7 @@ the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim b
 
 | Path | What lives there |
 |---|---|
-| [`foreman/`](foreman) | The orchestrator: agents, task graph, memory, decisions, git safety, 481 tests |
+| [`foreman/`](foreman) | The orchestrator: agents, task graph, memory, decisions, git safety, 482 tests |
 | [`mod/`](mod) | The Fabric mod: HQ builder, agents, displays, screens, HUD |
 | [`assets-src/`](assets-src) | Scripts that generate every skin, block texture and UI sprite |
 | [`tools/`](tools) | Launcher, stop script, DevBridge CLI, screenshot and QA runner |
@@ -306,7 +306,7 @@ the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim b
 ## Development
 
 ```powershell
-cd foreman; npm test                       # 481 tests
+cd foreman; npm test                       # 482 tests
 cd mod; .\gradlew.bat build                # the mod
 node tools/qa.mjs --home .agentcraft-home  # capture the 10 shot QA gallery
 ```

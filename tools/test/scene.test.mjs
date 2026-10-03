@@ -110,7 +110,7 @@ test('qa.json on a Phase-1 mod (no anchors, no screens): fallbacks shot, the res
   assert.equal(sum.shots.find((r) => r.name === 'qa08_diff_review').foreman[0].stats.files, 2);
   // night shot ran at night
   const timeCalls = dev.calls.filter((c) => c.type === 'dev.time').map((c) => c.ticks);
-  assert.deepEqual(timeCalls, [12000, 18000]);
+  assert.deepEqual(timeCalls, [12400, 12000, 18000]); // golden-hour hero, back to day, night
   assert.ok(dev.calls.some((c) => c.type === 'dev.screenshot' && c.name === 'qa/t/qa01_exterior_hero'));
 });
 
