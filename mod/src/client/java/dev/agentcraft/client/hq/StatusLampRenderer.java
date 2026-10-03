@@ -247,16 +247,20 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 		float dim = s.stale ? 0.45f : 1f;
 		int core = ((int) ((140 + 115 * wave) * dim) << 24) | rgb;
 		int halo = ((int) ((70 + 80 * wave) * dim) << 24) | rgb;
+		// The glow stays inside the lamp's own face: the lightning pipeline tests AND writes depth, so
+		// halos that spilled onto the neighbouring lamps of the band overlapped coplanar and z-fought
+		// (a fast shimmer, worst with a moving camera). A slightly larger offset keeps it off the block
+		// face at exterior-shot distances.
 		for (Direction d : Direction.Plane.HORIZONTAL) {
 			poseStack.pushPose();
-			toFace(poseStack, d, -0.012f, 16f);
+			toFace(poseStack, d, -0.02f, 16f);
 			collector.submitCustomGeometry(poseStack, RenderTypes.lightning(), (pose, vc) -> {
-				quad(pose, vc, 1, 1, 15, 15, core, core);
-				float r = 12f;
-				quad(pose, vc, 1, 1 - r, 15, 1, rgb, halo);
-				quad(pose, vc, 1, 15, 15, 15 + r, halo, rgb);
-				hquad(pose, vc, 1 - r, 1, 1, 15, rgb, halo);
-				hquad(pose, vc, 15, 1, 15 + r, 15, halo, rgb);
+				quad(pose, vc, 3, 3, 13, 13, core, core);
+				float e = 0.5f;
+				quad(pose, vc, 3, e, 13, 3, halo, core);
+				quad(pose, vc, 3, 13, 13, 16 - e, core, halo);
+				hquad(pose, vc, e, 3, 3, 13, halo, core);
+				hquad(pose, vc, 13, 3, 16 - e, 13, core, halo);
 			});
 			poseStack.popPose();
 		}
