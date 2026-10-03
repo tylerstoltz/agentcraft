@@ -222,18 +222,27 @@ the first time; in an older world, rebuild it with `/agentcraft hq`.
 `~/.agentcraft/config.json`.
 
 **Your world.** By default the studio sits in a calm creative meadow. Environment variables set
-before the first launch create a different world instead (an existing world keeps its settings):
+in the terminal you launch from create a different world instead. Put them in front of the launch
+command (or `export` them first):
 
 ```sh
 AGENTCRAFT_WORLD_NAME="HQ survival" AGENTCRAFT_WORLD=normal AGENTCRAFT_GAMEMODE=survival \
   AGENTCRAFT_DIFFICULTY=hard tools/launch.sh --backend sim
 ```
 
+On Windows, set them in PowerShell before launching:
+`$env:AGENTCRAFT_WORLD_NAME="HQ survival"; $env:AGENTCRAFT_WORLD="normal"; $env:AGENTCRAFT_GAMEMODE="survival"; tools\launch.ps1 -Backend sim`.
+
+The settings are only read when the world is created. Later, `AGENTCRAFT_WORLD_NAME="HQ survival"`
+alone reopens that world, and launching without it opens your usual `AgentCraft HQ` world. Delete
+`mod/run/saves/<name>` to start that world over.
+
 `AGENTCRAFT_WORLD=normal` uses vanilla terrain (`AGENTCRAFT_SEED` picks the seed); the HQ is then
 built on the best site near spawn and blended into the landscape (`AGENTCRAFT_HQ_SITE=X,Z` picks
 the spot). `AGENTCRAFT_GAMEMODE` is `creative`, `survival` or `hardcore`. In game,
-`/agentcraft mode studio|survival` switches between the calm studio rules and vanilla play. All
-options are in [mod/DEV.md](mod/DEV.md).
+`/agentcraft mode studio|survival` switches between the calm studio rules and vanilla play.
+Hardcore worlds have commands off unless you add `AGENTCRAFT_CHEATS=1`. All options are in
+[mod/DEV.md](mod/DEV.md).
 
 **Play together.** A Fabric dedicated server with the mod hosts the studio for several players. Run
 the Foreman on the server machine; each player's client reaches it through the server, so players
