@@ -5,7 +5,7 @@
 //   @kit <text>                    message an agent (@all for everyone)
 //   /answer [dN] <n|label> [text]  answer a decision (default: oldest open); n is 1-based
 //   /diff <worktree|dN>            show a worktree diff (e.g. /diff kit-t2)
-//   /repo add <path>               connect a repo
+//   /repo add [--init] <path>      connect a repo (--init: git init a plain folder first)
 //   /pause|/resume|/stop|/spawn @name
 //   /task <id> cancel|retry|prioritize [n]|reassign <agent>
 //   /status /agents /tasks /decisions /memory [id] /feed     views
@@ -355,7 +355,8 @@ async function command(line: string): Promise<void> {
       return;
     }
     case 'repo':
-      if (args[0] === 'add' && args[1]) send({ type: 'repo.add', path: rest.replace(/^add\s+/, '') });
+      if (args[0] === 'add' && args[1] === '--init' && args[2]) send({ type: 'repo.add', path: rest.replace(/^add\s+--init\s+/, ''), init: true });
+      else if (args[0] === 'add' && args[1]) send({ type: 'repo.add', path: rest.replace(/^add\s+/, '') });
       else out('usage: /repo add <path>');
       return;
     case 'pause':

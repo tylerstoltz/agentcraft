@@ -178,6 +178,29 @@ export const Repo = z.object({
 });
 export type Repo = z.infer<typeof Repo>;
 
+export const FsGitState = z
+  .enum(['repo', 'no_commits', 'inside', 'none'])
+  .describe('repo: a git repository root with commits; no_commits: a root without any commit yet; inside: a folder inside another repository; none: not under git');
+export type FsGitState = z.infer<typeof FsGitState>;
+
+export const FsEntry = z.object({
+  name: z.string(),
+  repo: z.boolean().describe('the folder has its own `.git` (a repository root)'),
+});
+export type FsEntry = z.infer<typeof FsEntry>;
+
+export const FsListing = z.object({
+  path: z.string().describe('absolute path of the listed folder, on the Foreman\'s machine'),
+  parent: z.string().optional().describe('omitted at a filesystem root'),
+  home: z.string().describe('the Foreman user\'s home folder'),
+  git: FsGitState,
+  repoRoot: z.string().optional().describe('git "inside": the enclosing repository'),
+  registered: z.boolean().describe('this folder is already a registered repo'),
+  entries: z.array(FsEntry).describe('sub-folders only, sorted by name'),
+  truncated: z.boolean().describe('true if the folder had more sub-folders than were sent'),
+});
+export type FsListing = z.infer<typeof FsListing>;
+
 export const MemoryEntry = z.object({
   id: Id.describe('"shared/<slug>" or "<agentId>/<slug>"'),
   scope: z.string().describe('"shared" or an agent id'),
@@ -318,7 +341,7 @@ export const AckMsg = z.object({
   re: z.string().describe('the `id` of the client message being acknowledged'),
   ok: z.boolean(),
   error: z.string().optional(),
-  result: z.record(z.string(), z.unknown()).optional().describe('e.g. {goalId} for goal.submit, {repoId} for repo.add'),
+  result: z.record(z.string(), z.unknown()).optional().describe('e.g. {goalId} for goal.submit, {repoId} for repo.add, an FsListing for fs.list'),
 });
 export const ErrorMsg = z.object({
   ...envelope('error'),
@@ -394,7 +417,19 @@ export const DiffRequestMsg = z.object({
   repoId: Id,
   worktree: Id.describe('worktree id (e.g. "kit-t2"); an agent id resolves to that agent\'s current worktree'),
 });
-export const RepoAddMsg = z.object({ ...envelope('repo.add'), path: z.string().min(1) });
+export const RepoAddMsg = z.object({
+  ...envelope('repo.add'),
+  path: z.string().min(1),
+  init: z
+    .boolean()
+    .optional()
+    .describe('when the folder is not a repository root (or has no commits): `git init` it and commit everything in it (respecting .gitignore) as the user'),
+});
+export const FsListMsg = z.object({
+  ...envelope('fs.list'),
+  path: z.string().optional().describe('folder to list; omitted = the home folder; `~` expands'),
+  hidden: z.boolean().optional().describe('include dot-folders'),
+});
 
 export const ClientMessage = z.discriminatedUnion('type', [
   HelloMsg,
@@ -405,6 +440,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   AgentActionMsg,
   DiffRequestMsg,
   RepoAddMsg,
+  FsListMsg,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -477,7 +513,8 @@ export const CLIENT_MESSAGES = {
   'task.action': { schema: TaskActionMsg, doc: 'Steer a task from the Task Wall.' },
   'agent.action': { schema: AgentActionMsg, doc: 'Pause/resume/stop an agent, or spawn (activate) an off-shift worker.' },
   'diff.request': { schema: DiffRequestMsg, doc: 'Ask for the structured diff of a worktree. Answered with `diff` (same requestId).' },
-  'repo.add': { schema: RepoAddMsg, doc: 'Register a local git repo (console: `/repo add <path>`).' },
+  'repo.add': { schema: RepoAddMsg, doc: 'Register a local git repo (console: `/repo add <path>`, or the folder picker). With `init`, a plain folder is made into one first.' },
+  'fs.list': { schema: FsListMsg, doc: 'List the sub-folders of a folder on the Foreman\'s machine, for the repo folder picker. Answered by the `ack`, whose `result` is an `FsListing`.' },
 } as const;
 
 export const ENTITY_SCHEMAS = {
@@ -488,6 +525,8 @@ export const ENTITY_SCHEMAS = {
   DecisionAnswer,
   Repo,
   Worktree,
+  FsListing,
+  FsEntry,
   MemoryEntry,
   Goal,
   FeedItem,

@@ -12,6 +12,7 @@ import dev.agentcraft.client.console.ConsoleCommands.Intent;
 import dev.agentcraft.client.console.ConsoleCommands.Invalid;
 import dev.agentcraft.client.console.ConsoleCommands.Message;
 import dev.agentcraft.client.console.ConsoleCommands.RepoAdd;
+import dev.agentcraft.client.console.ConsoleCommands.RepoBrowse;
 import dev.agentcraft.client.console.ConsoleCommands.Repos;
 import dev.agentcraft.client.console.ConsoleCommands.ShowDiff;
 import dev.agentcraft.client.console.ConsoleCommands.Sound;
@@ -141,6 +142,13 @@ public final class ConsoleActions {
 				clearFeedback();
 				return After.CLEAR;
 			}
+			case RepoBrowse b -> {
+				ConsoleLog.remember(raw);
+				clearFeedback();
+				net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+				mc.gui.setScreen(new RepoPickerScreen(b.path(), mc.gui.screen()));
+				return After.CLOSE;
+			}
 			case Decide d -> {
 				ConsoleLog.remember(raw);
 				clearFeedback();
@@ -195,7 +203,7 @@ public final class ConsoleActions {
 					ack -> "answered " + did + (a.option() != null ? ": " + a.option() : "") + " " + UiBits.CHECK, "answering " + did + "\u2026",
 					() -> DecisionsFeature.unmarkAnswering(did));
 			}
-			case RepoAdd r -> track(Foreman.addRepo(r.path()), raw, restore, ack -> {
+			case RepoAdd r -> track(Foreman.addRepo(r.path(), r.init()), raw, restore, ack -> {
 				String rid = ack.result() != null && ack.result().has("repoId") ? ack.result().get("repoId").getAsString() : null;
 				return "repo " + (rid != null ? rid + " " : "") + "added " + UiBits.CHECK;
 			}, "adding the repo\u2026");
@@ -350,7 +358,7 @@ public final class ConsoleActions {
 		if (s.repos().isEmpty()) {
 			String example = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")
 				? "C:\\path\\to\\repo" : "/path/to/repo";
-			ConsoleLog.add(Tone.INFO, "none yet: /repo add " + example);
+			ConsoleLog.add(Tone.INFO, "none yet: /repo add to pick a folder, or /repo add " + example);
 			return;
 		}
 		for (Repo r : s.repos().values()) {

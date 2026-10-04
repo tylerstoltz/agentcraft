@@ -26,7 +26,9 @@ import org.jspecify.annotations.Nullable;
  * plain text                       goal.submit (asks which repo when there are several)
  * @name text  /  @all text         user.message
  * /answer [dN] &lt;n|label&gt; [text]    decision.answer (n is 1-based, as on the decision buttons)
- * /repo add &lt;path&gt;   /repos         repo.add / list repos
+ * /repo add [--init] &lt;path&gt;      repo.add (--init: git init a plain folder first)
+ * /repo add, /repo browse [path]  the repo folder picker (fs.list)
+ * /repos                          list repos
  * /pause|/resume|/stop @x [@y|all] agent.action
  * /spawn @x [taskId]               agent.action spawn
  * /task &lt;id&gt; cancel|retry|prioritize [n]|reassign @x
@@ -40,7 +42,7 @@ public final class ConsoleCommands {
 
 	// ------------------------------------------------------------------ intents
 
-	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
+	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, RepoBrowse, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
 		Sound, Invalid, Empty {
 	}
 
@@ -55,7 +57,12 @@ public final class ConsoleCommands {
 	public record Answer(Decision decision, @Nullable String option, @Nullable String text) implements Intent {
 	}
 
-	public record RepoAdd(String path) implements Intent {
+	/** {@code init}: make a plain folder a repo first ({@code git init} + a first commit of what is there). */
+	public record RepoAdd(String path, boolean init) implements Intent {
+	}
+
+	/** Open the repo folder picker at {@code path} (null = where it was last, else the Foreman's home folder). */
+	public record RepoBrowse(@Nullable String path) implements Intent {
 	}
 
 	public record Repos() implements Intent {
@@ -104,7 +111,7 @@ public final class ConsoleCommands {
 		new Command("stop", "/stop @agent", "take an agent off shift"),
 		new Command("spawn", "/spawn @agent [task]", "bring an agent on shift"),
 		new Command("task", "/task <id> cancel|retry|prioritize|reassign", "steer a task"),
-		new Command("repo", "/repo add <path>", "register a local git repo"),
+		new Command("repo", "/repo add [--init] [path]", "register a repo (no path: pick a folder)"),
 		new Command("repos", "/repos", "list repos"),
 		new Command("status", "/status", "goal, agents, tasks and decisions"),
 		new Command("sound", "/sound on|off", "decision bell and done chime"),
@@ -213,17 +220,23 @@ public final class ConsoleCommands {
 		if (sub.equals("list") || sub.equals("ls")) {
 			return new Repos();
 		}
-		if (!sub.equals("add")) {
-			return new Invalid("usage: /repo add <path to a local git repo>");
+		if (!sub.equals("add") && !sub.equals("browse")) {
+			return new Invalid("usage: /repo add [--init] [path]  (no path: pick a folder)");
 		}
-		String path = rest.strip().substring(3).strip();
+		String path = rest.strip().substring(sub.length()).strip();
+		boolean init = false;
+		if (sub.equals("add") && (path.equals("--init") || path.startsWith("--init "))) {
+			init = true;
+			path = path.substring(6).strip();
+		}
 		if (path.length() >= 2 && (path.startsWith("\"") && path.endsWith("\"") || path.startsWith("'") && path.endsWith("'"))) {
 			path = path.substring(1, path.length() - 1).strip();
 		}
-		if (path.isEmpty()) {
-			return new Invalid("usage: /repo add <path to a local git repo>");
+		if (sub.equals("browse") || path.isEmpty()) {
+			// /repo add --init with no path: the picker, where Use asks before it initializes anything
+			return new RepoBrowse(path.isEmpty() ? null : path);
 		}
-		return new RepoAdd(path);
+		return new RepoAdd(path, init);
 	}
 
 	private static Intent parseAgentAction(String action, List<String> args, ForemanState s) {
@@ -481,7 +494,8 @@ public final class ConsoleCommands {
 			case Goal g -> g.repoId() == null ? "new goal" : "new goal → " + repoName(g.repoId(), s);
 			case Message m -> m.to().equals("all") ? "message everyone" : "message " + displayName(m.to(), s);
 			case Answer a -> "answer " + a.decision().id() + (a.option() != null ? ": " + a.option() : ": free text");
-			case RepoAdd r -> "add repo";
+			case RepoAdd r -> r.init() ? "add repo (git init if needed)" : "add repo";
+			case RepoBrowse r -> "pick a folder";
 			case Repos r -> "list repos";
 			case AgentAction a -> a.action() + " " + (a.agentIds().size() == 1 ? displayName(a.agentIds().get(0), s) : a.agentIds().size() + " agents");
 			case TaskAction t -> t.action() + " " + t.taskId();
@@ -602,7 +616,13 @@ public final class ConsoleCommands {
 			}
 			case "/repo" -> {
 				if (argIndex == 1 && "add".startsWith(lower)) {
-					out.add(new Completion(ts, cursor, "add ", "add", "register a local git repo", null, null));
+					out.add(new Completion(ts, cursor, "add ", "add", "register a repo (no path: pick a folder)", null, null));
+				}
+				if (argIndex == 1 && "browse".startsWith(lower)) {
+					out.add(new Completion(ts, cursor, "browse ", "browse", "pick a folder", null, null));
+				}
+				if (argIndex == 2 && before.get(1).equalsIgnoreCase("add") && "--init".startsWith(lower) && !lower.isEmpty()) {
+					out.add(new Completion(ts, cursor, "--init ", "--init", "git init a plain folder first", null, null));
 				}
 			}
 			case "/sound" -> {
@@ -777,7 +797,11 @@ public final class ConsoleCommands {
 				m.put("option", a.option());
 				m.put("text", a.text());
 			}
-			case RepoAdd r -> m.put("path", r.path());
+			case RepoAdd r -> {
+				m.put("path", r.path());
+				m.put("init", r.init());
+			}
+			case RepoBrowse r -> m.put("path", r.path());
 			case AgentAction a -> {
 				m.put("agents", a.agentIds());
 				m.put("action", a.action());

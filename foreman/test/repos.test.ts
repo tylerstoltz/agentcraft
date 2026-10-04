@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Decision } from '../src/protocol.js';
@@ -258,6 +259,103 @@ describe('RepoManager', () => {
     expect(res.failures).toEqual([]);
   });
 });
+
+describe('adding plain folders with init, and browsing for one', () => {
+  let fm: Harness;
+  let fhome: string;
+  let root: string;
+  beforeAll(() => {
+    fhome = tempDir();
+    root = tempDir('ac-browse-');
+    fm = makeForeman(fhome, ['--backend', 'sim']);
+  });
+  afterAll(async () => {
+    await fm.fm.close();
+    rmrf(fhome);
+    rmrf(root);
+  });
+
+  it('init makes a plain folder a repo and commits its files, honouring .gitignore', async () => {
+    const dir = path.join(root, 'plain');
+    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'src', 'a.ts'), 'export const a = 1;\n');
+    fs.writeFileSync(path.join(dir, '.gitignore'), 'secret.txt\n');
+    fs.writeFileSync(path.join(dir, 'secret.txt'), 'shh\n');
+    await expect(fm.fm.repos.add(dir)).rejects.toThrow(/not a git repository: .*--init/);
+    expect(fs.existsSync(path.join(dir, '.git'))).toBe(false); // refused without init: untouched
+    const r = await fm.fm.repos.add(dir, { init: true });
+    expect(r.name).toBe('plain');
+    expect(r.branch).toBeTruthy();
+    const files = (await gitOut(dir, ['ls-files'])).split('\n').sort();
+    expect(files).toEqual(['.gitignore', 'src/a.ts']);
+    expect(await gitOut(dir, ['log', '--format=%s'])).toBe('Initial commit');
+    expect((await fm.fm.repos.add(dir, { init: true })).id).toBe(r.id); // idempotent, no second commit
+    expect(await gitOut(dir, ['rev-list', '--count', 'HEAD'])).toBe('1');
+  });
+
+  it('init gives an empty folder and a repo without commits a first commit', async () => {
+    const empty = path.join(root, 'empty');
+    fs.mkdirSync(empty);
+    const r = await fm.fm.repos.add(empty, { init: true });
+    expect(r.head).toMatch(/^[0-9a-f]{7}$/);
+    const fresh = path.join(root, 'fresh');
+    fs.mkdirSync(fresh);
+    await git(fresh, ['init', '-q']);
+    fs.writeFileSync(path.join(fresh, 'x.md'), '# x\n');
+    await expect(fm.fm.repos.add(fresh)).rejects.toThrow(/no commits yet/);
+    await fm.fm.repos.add(fresh, { init: true });
+    expect(await gitOut(fresh, ['ls-files'])).toBe('x.md');
+  });
+
+  it('init on a folder inside another repo makes it its own repo and leaves the outer one alone', async () => {
+    const outer = path.join(root, 'outer');
+    fs.mkdirSync(outer);
+    await git(outer, ['init', '-q']);
+    fs.writeFileSync(path.join(outer, 'o.txt'), 'o\n');
+    await git(outer, ['add', '-A']);
+    await git(outer, ['-c', 'user.name=U', '-c', 'user.email=u@x', 'commit', '-qm', 'outer']);
+    const inner = path.join(outer, 'inner');
+    fs.mkdirSync(inner);
+    fs.writeFileSync(path.join(inner, 'i.txt'), 'i\n');
+    await expect(fm.fm.repos.add(inner)).rejects.toThrow(/inside the git repository/);
+    const r = await fm.fm.repos.add(inner, { init: true });
+    expect(samePathLike(r.path, inner)).toBe(true);
+    expect(await gitOut(inner, ['ls-files'])).toBe('i.txt');
+    expect(await gitOut(outer, ['rev-list', '--count', 'HEAD'])).toBe('1');
+  });
+
+  it('browse lists sub-folders with their git state', async () => {
+    const b = path.join(root, 'browse');
+    fs.mkdirSync(path.join(b, 'zeta'), { recursive: true });
+    fs.mkdirSync(path.join(b, 'Alpha'));
+    fs.mkdirSync(path.join(b, '.hidden'));
+    fs.writeFileSync(path.join(b, 'file.txt'), 'not a folder\n');
+    fs.mkdirSync(path.join(b, 'proj'));
+    await git(path.join(b, 'proj'), ['init', '-q']);
+    const l = await fm.fm.repos.browse(b);
+    expect(l.entries).toEqual([{ name: 'Alpha', repo: false }, { name: 'proj', repo: true }, { name: 'zeta', repo: false }]);
+    expect(l.git).toBe('none');
+    expect(samePathLike(l.parent!, root)).toBe(true);
+    expect(l.registered).toBe(false);
+    expect(l.truncated).toBe(false);
+    expect((await fm.fm.repos.browse(b, { hidden: true })).entries.map((e) => e.name)).toContain('.hidden');
+    expect((await fm.fm.repos.browse(path.join(b, 'proj'))).git).toBe('no_commits');
+    const plain = await fm.fm.repos.browse(path.join(root, 'plain'));
+    expect(plain.git).toBe('repo');
+    expect(plain.registered).toBe(true);
+    const sub = await fm.fm.repos.browse(path.join(root, 'plain', 'src'));
+    expect(sub.git).toBe('inside');
+    expect(samePathLike(sub.repoRoot!, path.join(root, 'plain'))).toBe(true);
+    expect((await fm.fm.repos.browse(undefined)).path).toBe(path.resolve(os.homedir()));
+    await expect(fm.fm.repos.browse(path.join(b, 'nope'))).rejects.toThrow(/does not exist/);
+    await expect(fm.fm.repos.browse(path.join(b, 'file.txt'))).rejects.toThrow(/not a folder/);
+  });
+});
+
+/** Equal after resolving links (macOS tmp is /var -> /private/var). */
+function samePathLike(a: string, b: string): boolean {
+  return fs.realpathSync.native(a) === fs.realpathSync.native(b);
+}
 
 describe('approved merges are made as the user', () => {
   const dirs: string[] = [];

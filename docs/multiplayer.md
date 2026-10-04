@@ -76,6 +76,12 @@ tools/stop.sh                                         # later; tools/stop.sh --p
 On Windows: `tools\launch.ps1 -NoGame -Backend sim` or `tools\launch.ps1 -NoGame -Repo C:\path\to\repo`,
 and `tools\stop.ps1`.
 
+`--repo` is optional: start the Foreman without it and pick the project in game instead. Press
+<kbd>`</kbd>, type `/repo add` and choose the folder in the picker (it browses the Foreman's machine).
+Folders that are not git repositories are listed too; adding one shows what will happen
+(`git init` and a first commit of everything in it) and asks for a second press. Added repos are
+remembered by the Foreman's profile.
+
 Then start `fabric-loader-26.3` from the launcher. The order does not matter: the mod keeps
 reconnecting to `127.0.0.1:7878` and the HUD shows "Reconnecting to the Foreman" until it is up.
 

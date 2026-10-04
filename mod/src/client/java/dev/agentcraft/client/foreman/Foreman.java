@@ -7,6 +7,7 @@ import dev.agentcraft.foreman.ForemanListener;
 import dev.agentcraft.foreman.ForemanState;
 import dev.agentcraft.foreman.Protocol.Ack;
 import dev.agentcraft.foreman.Protocol.Diff;
+import dev.agentcraft.foreman.Protocol.FsListing;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
 
@@ -84,7 +85,25 @@ public final class Foreman {
 	}
 
 	public static CompletableFuture<Ack> addRepo(String path) {
-		return link.send(ForemanJson.msg("repo.add").put("path", path).json());
+		return addRepo(path, false);
+	}
+
+	/** {@code init}: a folder that is not a repository root is {@code git init}ed and committed as it is first. */
+	public static CompletableFuture<Ack> addRepo(String path, boolean init) {
+		return link.send(ForemanJson.msg("repo.add").put("path", path).put("init", init ? true : null).json());
+	}
+
+	/**
+	 * The sub-folders of a folder on the Foreman's machine ({@code path} null = its home folder), for the
+	 * repo folder picker. Fails with the Foreman's error text when it refuses (missing folder, no trust).
+	 */
+	public static CompletableFuture<FsListing> listDir(@Nullable String path, boolean hidden) {
+		return link.send(ForemanJson.msg("fs.list").put("path", path).put("hidden", hidden ? true : null).json()).thenApply(ack -> {
+			if (!ack.ok() || ack.result() == null) {
+				throw new IllegalStateException(ack.error() != null ? ack.error() : "the Foreman refused it");
+			}
+			return ForemanJson.read(ack.result(), FsListing.class);
+		});
 	}
 
 	/** Structured diff of a worktree (or an agent id: its current worktree) vs its base. */

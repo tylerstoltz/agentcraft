@@ -531,17 +531,19 @@ export class Foreman {
         return undefined;
       }
       case 'repo.add': {
-        const r = await this.repos.add(msg.path);
+        const r = await this.repos.add(msg.path, { init: msg.init });
         this.bus.feed('system', `Repo connected: ${r.name} (${r.branch})`);
         return { repoId: r.id };
       }
+      case 'fs.list':
+        return { ...(await this.repos.browse(msg.path, { hidden: msg.hidden })) };
     }
   }
 
   async submitGoal(text: string, repoId?: string): Promise<Goal> {
     const repo = repoId ? this.repos.get(repoId) : this.repos.defaultRepo();
     if (repoId && !repo) throw new ClientError(`no repo "${repoId}"`);
-    if (!repo) throw new ClientError('no repo connected yet — add one with /repo add <path>');
+    if (!repo) throw new ClientError('no repo connected yet — add one with /repo add (pick a folder) or /repo add <path>');
     if (!this.backend) throw new ClientError('no backend running');
     const goal = this.createGoal(text, repo.id);
     await this.backend.submitGoal(goal);

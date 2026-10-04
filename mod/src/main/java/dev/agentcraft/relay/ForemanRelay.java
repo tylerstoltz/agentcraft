@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Watching ({@code hello}, {@code diff.request}) is open to everyone unless
  * {@code AGENTCRAFT_RELAY_WATCH=trusted}, which refuses the relay itself to untrusted players. Every
- * other intent can make agents run code on the host, so it needs {@link Trust#mayDrive}: an ops-list
+ * other intent can make agents run code on the host (or, like {@code fs.list}, shows its folders), so it needs {@link Trust#mayDrive}: an ops-list
  * entry (level 2+), the LAN host, or an entry in {@code config/agentcraft-allowlist.json} (a JSON array
  * of player names and/or UUIDs). Refused intents get an {@code ack} with {@code ok:false}; forwarded
  * ones are logged with the player's name.

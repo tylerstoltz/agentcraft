@@ -58,6 +58,11 @@ public final class Protocol {
 		UNKNOWN, RUNNING, PASS, FAIL
 	}
 
+	/** Git state of a folder in an {@link FsListing}. */
+	public enum FsGitState implements Wire {
+		REPO, NO_COMMITS, INSIDE, NONE, UNKNOWN
+	}
+
 	public enum LogKind implements Wire {
 		TEXT, TOOL, RESULT, ERROR, DIFF, UNKNOWN
 	}
@@ -321,5 +326,18 @@ public final class Protocol {
 	}
 
 	public record ErrorMsg(String message, @Nullable String re) {
+	}
+
+	/** A sub-folder in an {@link FsListing}; {@code repo} = it has its own {@code .git}. */
+	public record FsEntry(String name, boolean repo) {
+	}
+
+	/** The {@code result} of an {@code fs.list} ack: a folder on the Foreman's machine and its sub-folders. */
+	public record FsListing(String path, @Nullable String parent, String home, FsGitState git, @Nullable String repoRoot, boolean registered,
+		List<FsEntry> entries, boolean truncated) {
+		public FsListing {
+			git = git == null ? FsGitState.UNKNOWN : git;
+			entries = entries == null ? List.of() : List.copyOf(entries);
+		}
 	}
 }

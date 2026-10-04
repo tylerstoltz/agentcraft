@@ -49,6 +49,13 @@ describe('client intents', () => {
     expect(ack(bad).ok).toBe(false);
   });
 
+  it('fs.list answers with a folder listing in the ack; a missing folder fails', async () => {
+    const ok = await send({ type: 'fs.list', path: path.dirname(repoPath) });
+    expect(ack(ok)).toMatchObject({ ok: true, result: { git: 'none', entries: [{ name: 'demo-app', repo: true }] } });
+    const bad = await send({ type: 'fs.list', path: path.join(home, 'nope') });
+    expect(ack(bad).error).toMatch(/does not exist/);
+  });
+
   it('user.message routes @name, rejects unknown agents', async () => {
     const r = await send({ type: 'user.message', to: 'all', text: '@Juniper can you look at the CLI?' });
     expect(ack(r).result).toEqual({ to: 'juniper' });

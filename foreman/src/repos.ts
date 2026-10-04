@@ -17,7 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Ctx } from './context.js';
 import { parseUnifiedDiff, type ParsedDiff } from './diff.js';
-import type { CiStatus, Decision, Repo, Worktree } from './protocol.js';
+import type { CiStatus, Decision, FsEntry, FsGitState, FsListing, Repo, Worktree } from './protocol.js';
 import { withGitSafety } from './gitsafety.js';
 import { ensureDir, isInsideOrEqual } from './util/fsx.js';
 import { agentGitIdentity, git, gitConfigGet, gitOut, identityEnv, listWorktrees } from './util/git.js';
@@ -115,6 +115,18 @@ function samePath(a: string, b: string): boolean {
   return n(a) === n(b);
 }
 
+/** Case-insensitive real-path comparison (what registration has always used for "is this the root"). */
+function sameRealPath(a: string, b: string): boolean {
+  return path.resolve(realPath(a)).toLowerCase() === path.resolve(realPath(b)).toLowerCase();
+}
+
+/** A user-typed path: `~` expands to the home folder, then resolved to absolute. */
+function expandPath(p: string): string {
+  return path.resolve(p.replace(/^~(?=$|[\\/])/, os.homedir()));
+}
+
+const MAX_BROWSE_ENTRIES = 1000;
+
 export interface RepoOptions {
   /** merge: a merge commit that keeps the agents' commits; squash: one commit with the changes */
   mergeStyle?: 'merge' | 'squash';
@@ -195,32 +207,43 @@ export class RepoManager {
     return w;
   }
 
-  /** Register a local git repo (idempotent by path). */
-  async add(p: string): Promise<Repo> {
-    const abs = path.resolve(p.replace(/^~(?=$|[\\/])/, os.homedir()));
+  /**
+   * Register a local git repo (idempotent by path). With `init`, a folder that is not a repository
+   * root (not under git, or inside another repository) is `git init`ed, and a root without commits
+   * gets a first commit of everything in it (respecting .gitignore), made as the user.
+   */
+  async add(p: string, opts: { init?: boolean } = {}): Promise<Repo> {
+    const abs = expandPath(p);
     if (!fs.existsSync(abs)) throw new RepoError(`path does not exist: ${abs}`, 'not_found');
+    if (!fs.statSync(abs).isDirectory()) throw new RepoError(`not a folder: ${abs}`, 'not_found');
+    const initHint = `To use it anyway, pick it in the folder picker (/repo add) or run /repo add --init ${abs}: AgentCraft runs git init there and commits the folder as it is.`;
     const top = await git(abs, ['rev-parse', '--show-toplevel'], { allowFail: true });
-    if (top.code !== 0) throw new RepoError(`not a git repository: ${abs}`, 'not_git');
-    const root = path.resolve(top.stdout.trim());
+    let root = top.code === 0 ? path.resolve(top.stdout.trim()) : '';
     // a folder inside some other repository is not that repository: registering the enclosing
     // repo silently would make it the merge target (e.g. a new folder under a project)
-    const real = (p: string) => {
-      try {
-        return path.resolve(fs.realpathSync.native(p)).toLowerCase();
-      } catch {
-        return path.resolve(p).toLowerCase();
+    if (!root || !sameRealPath(abs, root)) {
+      if (!opts.init) {
+        if (!root) throw new RepoError(`not a git repository: ${abs}. ${initHint}`, 'not_git');
+        throw new RepoError(`${abs} is not a repository root: it is inside the git repository ${root}. Add the repository itself (/repo add ${root}) or make ${abs} its own repository (/repo add --init ${abs}).`, 'not_git');
       }
-    };
-    if (real(abs) !== real(root)) {
-      throw new RepoError(`${abs} is not a repository root: it is inside the git repository ${root}. Add the repository itself (/repo add ${root}) or run \`git init\` in ${abs} first.`, 'not_git');
+      await git(abs, ['init', '-q']);
+      root = abs;
+      this.ctx.log.info(`repo.add: initialized a git repository in ${abs}`);
     }
     const existing = this.repos.find((r) => path.resolve(r.path).toLowerCase() === root.toLowerCase());
     if (existing) {
       await this.refresh(existing.id);
       return existing;
     }
-    const head = await git(root, ['rev-parse', '--verify', 'HEAD'], { allowFail: true });
-    if (head.code !== 0) throw new RepoError(`repository has no commits yet: ${root}`, 'no_commits');
+    let head = await git(root, ['rev-parse', '--verify', 'HEAD'], { allowFail: true });
+    if (head.code !== 0) {
+      if (!opts.init) throw new RepoError(`repository has no commits yet: ${root}. Commit something first, or run /repo add --init ${root} to commit the folder as it is.`, 'no_commits');
+      const { env } = await userIdentity(root);
+      await git(root, ['add', '-A']);
+      await git(root, ['commit', '-q', '--allow-empty', '-m', 'Initial commit'], { env });
+      head = await git(root, ['rev-parse', '--verify', 'HEAD'], { allowFail: true });
+      this.ctx.log.info(`repo.add: made the first commit in ${root}`);
+    }
     const branch = (await git(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFail: true })).stdout.trim();
     if (!branch) throw new RepoError(`repository is in detached HEAD state; check out a branch first: ${root}`, 'refused');
     let id = slugify(path.basename(root), 24);
@@ -229,6 +252,52 @@ export class RepoManager {
     this.repos.push(repo);
     await this.refresh(id);
     return repo;
+  }
+
+  /** The sub-folders of `p` (default: home) and its git state, for the repo folder picker. */
+  async browse(p: string | undefined, opts: { hidden?: boolean } = {}): Promise<FsListing> {
+    const abs = expandPath(p && p.trim() ? p.trim() : '~');
+    let dirents: fs.Dirent[];
+    try {
+      if (!fs.statSync(abs).isDirectory()) throw new RepoError(`not a folder: ${abs}`, 'not_found');
+      dirents = fs.readdirSync(abs, { withFileTypes: true });
+    } catch (e) {
+      if (e instanceof RepoError) throw e;
+      const code = (e as NodeJS.ErrnoException).code;
+      throw new RepoError(code === 'ENOENT' ? `path does not exist: ${abs}` : `cannot read ${abs}: ${code ?? (e as Error).message}`, 'not_found');
+    }
+    const entries: FsEntry[] = [];
+    for (const d of dirents) {
+      if (!opts.hidden && d.name.startsWith('.')) continue;
+      const full = path.join(abs, d.name);
+      let dir = d.isDirectory();
+      if (!dir && d.isSymbolicLink()) {
+        try {
+          dir = fs.statSync(full).isDirectory();
+        } catch {
+          dir = false;
+        }
+      }
+      if (dir) entries.push({ name: d.name, repo: fs.existsSync(path.join(full, '.git')) });
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
+    const top = await git(abs, ['rev-parse', '--show-toplevel'], { allowFail: true });
+    const root = top.code === 0 ? path.resolve(top.stdout.trim()) : '';
+    let state: FsGitState = 'none';
+    if (root && sameRealPath(abs, root)) {
+      state = (await git(abs, ['rev-parse', '--verify', 'HEAD'], { allowFail: true })).code === 0 ? 'repo' : 'no_commits';
+    } else if (root) state = 'inside';
+    const parent = path.dirname(abs);
+    return {
+      path: abs,
+      ...(parent !== abs ? { parent } : {}),
+      home: os.homedir(),
+      git: state,
+      ...(state === 'inside' ? { repoRoot: root } : {}),
+      registered: this.repos.some((r) => samePath(r.path, abs)),
+      entries: entries.slice(0, MAX_BROWSE_ENTRIES),
+      truncated: entries.length > MAX_BROWSE_ENTRIES,
+    };
   }
 
   private emitRepo(r: Repo): void {

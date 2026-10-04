@@ -53,7 +53,7 @@ In the TUI (and in the mod's console) type:
 | `@kit please also cover emoji tags` | message an agent (`@all` for everyone) |
 | `/answer` / `/answer d3 2 more tests please` | answer the oldest / a specific decision (1-based option, optional text) |
 | `/diff kit-t2` or `/diff d3` | show a worktree's diff (or a merge decision's) |
-| `/repo add C:\path\to\repo` | connect a repo |
+| `/repo add C:\path\to\repo` | connect a repo (`--init` makes a plain folder a repo first) |
 | `/pause @kit`, `/resume @kit`, `/stop @kit`, `/spawn @tove` | steer agents (see Steering) |
 | `/task t3 cancel\|retry\|prioritize [n]\|reassign @wren` | steer tasks |
 | `/status`, `/tasks`, `/agents`, `/decisions`, `/memory [id]`, `/feed` | views |
@@ -242,7 +242,12 @@ spawns git with an empty environment); the policy refuses every command it can s
   signed as above, `Co-authored-by` the agents) instead of a merge commit plus the agents'
   commits - useful for repos that require signed commits or verified emails. Branches are kept.
 - `/repo add <path>` must name a repository root; a folder inside another repository is refused
-  (instead of silently registering the enclosing repo as the merge target).
+  (instead of silently registering the enclosing repo as the merge target). With `--init` (or the
+  in-game folder picker, after a warning) a plain folder, a folder inside another repository or a
+  repository without commits is `git init`ed and everything in it (minus `.gitignore`) is committed
+  as the user; nothing is changed without that flag.
+- `fs.list` (the folder picker) lists folders anywhere the Foreman's user can read. Over the server
+  relay it needs the same trust as every other intent (op or the allowlist).
 - Merges are refused (and the decision re-opens with the reason) if the checkout that has the base
   branch checked out has uncommitted tracked changes. A merge that would conflict is not made either:
   with the claude backend the task goes back to its worker (`git merge <base>` in its worktree,
@@ -316,7 +321,7 @@ npm run check       # all of the above + protocol doc freshness
 
 - **`port 7878 is already in use`**: another Foreman is running (`~/.agentcraft/foreman.json` and `~/.agentcraft/<profile>/foreman.json` have its pid) - or use `--port`.
 - **`profile "claude" is in use by the Foreman pid N`**: that profile already has a running Foreman; stop it or use `--profile`.
-- **`... is not a repository root`**: `/repo add` the repository's top folder (the message names it).
+- **`... is not a repository root`** / **`not a git repository`**: `/repo add` the repository's top folder (the message names it), or `/repo add --init <path>` to make that folder a repository of its own.
 - **Banner says auth failed**: set `ANTHROPIC_API_KEY` (or a cloud provider switch) and restart the Foreman. With `--use-claude-login`: run `claude` and `/login`. The sim backend works without auth. Why the claude.ai login is opt-in: Anthropic does not allow third-party tools to offer it ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)); see `src/agents/claude/auth.ts`.
 - **Merge refused: uncommitted changes**: commit or stash in your checkout, then choose Merge again (the decision re-opened).
 - **Reset the demo repo**: `node sandbox/create-demo.mjs --force`.

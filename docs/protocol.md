@@ -138,6 +138,26 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `additions` | integer | yes |  |
 | `deletions` | integer | yes |  |
 
+### <a id="fslisting"></a>FsListing
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `path` | string | yes | absolute path of the listed folder, on the Foreman's machine |
+| `parent` | string | no | omitted at a filesystem root |
+| `home` | string | yes | the Foreman user's home folder |
+| `git` | `repo` \| `no_commits` \| `inside` \| `none` | yes | repo: a git repository root with commits; no_commits: a root without any commit yet; inside: a folder inside another repository; none: not under git |
+| `repoRoot` | string | no | git "inside": the enclosing repository |
+| `registered` | boolean | yes | this folder is already a registered repo |
+| `entries` | [FsEntry](#fsentry)[] | yes | sub-folders only, sorted by name |
+| `truncated` | boolean | yes | true if the folder had more sub-folders than were sent |
+
+### <a id="fsentry"></a>FsEntry
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `name` | string | yes |  |
+| `repo` | boolean | yes | the folder has its own `.git` (a repository root) |
+
 ### <a id="memoryentry"></a>MemoryEntry
 
 | field | type | required | notes |
@@ -824,7 +844,7 @@ Reply to any client message that carried an `id`.
 | `re` | string | yes | the `id` of the client message being acknowledged |
 | `ok` | boolean | yes |  |
 | `error` | string | no |  |
-| `result` | map<string, any> | no | e.g. {goalId} for goal.submit, {repoId} for repo.add |
+| `result` | map<string, any> | no | e.g. {goalId} for goal.submit, {repoId} for repo.add, an FsListing for fs.list |
 
 ```json
 {
@@ -1009,12 +1029,13 @@ Ask for the structured diff of a worktree. Answered with `diff` (same requestId)
 
 ### `repo.add`
 
-Register a local git repo (console: `/repo add <path>`).
+Register a local git repo (console: `/repo add <path>`, or the folder picker). With `init`, a plain folder is made into one first.
 
 | field | type | required | notes |
 | --- | --- | --- | --- |
 | `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
 | `path` | string | yes |  |
+| `init` | boolean | no | when the folder is not a repository root (or has no commits): `git init` it and commit everything in it (respecting .gitignore) as the user |
 
 ```json
 {
@@ -1022,6 +1043,25 @@ Register a local git repo (console: `/repo add <path>`).
   "type": "repo.add",
   "id": "c18",
   "path": "C:\\Projects\\agentcraft\\sandbox\\demo-app"
+}
+```
+
+### `fs.list`
+
+List the sub-folders of a folder on the Foreman's machine, for the repo folder picker. Answered by the `ack`, whose `result` is an `FsListing`.
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `path` | string | no | folder to list; omitted = the home folder; `~` expands |
+| `hidden` | boolean | no | include dot-folders |
+
+```json
+{
+  "v": 1,
+  "type": "fs.list",
+  "id": "c19",
+  "path": "C:\\Projects"
 }
 ```
 
