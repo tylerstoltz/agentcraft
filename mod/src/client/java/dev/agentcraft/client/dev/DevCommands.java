@@ -120,6 +120,28 @@ final class DevCommands {
 		DevBridge.register("dev.key", 10_000, "{key:'escape'|'key.keyboard.f3', modifiers?} or {mapping:'key.chat'} - press a key (to the open screen, else key mappings)",
 			DevCommands::key);
 		DevBridge.register("dev.type", 10_000, "{text} - type text into the focused widget of the open screen", DevCommands::type);
+		DevBridge.register("dev.click", 10_000, "{x, y, button?:1 (SDL numbering: 1 left, 2 middle, 3 right), double?:false} - click the open screen at GUI coordinates (press + release) -> {handled}",
+			(req, mc) -> {
+				Fields f = Fields.of(req);
+				double x = f.num("x");
+				double y = f.num("y");
+				int button = f.optInt("button", com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_LEFT, 1, 8);
+				boolean dbl = f.optBool("double", false);
+				return DevBridge.onClient(mc, () -> {
+					var screen = mc.gui.screen();
+					if (screen == null) {
+						throw new DevException("no screen is open");
+					}
+					var ev = new net.minecraft.client.input.MouseButtonEvent(x, y, new net.minecraft.client.input.MouseButtonInfo(button, 0));
+					boolean handled = screen.mouseClicked(ev, dbl);
+					screen.mouseReleased(ev);
+					JsonObject o = new JsonObject();
+					o.addProperty("handled", handled);
+					var now = mc.gui.screen();
+					o.addProperty("screen", now == null ? null : now.getClass().getName());
+					return o;
+				});
+			});
 		DevBridge.register("dev.hud", 10_000, "{hidden: bool} - hide/show the HUD (like F1)", (req, mc) -> {
 			boolean hidden = Fields.of(req).bool("hidden");
 			return DevBridge.onClient(mc, () -> {

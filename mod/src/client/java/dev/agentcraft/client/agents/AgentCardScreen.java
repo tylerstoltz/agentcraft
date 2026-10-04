@@ -761,7 +761,10 @@ public final class AgentCardScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0) {
+		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+			if (doubleClick) {
+				return true; // the second press of a double-click: one action per click (Cancel then Confirm needs two)
+			}
 			for (Btn b : buttons) {
 				if (b.hit(event.x(), event.y())) {
 					press(b.id);

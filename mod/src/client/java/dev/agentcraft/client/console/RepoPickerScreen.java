@@ -32,6 +32,8 @@ import org.jspecify.annotations.Nullable;
 public class RepoPickerScreen extends Screen {
 	private static final int ROW = 12;
 	private static final long CONFIRM_NANOS = 5_000_000_000L;
+	/** The confirming press must come at least this long after the arming one, so a double-click cannot do both. */
+	private static final long CONFIRM_MIN_NANOS = 400_000_000L;
 	/** Where the picker was last, so reopening it continues there (this game session only). */
 	private static @Nullable String lastPath;
 
@@ -48,6 +50,7 @@ public class RepoPickerScreen extends Screen {
 	private boolean feedbackError;
 	private boolean sending;
 	private boolean confirmInit;
+	private long confirmArmedAt;
 	private long confirmUntil;
 	private int selected = -1;
 	private final TextUtil.Scroll scroll = new TextUtil.Scroll();
@@ -372,7 +375,10 @@ public class RepoPickerScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0) {
+		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
+			if (doubleClick) {
+				return true; // the second press of a double-click: one action per click (a toggle would undo itself)
+			}
 			for (Btn b : List.copyOf(buttons)) {
 				if (b.enabled() && b.hit(event.x(), event.y())) {
 					press(b.id());
@@ -469,9 +475,14 @@ public class RepoPickerScreen extends Screen {
 			return;
 		}
 		boolean init = l.git() != FsGitState.REPO;
-		if (init && (!confirmInit || System.nanoTime() > confirmUntil)) {
+		long now = System.nanoTime();
+		if (init && confirmInit && now - confirmArmedAt < CONFIRM_MIN_NANOS) {
+			return; // the second half of a double-click, not a confirmation
+		}
+		if (init && (!confirmInit || now > confirmUntil)) {
 			confirmInit = true;
-			confirmUntil = System.nanoTime() + CONFIRM_NANOS;
+			confirmArmedAt = now;
+			confirmUntil = now + CONFIRM_NANOS;
 			feedback = null;
 			return;
 		}
