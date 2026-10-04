@@ -39,7 +39,8 @@ firewall notes and the Open to LAN alternative: [docs/multiplayer.md](../docs/mu
 - **Ops** (and names or UUIDs in `data/config/agentcraft-allowlist.json`, a JSON array, re-read when
   it changes) may give goals, answer decisions and merge. Everyone else can watch and review diffs.
   Watching shows agent logs, permission prompts and the code in every worktree: set
-  `AGENTCRAFT_RELAY_WATCH=trusted` to limit it to ops and allowlisted players. Watchers' connects and
+  `AGENTCRAFT_RELAY_WATCH=trusted` in `.env` (then `docker compose up -d`) to limit it to ops and
+  allowlisted players. Watchers' connects and
   diff requests are rate limited.
 - **The HQ site is protected**: players who are not op cannot change anything inside the area the HQ
   builder owns (building, grounds, pond, garden), and neither can explosions, mobs, pistons,

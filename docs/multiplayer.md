@@ -100,7 +100,9 @@ In `.env`:
   `["Alice"]` (re-read when the file changes).
 - `AGENTCRAFT_RELAY_WATCH=trusted` (optional): watching shows agent logs, permission prompts and the
   code in every worktree. With `trusted`, players who are neither op nor allowlisted get no studio
-  view at all. The default `all` lets every player who joins watch.
+  view at all. The default `all` lets every player who joins watch. Change it with
+  `docker compose up -d` (recreates the container). A server run without Docker takes it as an
+  environment variable or as `-Dagentcraft.relay.watch=trusted` on its `java` command line.
 
 Whitelist and ops are applied when the container starts; for a running server use the server console
 (`docker attach agentcraft-mc`, detach with Ctrl-P Ctrl-Q): `whitelist add Alice`, `op Alice`.
@@ -141,6 +143,10 @@ What changes compared to a dedicated server:
   your Minecraft folder (for example `~/.minecraft/config/agentcraft-allowlist.json` containing
   `["Alice"]`). It is re-read when it changes and keeps applying in later sessions. (`/op` exists only
   on dedicated servers, so on a LAN world the allowlist is the way to trust someone.)
+- **Who may watch**: every guest by default. To show the studio only to allowlisted guests, start
+  *your* game (it is the server) with `-Dagentcraft.relay.watch=trusted` in the launcher's JVM
+  arguments, or `AGENTCRAFT_RELAY_WATCH=trusted tools/launch.sh ...` with the dev launcher. It is read
+  at startup, so restart the game to change it.
 - **HQ protection** applies: guests cannot change anything on the HQ site, and allowlisted guests
   cannot either: driving the agents does not include building. `/agentcraft protect off` lifts it.
 - The world is only up while you are in it. When you quit, guests are disconnected; the Foreman and

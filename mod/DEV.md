@@ -123,7 +123,7 @@ Example: a hardcore world on random terrain with the HQ at the best spot near sp
 | `AGENTCRAFT_DEV_TEST` | 0 | `1` registers test-only commands (`dev.test.stall`, which blocks the render thread to simulate a hung game; `dev.test.foremanMessage`). Never set it for real use |
 | `AGENTCRAFT_PORT` | 7878 | Foreman WebSocket port the mod connects to (always 127.0.0.1) |
 | `AGENTCRAFT_FOREMAN` | 1 | `0` disables the Foreman link (the HUD says so) |
-| `AGENTCRAFT_RELAY_WATCH` | `all` | Server side: `trusted` refuses the multiplayer relay (the whole studio view) to players who are neither op nor allowlisted |
+| `AGENTCRAFT_RELAY_WATCH` | `all` | Server side: `trusted` refuses the multiplayer relay (the whole studio view) to players who are neither op nor allowlisted. Set it on the JVM that hosts the world: the dedicated server, or the host's own game for Open to LAN. Clients and the Foreman ignore it; read at startup |
 
 The defaults (muted, no focus) suit unattended agent runs. `tools/launch.ps1` should set
 `AGENTCRAFT_MUTE=0 AGENTCRAFT_FOCUS=1` for real use (when you launch the game yourself; it does
