@@ -622,3 +622,10 @@ The module versions are listed under `.gradle-home/caches/modules-2/files-2.1/ne
   that as a new goal. Set `MSYS_NO_PATHCONV=1` for console commands, or drive the DevBridge from
   PowerShell. This happened in the claude e2e run. The lead asked what the goal meant instead of
   starting work on it.
+---
+
+  After any future change to the mod, it's the same three steps:
+  cd ~/Desktop/vscode/minecraft/agentcraft/mod
+  JAVA_HOME=/usr/lib/jvm/temurin-25-jdk-amd64 sh ./gradlew build
+  cp build/libs/agentcraft-0.1.0.jar ~/.minecraft-agentcraft/mods/
+  Then restart the game. Changes to the Foreman (foreman/) don't need any of this; you only restart the Foreman.
