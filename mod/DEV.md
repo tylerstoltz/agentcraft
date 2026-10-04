@@ -67,12 +67,13 @@ GRADLE_USER_HOME=C:/Projects/agentcraft/.gradle-home ./gradlew --stop       # st
 4. **HqWorld** (server side, HQ world only) picks the world's **profile** at its first start from its
    game mode and hardcore flag (creative = `studio`, survival/adventure = `survival`, hardcore =
    `hardcore`), saves it in the marker file `agentcraft-world.json`, and applies it on every start.
-   Every profile keeps the build safe: no mob griefing, no fire spread, no vine spread, no snow
-   build-up, respawn radius 0, max_block_modifications 1,000,000 (for the HQ builder). `studio` adds
-   no time or weather cycle, keep inventory, no mob spawning of any kind, no locator bar, quiet
+   Every profile keeps the build safe: no fire spread, no vine spread, no snow build-up, respawn
+   radius 0, max_block_modifications 1,000,000 (for the HQ builder); mobs are kept off the HQ site by
+   `HqProtection`, not by the game rule. `studio` adds no mob griefing, no time or weather cycle, keep inventory, no mob spawning of any kind, no locator bar, quiet
    advancement and command output, time 12000 (golden hour) and clear weather at creation, and puts
    players who join in spectator or survival back into creative. `survival`/`hardcore` leave the rest
-   vanilla. `/agentcraft mode studio|survival` switches later (rules, default and online players' game
+   vanilla (survival worlds from before mob griefing became studio-only get it reset to vanilla once,
+   marker key `griefRuleStudioOnly`). `/agentcraft mode studio|survival` switches later (rules, default and online players' game
    mode); hardcore is fixed. First-time players, and players who die without a bed or respawn
    anchor, are put on the `spawn` anchor in front of the door.
 5. A world is an HQ world when its level name is `AgentCraft HQ`, when it has the marker file, when
@@ -122,6 +123,7 @@ Example: a hardcore world on random terrain with the HQ at the best spot near sp
 | `AGENTCRAFT_DEV_TEST` | 0 | `1` registers test-only commands (`dev.test.stall`, which blocks the render thread to simulate a hung game; `dev.test.foremanMessage`). Never set it for real use |
 | `AGENTCRAFT_PORT` | 7878 | Foreman WebSocket port the mod connects to (always 127.0.0.1) |
 | `AGENTCRAFT_FOREMAN` | 1 | `0` disables the Foreman link (the HUD says so) |
+| `AGENTCRAFT_RELAY_WATCH` | `all` | Server side: `trusted` refuses the multiplayer relay (the whole studio view) to players who are neither op nor allowlisted |
 
 The defaults (muted, no focus) suit unattended agent runs. `tools/launch.ps1` should set
 `AGENTCRAFT_MUTE=0 AGENTCRAFT_FOCUS=1` for real use (when you launch the game yourself; it does
@@ -298,8 +300,9 @@ common (src/main)                          client (src/client)
   hq/                 builders, HqSite,      world/     StationRenderer base, ServerTasks, StationInteractions, RemoteLayout, dev helpers
                       HqWorldDriver
   foreman/            link, Protocol, ForemanState, ServerForeman (dedicated server's own link)
-  relay/              multiplayer Foreman relay (per-player pipe, op/allowlist gate)
-  world/              HqWorld (identity, profile, rules), WorldMarker
+  relay/              multiplayer Foreman relay (per-player pipe, trust gate, rate limits)
+  world/              HqWorld (identity, profile, rules), WorldMarker, HqProtection, Trust
+  mixin/              server mixins for HqProtection (explosions, pistons, fluids, dispensers, mobs)
   command/            /agentcraft root       monitor/ taskwall/ decisions/ console/ diff/ library/ permissions/ hq/  (Phase 3)
 ```
 
@@ -326,10 +329,16 @@ HQ on first start like singleplayer. Fabric clients with the mod join it normall
 - **Relay** (`relay.ForemanRelay`, `RelayPayloads`; client `RelayConnector`): for each modded player
   the server opens its own Foreman WebSocket on loopback and pipes text through custom payloads
   (chunked to 8000 chars). The Foreman sees one client per player (`hello` from `mc:<name>`) and stays
-  loopback-only next to the server. Watching (`hello`, `diff.request`) is open to everyone; every other
-  intent needs op level 2 or the player's name/UUID in `config/agentcraft-allowlist.json` (a JSON array,
-  re-read when it changes). Refusals get an `ack` with `ok:false`; forwarded intents are logged with the
-  player's name (`[relay] Alice -> decision.answer ...`).
+  loopback-only next to the server. Watching (`hello`, `diff.request`) is open to everyone unless
+  `AGENTCRAFT_RELAY_WATCH=trusted` (then untrusted players' relay OPEN is answered with CLOSED). Every
+  other intent needs `world.Trust#mayDrive`: an ops-list entry of level 2+, the singleplayer/LAN host,
+  or the player's name/UUID in `config/agentcraft-allowlist.json` (a JSON array, re-read when it
+  changes). Not the effective permission level: a LAN world with Allow Commands gives every guest
+  level 2 (`IntegratedServer#getCustomPermissionLevel`). The `/agentcraft` root uses `Trust#isOperator`
+  for players for the same reason. Untrusted players are rate limited (relay OPEN: burst 6, then 1 per
+  4 s, excess dropped; `hello` + `diff.request`: burst 10, then 1 per 2 s, excess refused). Refusals get
+  an `ack` with `ok:false`; forwarded intents are logged with the player's name
+  (`[relay] Alice -> decision.answer ...`).
 - **Layout** (`layout.LayoutSync`; client `RemoteLayout`): the published `Anchors` layout is sent on
   join and on every publish, so remote clients' agents, seats and screens work as in singleplayer.
 - **World blocks** (`foreman.ServerForeman`): the server runs its own link + `ForemanState` and drives
@@ -337,12 +346,21 @@ HQ on first start like singleplayer. Fabric clients with the mod join it normall
   still drives the integrated server (so `dev.foreman.inject` choreography keeps moving the blocks).
 - **Agents** stay client-side (below): every client runs the same deterministic simulation from the
   same Foreman state and layout, so they agree up to a few ticks of message timing.
-- **Site protection** (`world.HqProtection`, every HQ world, on by default): players who are not op
-  (and not the singleplayer owner) cannot break blocks, place blocks, pour fluids or light fires
-  inside the builder's whole site box (`HqBuilder#siteBox`, shifted to the saved site), so the
-  building, grounds and everything `/agentcraft hq` owns stay intact. Doors, chests and stations
-  stay usable; the earthworks ring and the world beyond are ordinary ground. `/agentcraft protect
-  on|off` (saved in the world marker).
+- **Site protection** (`world.HqProtection`, every HQ world, on by default) covers the builder's whole
+  site box (`HqBuilder#siteBox`, shifted to the saved site); the earthworks ring and the world beyond
+  are ordinary ground. `/agentcraft protect on|off` (saved in the world marker).
+  - Players who are not `Trust#isOperator` cannot break or place, use items on blocks (buckets aimed
+    in from outside, tools, bone meal, sneak-use) or change blocks by hand. Usable by everyone: doors,
+    trapdoors, gates, buttons, levers, beds, bells, crafting tables, containers (not lecterns) and
+    `agentcraft:` blocks. Item frames, paintings, armor stands and mannequins cannot be hit or used.
+  - The world, through mixins in `dev.agentcraft.mixin`: `ServerExplosion` drops site positions;
+    `PistonStructureResolver` refuses a move when a piston outside would push, pull or break inside;
+    `DispenserBlock` outside facing in does nothing; `FlowingFluid#canMaybePassThrough` stops flow
+    from outside into the box. `ServerLevel` marks the non-player entity being ticked and `Level#setBlock`
+    refuses its block-type changes on the site (endermen, ravagers, falling blocks, sheep, snow golems,
+    farmland trampling; doors and pressure plates still work), and `EndermanTakeBlockGoal` stops the
+    enderman from getting a copy of a block it failed to take.
+  - Not covered: projectiles hurting item frames or armor stands, and vanilla cheat commands.
 - **Open to LAN**: the relay is registered on the integrated server too, so LAN guests use it like a
   dedicated server's players (same op/allowlist gate, the host's `config/`); the host stays on the
   direct link and its client drives the world blocks. Player-facing steps: `docs/multiplayer.md`.

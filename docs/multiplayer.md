@@ -98,6 +98,9 @@ In `.env`:
   who are not op can still watch and review diffs. To let someone drive the agents without making
   them op, add their name to `server-docker/data/config/agentcraft-allowlist.json`, e.g.
   `["Alice"]` (re-read when the file changes).
+- `AGENTCRAFT_RELAY_WATCH=trusted` (optional): watching shows agent logs, permission prompts and the
+  code in every worktree. With `trusted`, players who are neither op nor allowlisted get no studio
+  view at all. The default `all` lets every player who joins watch.
 
 Whitelist and ops are applied when the container starts; for a running server use the server console
 (`docker attach agentcraft-mc`, detach with Ctrl-P Ctrl-Q): `whitelist add Alice`, `op Alice`.
@@ -120,8 +123,9 @@ If others cannot connect, allow TCP port 25565 in the host firewall (Linux with 
 You can also host straight from your own game, with no server process:
 
 1. Start the Foreman (section 1) and open your HQ world in the launcher.
-2. Press <kbd>Esc</kbd> → **Open to LAN**. Set **Allow Commands** to ON if you want to op people,
-   pick a **Port Number** (a fixed one such as `25565` is easier to put through a firewall), then
+2. Press <kbd>Esc</kbd> → **Open to LAN**. Leave **Allow Commands** OFF: ON gives every guest vanilla
+   cheat commands (`/fill`, `/give`, ...), which can wreck the HQ whatever its protection says. AgentCraft
+   does not treat it as trust either. Pick a **Port Number** (a fixed one such as `25565` is easier to put through a firewall), then
    **Start LAN World**. Chat shows the port.
 3. Friends on the same network, with the same mods installed, open **Multiplayer**. The world shows up
    under "LAN worlds" after a few seconds. If it does not (Wi-Fi client isolation, VPNs and some
@@ -133,12 +137,12 @@ What changes compared to a dedicated server:
 - **You** reach the Foreman directly, as in singleplayer, and can do everything. Your client also
   drives the HQ's lamps, monitors and podium for everyone.
 - **Guests** go through the relay inside your game. They can watch and review diffs. To let a guest
-  give goals, answer decisions and merge, either op them (`/op Alice`, needs Allow Commands) or put
-  their name in `config/agentcraft-allowlist.json` inside your Minecraft folder (for example
-  `~/.minecraft/config/agentcraft-allowlist.json` containing `["Alice"]`). The allowlist file works
-  without commands and keeps applying in later sessions.
-- **HQ protection** applies: guests who are not op cannot break or place blocks on the HQ site
-  (`/agentcraft protect off` lifts it).
+  give goals, answer decisions and merge, put their name in `config/agentcraft-allowlist.json` inside
+  your Minecraft folder (for example `~/.minecraft/config/agentcraft-allowlist.json` containing
+  `["Alice"]`). It is re-read when it changes and keeps applying in later sessions. (`/op` exists only
+  on dedicated servers, so on a LAN world the allowlist is the way to trust someone.)
+- **HQ protection** applies: guests cannot change anything on the HQ site, and allowlisted guests
+  cannot either: driving the agents does not include building. `/agentcraft protect off` lifts it.
 - The world is only up while you are in it. When you quit, guests are disconnected; the Foreman and
   the agents keep working.
 - Allow your chosen port through the firewall, as for the dedicated server. If your OS asked whether
@@ -150,6 +154,7 @@ What changes compared to a dedicated server:
 |---|---|
 | Disconnected while joining (missing registry entries or mods) | The guest lacks Fabric API or AgentCraft, or has a different AgentCraft build. Everyone should use the same jar |
 | HUD stays on "Reconnecting to the Foreman" | The Foreman is not running on the **host** machine, or runs on another port (the mod and server use `AGENTCRAFT_PORT`, default 7878). A guest's link then reports "Foreman unreachable from the server" |
-| Guest's goal or answer is refused: "Only ops or allowlisted players can do that on this server." | Op them or add them to `agentcraft-allowlist.json` (see above) |
+| Guest's goal or answer is refused: "Only ops or allowlisted players can do that on this server." | Op them (dedicated server) or add them to `agentcraft-allowlist.json` (see above) |
+| Guest sees "Watching the studio needs op or the allowlist on this server." | The server runs with `AGENTCRAFT_RELAY_WATCH=trusted` |
 | Game is silent | Launched without `-Dagentcraft.mute=0` |
 | "You are not white-listed" (Docker) | Add the name to `MC_WHITELIST` and restart, or `whitelist add <name>` in the server console |

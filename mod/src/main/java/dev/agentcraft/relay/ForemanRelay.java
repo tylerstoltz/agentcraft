@@ -1,6 +1,5 @@
 package dev.agentcraft.relay;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -9,10 +8,10 @@ import dev.agentcraft.Env;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import dev.agentcraft.world.Trust;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -25,8 +24,6 @@ import java.util.concurrent.TimeUnit;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
-import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.commands.Commands;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import org.jspecify.annotations.Nullable;
@@ -37,14 +34,26 @@ import org.jspecify.annotations.Nullable;
  * pipes text both ways. The Foreman therefore stays loopback-only next to the server (Docker:
  * {@code network_mode: host}) and sees one ordinary client per player.
  *
- * <p>Everyone may watch ({@code hello}, {@code diff.request}). Every other intent can make agents run
- * code on the host, so it needs op level 2 or an entry in {@code config/agentcraft-allowlist.json}
- * (a JSON array of player names and/or UUIDs). Refused intents get an {@code ack} with {@code ok:false};
- * forwarded ones are logged with the player's name.
+ * <p>Watching ({@code hello}, {@code diff.request}) is open to everyone unless
+ * {@code AGENTCRAFT_RELAY_WATCH=trusted}, which refuses the relay itself to untrusted players. Every
+ * other intent can make agents run code on the host, so it needs {@link Trust#mayDrive}: an ops-list
+ * entry (level 2+), the LAN host, or an entry in {@code config/agentcraft-allowlist.json} (a JSON array
+ * of player names and/or UUIDs). Refused intents get an {@code ack} with {@code ok:false}; forwarded
+ * ones are logged with the player's name.
+ *
+ * <p>Untrusted players are rate limited: relay connects (each opens a Foreman socket and costs a
+ * snapshot) and watcher requests (each {@code diff.request} runs git on the host). Trusted players are
+ * not limited.
  */
 public final class ForemanRelay {
 	private static final Set<String> WATCHER_TYPES = Set.of("hello", "diff.request");
 	private static final long PING_MS = 15_000;
+	/** Relay connects: a burst of 6 (the client's 0.25-4 s backoff), then one per 4 s. */
+	private static final int OPEN_BURST = 6;
+	private static final double OPEN_PER_SEC = 0.25;
+	/** hello + diff.request: a burst of 10, then one per 2 s. */
+	private static final int WATCH_BURST = 10;
+	private static final double WATCH_PER_SEC = 0.5;
 
 	private static final Map<UUID, Pipe> PIPES = new ConcurrentHashMap<>();
 	private static final HttpClient HTTP = HttpClient.newBuilder()
@@ -53,9 +62,10 @@ public final class ForemanRelay {
 		.build();
 	private static final URI FOREMAN = URI.create("ws://127.0.0.1:" + Env.intValue("AGENTCRAFT_PORT", 7878));
 
+	/** Per-player rate limits for untrusted players; server thread only. */
+	private static final Map<UUID, Limits> LIMITS = new HashMap<>();
+
 	private static volatile @Nullable MinecraftServer server;
-	private static long allowlistMtime = -1;
-	private static Set<String> allowlist = Set.of();
 
 	private ForemanRelay() {
 	}
@@ -63,13 +73,17 @@ public final class ForemanRelay {
 	public static void init() {
 		RelayPayloads.register();
 		ServerPlayNetworking.registerGlobalReceiver(RelayPayloads.C2S.TYPE, (p, ctx) -> onFrame(ctx.player(), p));
-		ServerPlayConnectionEvents.DISCONNECT.register((handler, srv) -> close(handler.getPlayer().getUUID(), null));
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, srv) -> {
+			close(handler.getPlayer().getUUID(), null);
+			LIMITS.remove(handler.getPlayer().getUUID());
+		});
 		ServerLifecycleEvents.SERVER_STARTED.register(s -> server = s);
 		ServerLifecycleEvents.SERVER_STOPPING.register(s -> {
 			for (UUID id : Set.copyOf(PIPES.keySet())) {
 				close(id, null);
 			}
 			server = null;
+			LIMITS.clear();
 		});
 		Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "AgentCraft-Relay-ping"))
 			.scheduleAtFixedRate(ForemanRelay::pingAll, PING_MS, PING_MS, TimeUnit.MILLISECONDS);
@@ -80,6 +94,16 @@ public final class ForemanRelay {
 	private static void onFrame(ServerPlayer player, RelayPayloads.C2S f) {
 		UUID id = player.getUUID();
 		if (f.kind() == RelayPayloads.OPEN) {
+			boolean trusted = Trust.mayDrive(player.level().getServer(), player);
+			if (!trusted && !limits(id).open.take(OPEN_BURST, OPEN_PER_SEC)) {
+				return; // dropped: the client times out and backs off
+			}
+			if (!trusted && watchTrustedOnly()) {
+				AgentCraft.LOGGER.info("[relay] refused relay to {} (AGENTCRAFT_RELAY_WATCH=trusted)", player.getPlainTextName());
+				close(id, null);
+				send(player, new RelayPayloads.S2C(f.conn(), RelayPayloads.CLOSED, "Watching the studio needs op or the allowlist on this server."));
+				return;
+			}
 			close(id, null);
 			open(player, f.conn());
 			return;
@@ -147,20 +171,19 @@ public final class ForemanRelay {
 		}
 		String type = str(msg, "type");
 		String name = player.getPlainTextName();
-		if (type.equals("hello")) {
-			msg.addProperty("client", "mc:" + name); // the Foreman log names the player
-		} else if (!WATCHER_TYPES.contains(type)) {
-			if (!mayDrive(player)) {
+		boolean trusted = Trust.mayDrive(player.level().getServer(), player);
+		if (WATCHER_TYPES.contains(type)) {
+			if (!trusted && !limits(player.getUUID()).watch.take(WATCH_BURST, WATCH_PER_SEC)) {
+				refuse(player, pipe, msg, "Too many requests - wait a few seconds.");
+				return;
+			}
+			if (type.equals("hello")) {
+				msg.addProperty("client", "mc:" + name); // the Foreman log names the player
+			}
+		} else {
+			if (!trusted) {
 				AgentCraft.LOGGER.info("[relay] refused {} from {} (not op / not in agentcraft-allowlist.json)", type, name);
-				JsonObject ack = new JsonObject();
-				if (msg.has("v")) {
-					ack.add("v", msg.get("v"));
-				}
-				ack.addProperty("type", "ack");
-				ack.addProperty("re", str(msg, "id"));
-				ack.addProperty("ok", false);
-				ack.addProperty("error", "Only ops or allowlisted players can do that on this server.");
-				sendText(player, pipe.conn, ack.toString());
+				refuse(player, pipe, msg, "Only ops or allowlisted players can do that on this server.");
 				return;
 			}
 			AgentCraft.LOGGER.info("[relay] {} -> {} {}", name, type, summary(msg));
@@ -168,35 +191,51 @@ public final class ForemanRelay {
 		pipe.send(msg.toString());
 	}
 
-	private static boolean mayDrive(ServerPlayer player) {
-		if (Commands.LEVEL_GAMEMASTERS.check(player.permissions())) {
-			return true;
+	/** Answer {@code msg} with a failed {@code ack} instead of forwarding it. */
+	private static void refuse(ServerPlayer player, Pipe pipe, JsonObject msg, String error) {
+		JsonObject ack = new JsonObject();
+		if (msg.has("v")) {
+			ack.add("v", msg.get("v"));
 		}
-		Set<String> allowed = allowlist();
-		return allowed.contains(player.getPlainTextName().toLowerCase(Locale.ROOT)) || allowed.contains(player.getUUID().toString());
+		ack.addProperty("type", "ack");
+		ack.addProperty("re", str(msg, "id"));
+		ack.addProperty("ok", false);
+		ack.addProperty("error", error);
+		sendText(player, pipe.conn, ack.toString());
 	}
 
-	/** Names (lower case) and UUIDs from config/agentcraft-allowlist.json, re-read when the file changes. */
-	private static synchronized Set<String> allowlist() {
-		Path file = FabricLoader.getInstance().getConfigDir().resolve("agentcraft-allowlist.json");
-		try {
-			long mtime = Files.exists(file) ? Files.getLastModifiedTime(file).toMillis() : 0;
-			if (mtime != allowlistMtime) {
-				allowlistMtime = mtime;
-				Set<String> s = new java.util.HashSet<>();
-				if (mtime != 0) {
-					JsonArray arr = JsonParser.parseString(Files.readString(file)).getAsJsonArray();
-					for (JsonElement e : arr) {
-						s.add(e.getAsString().trim().toLowerCase(Locale.ROOT));
-					}
-				}
-				allowlist = Set.copyOf(s);
-				AgentCraft.LOGGER.info("[relay] allowlist: {} entries", allowlist.size());
-			}
-		} catch (Exception e) {
-			AgentCraft.LOGGER.warn("[relay] could not read {}: {}", file, e.toString());
+	private static boolean watchTrustedOnly() {
+		return Env.str("AGENTCRAFT_RELAY_WATCH", "all").toLowerCase(Locale.ROOT).equals("trusted");
+	}
+
+	private static Limits limits(UUID id) {
+		return LIMITS.computeIfAbsent(id, k -> new Limits());
+	}
+
+	/** A player's two token buckets. */
+	private static final class Limits {
+		final Bucket open = new Bucket(OPEN_BURST);
+		final Bucket watch = new Bucket(WATCH_BURST);
+	}
+
+	private static final class Bucket {
+		private double tokens;
+		private long last = System.nanoTime();
+
+		Bucket(int burst) {
+			tokens = burst;
 		}
-		return allowlist;
+
+		boolean take(int burst, double perSec) {
+			long now = System.nanoTime();
+			tokens = Math.min(burst, tokens + (now - last) / 1e9 * perSec);
+			last = now;
+			if (tokens < 1) {
+				return false;
+			}
+			tokens -= 1;
+			return true;
+		}
 	}
 
 	// ------------------------------------------------------------------ to players

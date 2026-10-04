@@ -160,9 +160,10 @@ AgentCraft is built to point at code you care about.
   (writing outside it, network access, destructive commands) becomes an in game permission prompt
   that shows exactly what "Always allow" would cover.
 - **Clear authorship.** Agents commit as `AgentCraft <Name>`. Only the merge you approve is made as you.
-- **On a shared server, only trusted players drive.** Everyone can watch, but goals, messages,
-  answers and merges need op or an entry in `config/agentcraft-allowlist.json`, and each one is
-  logged with the player's name.
+- **On a shared server, only trusted players drive.** Everyone can watch (or only trusted players,
+  with `AGENTCRAFT_RELAY_WATCH=trusted`), but goals, messages, answers and merges need an entry in
+  the server's ops list or in `config/agentcraft-allowlist.json`, and each one is logged with the
+  player's name. A LAN world's "Allow Commands" does not count as trust.
 
 <br>
 
@@ -248,7 +249,8 @@ Hardcore worlds have commands off unless you add `AGENTCRAFT_CHEATS=1`. All opti
 the Foreman on the server machine; each player's client reaches it through the server, so players
 need only the mod. Name the server's world `AgentCraft HQ` (or set `AGENTCRAFT_HQ=1`), op or
 allowlist the players who may drive the agents, and everyone sees the same team, lamps and podium.
-Only ops can build or break on the HQ site (`/agentcraft protect off` lifts that).
+Only ops can change the HQ site; explosions, mobs, pistons and fluids from outside leave it alone
+(`/agentcraft protect off` lifts that).
 [server-docker/](server-docker/README.md) has a ready Docker setup; details in
 [mod/DEV.md](mod/DEV.md) "Multiplayer". You can also host from your own game with **Open to LAN**.
 

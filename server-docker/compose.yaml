@@ -9,6 +9,8 @@
 # and the Foreman only accepts loopback, so the container shares the host's network namespace and the
 # Foreman (run on the host: it needs the repo, git worktrees and your claude login) stays unreachable
 # from the LAN. Consequence: `ports:` is ignored; the game port binds on every interface.
+# This needs a Linux host running Docker Engine. Docker Desktop (macOS/Windows) runs containers in a
+# VM, where "host" is the VM, not your machine: the server cannot reach a Foreman on your 127.0.0.1.
 services:
   mc:
     image: itzg/minecraft-server:java25
@@ -21,8 +23,9 @@ services:
       TYPE: "FABRIC"
       VERSION: "26.3"
       FABRIC_LOADER_VERSION: "0.19.5"
-      # Fabric API from Modrinth; the AgentCraft jar comes from ./mods (copied into /data/mods).
-      MODRINTH_PROJECTS: "fabric-api"
+      # Fabric API from Modrinth, pinned to the version the mod builds against (mod/gradle.properties
+      # fabric_api_version); the AgentCraft jar comes from ./mods (copied into /data/mods).
+      MODRINTH_PROJECTS: "fabric-api:${FABRIC_API_VERSION:-0.161.0+26.3}"
       MEMORY: "4G"
       SERVER_PORT: "${MC_PORT:-25565}"
       MOTD: "AgentCraft studio"
@@ -31,6 +34,8 @@ services:
       AGENTCRAFT_PORT: "${AGENTCRAFT_PORT:-7878}"
       AGENTCRAFT_HQ_SITE: "${AGENTCRAFT_HQ_SITE:-}"
       AGENTCRAFT_HQ_SEARCH: "${AGENTCRAFT_HQ_SEARCH:-}"
+      # all (default): every player may watch the studio; trusted: only ops / allowlisted players
+      AGENTCRAFT_RELAY_WATCH: "${AGENTCRAFT_RELAY_WATCH:-all}"
       # World, read when it is created (an existing data/<level> keeps its own). Defaults give the
       # classic studio: a superflat meadow, creative, peaceful. For survival on real terrain set
       # MC_LEVEL_TYPE=minecraft:normal MC_STRUCTURES=true MC_GAMEMODE=survival MC_DIFFICULTY=normal.

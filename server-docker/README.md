@@ -4,6 +4,11 @@ A Fabric 26.3 server in [itzg/minecraft-server](https://docker-minecraft-server.
 hosts the studio for several players. Players need only the AgentCraft mod (and Fabric API) in their
 own client; the Foreman runs once, on the server machine.
 
+**Linux host with Docker Engine only.** The container uses `network_mode: host` to reach the Foreman
+on the host's loopback (see the end of this page). Docker Desktop on macOS and Windows runs containers
+inside a VM, so "host" is that VM and the server cannot reach your Foreman. On those systems run a
+Fabric server natively, or host with **Open to LAN** ([docs/multiplayer.md](../docs/multiplayer.md)).
+
 ## Run it
 
 ```sh
@@ -19,7 +24,8 @@ docker compose up -d
 docker attach agentcraft-mc                   # server console; detach with Ctrl-P Ctrl-Q
 ```
 
-Fabric API is downloaded automatically. The first start downloads Minecraft and Fabric, creates the
+Fabric API is downloaded automatically, pinned to the version the mod is built against
+(`FABRIC_API_VERSION` in `.env`; keep it equal to `fabric_api_version` in `mod/gradle.properties`). The first start downloads Minecraft and Fabric, creates the
 world and builds the HQ (a few seconds on the classic meadow, about 15 s on real terrain while the
 site is chosen).
 
@@ -32,8 +38,13 @@ firewall notes and the Open to LAN alternative: [docs/multiplayer.md](../docs/mu
 - `MC_WHITELIST`: who may join. `MC_OPS`: ops.
 - **Ops** (and names or UUIDs in `data/config/agentcraft-allowlist.json`, a JSON array, re-read when
   it changes) may give goals, answer decisions and merge. Everyone else can watch and review diffs.
-- **The HQ site is protected**: only ops can break or place blocks inside the area the HQ builder
-  owns (building, grounds, pond, garden). `/agentcraft protect off` lifts that.
+  Watching shows agent logs, permission prompts and the code in every worktree: set
+  `AGENTCRAFT_RELAY_WATCH=trusted` to limit it to ops and allowlisted players. Watchers' connects and
+  diff requests are rate limited.
+- **The HQ site is protected**: players who are not op cannot change anything inside the area the HQ
+  builder owns (building, grounds, pond, garden), and neither can explosions, mobs, pistons,
+  dispensers or fluids from outside. Doors, chests and stations stay usable. `/agentcraft protect off`
+  lifts that.
 - Every forwarded action is logged with the player's name (`[relay] Alice -> decision.answer ...`).
 
 ## World options

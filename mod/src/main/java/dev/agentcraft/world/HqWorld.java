@@ -38,6 +38,8 @@ public final class HqWorld {
 	public static final long INITIAL_TIME = 12000L;
 	/** Player tag: this player has been placed at the HQ entrance once. */
 	private static final String ARRIVED_TAG = "agentcraft.arrived";
+	/** Marker key: mob griefing is a studio-only rule for this world (see {@link #PROTECT}). */
+	private static final String GRIEF_MIGRATED = "griefRuleStudioOnly";
 
 	/** A rule and the value a profile wants for it. */
 	private record Rule<T>(GameRule<T> rule, T value) {
@@ -54,9 +56,12 @@ public final class HqWorld {
 		}
 	}
 
-	/** Every profile: keep the built HQ exactly as built, and allow the builder's large edits. */
+	/**
+	 * Every profile: keep the built HQ exactly as built, and allow the builder's large edits. Mob
+	 * griefing is not here: {@link HqProtection} keeps mobs off the HQ site itself, so survival worlds
+	 * keep vanilla griefing everywhere else.
+	 */
 	private static final List<Rule<?>> PROTECT = List.of(
-		Rule.of(GameRules.MOB_GRIEFING, false),
 		Rule.of(GameRules.FIRE_SPREAD_RADIUS_AROUND_PLAYER, 0),
 		Rule.of(GameRules.SPREAD_VINES, false),
 		Rule.of(GameRules.MAX_SNOW_ACCUMULATION_HEIGHT, 0),
@@ -66,6 +71,7 @@ public final class HqWorld {
 
 	/** Studio only: the calm workspace. Reset to vanilla defaults when a world leaves the studio profile. */
 	private static final List<Rule<?>> STUDIO = List.of(
+		Rule.of(GameRules.MOB_GRIEFING, false),
 		Rule.of(GameRules.ADVANCE_TIME, false),
 		Rule.of(GameRules.ADVANCE_WEATHER, false),
 		Rule.of(GameRules.KEEP_INVENTORY, true),
@@ -185,6 +191,11 @@ public final class HqWorld {
 			marker.json().addProperty("createdBy", "agentcraft");
 			marker.json().addProperty("created", Instant.now().toString());
 		}
+		// Survival worlds made before griefing moved to the studio rules still have it off: reset once.
+		if (p != HqProfile.STUDIO && !marker.json().has(GRIEF_MIGRATED)) {
+			server.getGameRules().set(GameRules.MOB_GRIEFING, GameRules.MOB_GRIEFING.defaultValue(), server);
+		}
+		marker.json().addProperty(GRIEF_MIGRATED, true);
 		marker.save();
 		profile = p;
 		applyRules(server, p, false);
