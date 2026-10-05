@@ -17,3 +17,6 @@ foreman/scratch/
 mod/.gradle/
 mod/build/
 .claude/
+
+notes/
+/*.txt
