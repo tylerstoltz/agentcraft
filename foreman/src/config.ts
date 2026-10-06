@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJson } from './util/fsx.js';
+import { parseMcpServers, readMcpConfigFile, type ExternalMcpServer } from './mcp.js';
 import type { BackendName } from './protocol.js';
 import { defaultUserName } from './user.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
@@ -36,6 +37,8 @@ export interface ClaudeConfig {
    * only: Anthropic does not allow third-party tools to offer claude.ai login (see agents/claude/auth.ts).
    */
   useClaudeLogin: boolean;
+  /** external MCP servers on this host for the agents (see mcp.ts) */
+  mcpServers: Record<string, ExternalMcpServer>;
 }
 
 export type ShowcaseCheckpoint = 'showcase' | 'showcase-late';
@@ -152,7 +155,7 @@ export const KNOWN_FLAGS = new Set([
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
-  'ambient',
+  'ambient', 'mcp-config',
 ]);
 
 /**
@@ -166,6 +169,11 @@ function checkArgs(flags: Flags, positional: string[]): void {
     throw new Error(`unknown option${unknown.length > 1 ? 's' : ''} ${unknown.map((k) => `"--${k}"`).join(', ')} (see --help)`);
   }
   if (positional.length) throw new Error(`unexpected argument "${positional[0]}" (options start with --; see --help)`);
+}
+
+/** config.json claude.mcpServers, then the --mcp-config file on top (same name: the file wins). */
+function loadMcpServers(fromConfig: unknown, file: string | undefined, env: NodeJS.ProcessEnv): Record<string, ExternalMcpServer> {
+  return { ...parseMcpServers(fromConfig, 'config.json claude.mcpServers', env), ...(file ? readMcpConfigFile(path.resolve(file), env) : {}) };
 }
 
 export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env): Config {
@@ -234,6 +242,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       resumeOnStart: bool(flags.resume ?? fileClaude.resumeOnStart, true),
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
       useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
+      mcpServers: loadMcpServers(fileClaude.mcpServers, str(flags['mcp-config']) ?? str(env.AGENTCRAFT_MCP_CONFIG), env),
     },
     sim: {
       speed: Math.max(0.05, num(flags.speed ?? env.AGENTCRAFT_SIM_SPEED ?? fileSim.speed, 1)),
@@ -293,4 +302,6 @@ usage: npm run start -- [options]
   --ci "<cmd>"             test command run after each task (default: detected, e.g. npm test)
   --no-lead-review         skip the lead's review turn before merge decisions
   --no-resume              do not resume interrupted sessions on start
+  --mcp-config <file>      external MCP servers for the agents, .mcp.json shape (env
+                           AGENTCRAFT_MCP_CONFIG; also config.json claude.mcpServers)
 `;

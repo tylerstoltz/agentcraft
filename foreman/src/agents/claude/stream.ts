@@ -101,10 +101,16 @@ export class StreamMapper {
     const id = this.agentId;
     switch (msg.type) {
       case 'system': {
-        const m = msg as { subtype?: string; session_id?: string; model?: string };
+        const m = msg as { subtype?: string; session_id?: string; model?: string; mcp_servers?: Array<{ name: string; status: string }> };
         if (m.subtype === 'init' && m.session_id) {
           this.stats.sessionId = m.session_id;
           fm.log.debug(`${id}: session ${m.session_id} (${m.model ?? '?'})`);
+        }
+        // a host MCP server (config mcpServers) that did not start: say so in the world, not just the debug log
+        if (m.subtype === 'init') {
+          for (const s of m.mcp_servers ?? []) {
+            if (s.status === 'failed' || s.status === 'needs-auth') fm.agentLog(id, 'error', `MCP server ${s.name}: ${s.status}`);
+          }
         }
         break;
       }

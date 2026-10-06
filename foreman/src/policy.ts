@@ -41,6 +41,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { GIT_REDIRECT_VARS } from './gitsafety.js';
 import { isInsideOrEqual } from './util/fsx.js';
+import { matchesTool, type McpRules } from './mcp.js';
 
 export type Verdict =
   | { action: 'allow'; reason: string }
@@ -58,6 +59,9 @@ export interface PolicyContext {
   alwaysAllow?: string[];
   /** our in-process MCP server name */
   mcpServer?: string;
+  /** external MCP servers this agent has, with their allow/deny lists (mcp.ts); when set, tools of
+   * any other server are refused */
+  externalMcp?: McpRules;
   /** home directory (tests); default os.homedir() */
   home?: string;
   /** scratch directories agents may read and write (default: the OS temp dir) */
@@ -2076,7 +2080,19 @@ export function classifyToolUse(toolName: string, input: Record<string, unknown>
     return always(key) ?? askVerdict(`network access (${toolName}${host ? ` ${host}` : ''})`, key);
   }
 
-  if (toolName.startsWith('mcp__')) return always(toolName) ?? askVerdict(`external MCP tool ${toolName}`, toolName);
+  if (toolName.startsWith('mcp__')) {
+    if (ctx.externalMcp) {
+      const rest = toolName.slice('mcp__'.length);
+      const cut = rest.indexOf('__');
+      const server = cut > 0 ? rest.slice(0, cut) : rest;
+      const tool = cut > 0 ? rest.slice(cut + 2) : '';
+      const rules = Object.hasOwn(ctx.externalMcp, server) ? ctx.externalMcp[server] : undefined;
+      if (!rules) return { action: 'deny', reason: `MCP server "${server}" is not configured for this agent` };
+      if (matchesTool(rules.deny, tool)) return { action: 'deny', reason: `${server} ${tool} is disabled in the AgentCraft MCP config` };
+      if (matchesTool(rules.allow, tool)) return { action: 'allow', reason: `${server} ${tool} is allowed in the AgentCraft MCP config` };
+    }
+    return always(toolName) ?? askVerdict(`external MCP tool ${toolName}`, toolName);
+  }
   return always(toolName) ?? askVerdict(`unrecognised tool ${toolName}`, toolName);
 }
 

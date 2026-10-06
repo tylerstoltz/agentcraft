@@ -199,6 +199,37 @@ agent" covers: ...`):
 (`Bash:subst`, `Bash:find -exec`, `Bash:xargs rm`, `lead:<prefix>`, `Bash:git fetch`,
 `Bash:git submodule`, `Bash:git lfs`, `Bash:git checkout`, `Write:.git`, ...) no longer match anything.
 
+### External MCP tools (src/mcp.ts)
+
+Agents can use MCP servers installed on the Foreman's host (an ERP, Outlook, Blender, ...). List
+them in `~/.agentcraft/config.json` under `claude.mcpServers`, or in a separate file passed with
+`--mcp-config <file>` / `AGENTCRAFT_MCP_CONFIG` (`.mcp.json` shape; its entries win on a name
+clash). An entry is the SDK's server config (`command`/`args`/`env`, or `type: "http"|"sse"` +
+`url`) plus these AgentCraft keys:
+
+| key | meaning |
+|---|---|
+| `roles` | `["lead"]`, `["worker"]` or both (default: workers only - the lead is read-only) |
+| `agents` | only these agent ids, e.g. `["kit"]` (one copy of a server that must not run twice) |
+| `allow` | tool names or `*` globs that run without asking - list read-only tools only |
+| `deny` | tools that are always refused (wins over `allow`) |
+| `enabled` | `false` ignores the entry |
+
+```json
+{ "claude": { "mcpServers": {
+  "sage-read": { "command": "C:\\...\\sage-read-mcp.exe", "env": { "SAGECHAT_HOME": "%USERPROFILE%\\.sagemcp" },
+                 "roles": ["lead", "worker"], "allow": ["*"] },
+  "outlook":   { "command": "C:\\...\\outlook-mcp.exe", "allow": ["search_*"], "deny": ["send_email"] }
+} } }
+```
+
+Every other tool of a configured server asks in-world like any risky call (the prompt shows the
+full tool input), and "Always allow for this agent" covers exactly that tool. Tools of a server
+an agent was not given are refused. `~`, `%VAR%` and `${VAR}` are expanded. Servers run on the host,
+as the host user, started by each agent's CLI (cwd: the agent's worktree): any trusted player can
+steer agents that use them, so keep write tools on "ask". A server that fails to start is logged
+on the agent.
+
 ### Push, signing and other repositories are blocked at the git level too (src/gitsafety.ts)
 
 The policy can only judge what it can see; a push could hide in a test script or a node script.

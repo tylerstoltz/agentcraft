@@ -39,6 +39,7 @@ import { detectApiAuth, NO_API_AUTH_MESSAGE, withAuthMode } from './auth.js';
 import { StreamMapper, type TurnStats } from './stream.js';
 import { buildMcpServer, MCP_SERVER, type ToolHooks, type TurnHandle } from './tools.js';
 import { userName } from '../../user.js';
+import { externalMcpFor, mcpPromptNote, mcpRulesFor } from '../../mcp.js';
 
 type JobKind = 'plan' | 'work' | 'review' | 'followup';
 type AbortReason = 'pause' | 'stop' | 'shutdown' | 'cancel' | 'timeout';
@@ -618,6 +619,7 @@ export class ClaudeBackend implements Backend {
         readDirs: [this.fm.memory.dir],
         alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
         mcpServer: MCP_SERVER,
+        externalMcp: mcpRulesFor(this.cfg.mcpServers, agentId, role),
       });
       if (verdict.action === 'allow') return { behavior: 'allow', updatedInput: input };
       if (verdict.action === 'deny') {
@@ -633,7 +635,10 @@ export class ClaudeBackend implements Backend {
         tool: toolName,
         question: `${this.fm.nameOf(agentId)} wants to run ${truncate(describeToolCall(toolName, input), 160)}`,
         options: [...PERMISSION_OPTIONS],
-        context: `${verdict.reason}\ncwd: ${cwd}\n"${PERMISSION_OPTIONS[1]}" covers: ${[...new Set(verdict.ruleKeys.map(describeRuleKey))].join('; ')}${opts.title ? `\n${opts.title}` : ''}`,
+        context: `${verdict.reason}\ncwd: ${cwd}\n"${PERMISSION_OPTIONS[1]}" covers: ${[...new Set(verdict.ruleKeys.map(describeRuleKey))].join('; ')}${opts.title ? `\n${opts.title}` : ''}${
+          // a host MCP call (a Sage write, an email) is approved on what it will actually send
+          toolName.startsWith('mcp__') ? `\ninput: ${truncate(JSON.stringify(input, null, 1), 1500)}` : ''
+        }`,
         ...(t ? { taskId: t } : {}),
       });
       this.fm.setAgent(agentId, { state: 'waiting_user', station: 'user', activity: 'asking permission' });
@@ -690,6 +695,8 @@ export class ClaudeBackend implements Backend {
         const t = this.fm.tasks.require(job.taskId!);
         systemAppend = workerSystemPrompt(this.fm, agentId, this.fm.repos.requireWorktree(t.repoId!, t.worktree!));
       }
+      const external = externalMcpFor(this.cfg.mcpServers, agentId, role);
+      systemAppend += mcpPromptNote(external);
       const model = role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
       const options: Options = {
         cwd,
@@ -702,7 +709,8 @@ export class ClaudeBackend implements Backend {
         tools: role === 'lead' ? ['Read', 'Grep', 'Glob'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
         // no allowedTools: every tool call (incl. our MCP tools) goes through canUseTool/policy
         disallowedTools: ['Bash(git push:*)', 'Task', 'Agent', 'WebSearch', 'WebFetch'],
-        mcpServers: { [MCP_SERVER]: buildMcpServer(this.fm, agentId, role, this.hooks, turn) },
+        // host MCP servers from the config (mcp.ts) first: ours always wins the name
+        mcpServers: { ...external, [MCP_SERVER]: buildMcpServer(this.fm, agentId, role, this.hooks, turn) },
         systemPrompt: { type: 'preset', preset: 'claude_code', append: systemAppend },
         abortController: abort,
         env: this.env({ agentId, cwd }),
