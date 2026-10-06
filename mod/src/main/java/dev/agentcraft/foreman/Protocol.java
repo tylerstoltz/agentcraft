@@ -63,6 +63,22 @@ public final class Protocol {
 		REPO, NO_COMMITS, INSIDE, NONE, UNKNOWN
 	}
 
+	/** Whether a registered repo is still usable (re-checked by the Foreman's poll). */
+	public enum RepoHealth implements Wire {
+		OK, MISSING, NOT_GIT, NO_COMMITS, NO_BRANCH, UNKNOWN;
+
+		/** Why goals can't go there, or null when it is usable. */
+		public @Nullable String problem() {
+			return switch (this) {
+				case MISSING -> "missing (the folder is gone)";
+				case NOT_GIT -> "no longer a git repository";
+				case NO_COMMITS -> "without commits";
+				case NO_BRANCH -> "missing its base branch";
+				default -> null;
+			};
+		}
+	}
+
 	public enum LogKind implements Wire {
 		TEXT, TOOL, RESULT, ERROR, DIFF, UNKNOWN
 	}
@@ -183,12 +199,29 @@ public final class Protocol {
 		}
 	}
 
+	/** {@code health}: OK when the Foreman leaves it out (older Foremen never send it). */
 	public record Repo(String id, String name, String path, String branch, @Nullable String head, boolean dirty, List<Worktree> worktrees,
-		CiStatus ci) {
+		CiStatus ci, RepoHealth health) {
 		public Repo {
 			name = name == null ? id : name;
 			worktrees = worktrees == null ? List.of() : List.copyOf(worktrees);
 			ci = ci == null ? CiStatus.UNKNOWN : ci;
+			health = health == null ? RepoHealth.OK : health;
+		}
+
+		public boolean usable() {
+			return health.problem() == null;
+		}
+
+		/** Worktrees agents are still working in. */
+		public int activeWorktrees() {
+			int n = 0;
+			for (Worktree w : worktrees) {
+				if (w.status() == WorktreeStatus.ACTIVE) {
+					n++;
+				}
+			}
+			return n;
 		}
 	}
 
@@ -292,6 +325,9 @@ public final class Protocol {
 	}
 
 	public record RepoUpsert(Repo repo) {
+	}
+
+	public record RepoRemoved(String repoId) {
 	}
 
 	public record MemoryUpsert(MemoryEntry entry) {

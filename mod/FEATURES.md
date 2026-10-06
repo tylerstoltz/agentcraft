@@ -91,6 +91,7 @@ Foreman.answer("d3", Protocol.MERGE, null);                                     
 Foreman.taskAction("t3", "reassign", "wren");                                    // cancel | retry | prioritize [n] | reassign <agent>
 Foreman.agentAction("kit", "pause", null);                                       // resume | stop | spawn [taskId]
 Foreman.addRepo("C:\\path\\to\\repo");
+Foreman.removeRepo("demo-app");                                                  // unregister (the folder stays)
 Foreman.requestDiff(decision.repoId(), decision.worktree()).thenAccept(diff -> ...); // Protocol.Diff, files/hunks/lines
 Foreman.send("any.type", payloadJson);                                           // anything else in docs/protocol.md
 ```

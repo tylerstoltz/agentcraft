@@ -22,6 +22,7 @@ import type {
   LogEntry,
   LogKind,
   Outbound,
+  Repo,
   Station,
   Task,
 } from './protocol.js';
@@ -535,6 +536,12 @@ export class Foreman {
         this.bus.feed('system', `Repo connected: ${r.name} (${r.branch})`);
         return { repoId: r.id };
       }
+      case 'repo.remove': {
+        const r = this.repos.remove(msg.repoId);
+        this.bus.feed('system', `Repo removed: ${r.name} (the folder and its history are untouched)`);
+        const inConfig = this.config.repos.some((p) => path.resolve(p).toLowerCase() === path.resolve(r.path).toLowerCase());
+        return { repoId: r.id, ...(inConfig ? { note: 'it is in the Foreman config (--repo / repos), so it comes back on the next start' } : {}) };
+      }
       case 'fs.list':
         return { ...(await this.repos.browse(msg.path, { hidden: msg.hidden })) };
     }
@@ -544,6 +551,7 @@ export class Foreman {
     const repo = repoId ? this.repos.get(repoId) : this.repos.defaultRepo();
     if (repoId && !repo) throw new ClientError(`no repo "${repoId}"`);
     if (!repo) throw new ClientError('no repo connected yet — add one with /repo add (pick a folder) or /repo add <path>');
+    if (repo.health && repo.health !== 'ok') throw new ClientError(`${repo.name} can't take goals: ${repoHealthText(repo)}`);
     if (!this.backend) throw new ClientError('no backend running');
     const goal = this.createGoal(text, repo.id);
     await this.backend.submitGoal(goal);
@@ -630,10 +638,7 @@ export class Foreman {
       }
     }
     for (const r of this.repos.list()) {
-      if (!fs.existsSync(r.path)) {
-        this.log.warn(`repo ${r.id} path is gone: ${r.path}`);
-        continue;
-      }
+      if (!fs.existsSync(r.path)) this.log.warn(`repo ${r.id} path is gone: ${r.path}`);
       await this.repos.refresh(r.id).catch((e) => this.log.warn(`refresh ${r.id}: ${(e as Error).message}`));
     }
     this.repos.startPolling(this.config.repoPollMs);
@@ -652,5 +657,21 @@ export class Foreman {
     this.flushLogs();
     this.notifier.dispose();
     this.store.close();
+  }
+}
+
+/** Why a repo is not usable, for errors ("the folder is gone: C:\x"). */
+export function repoHealthText(r: Repo): string {
+  switch (r.health) {
+    case 'missing':
+      return `the folder is gone: ${r.path}`;
+    case 'not_git':
+      return `the folder is no longer a git repository: ${r.path}`;
+    case 'no_commits':
+      return 'the repository has no commits';
+    case 'no_branch':
+      return `its base branch ${r.branch} no longer exists (add the folder again to use the current branch)`;
+    default:
+      return 'ok';
   }
 }

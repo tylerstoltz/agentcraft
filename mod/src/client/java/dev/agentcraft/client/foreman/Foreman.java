@@ -93,6 +93,11 @@ public final class Foreman {
 		return link.send(ForemanJson.msg("repo.add").put("path", path).put("init", init ? true : null).json());
 	}
 
+	/** Unregister a repo (nothing on disk changes); refused while agents have active worktrees in it. */
+	public static CompletableFuture<Ack> removeRepo(String repoId) {
+		return link.send(ForemanJson.msg("repo.remove").put("repoId", repoId).json());
+	}
+
 	/**
 	 * The sub-folders of a folder on the Foreman's machine ({@code path} null = its home folder), for the
 	 * repo folder picker. Fails with the Foreman's error text when it refuses (missing folder, no trust).

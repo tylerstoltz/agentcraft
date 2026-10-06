@@ -23,12 +23,15 @@ import org.jspecify.annotations.Nullable;
  * thread), no Minecraft types, so every rule here can be exercised with {@code dev.console.parse}.
  *
  * <pre>
- * plain text                       goal.submit (asks which repo when there are several)
+ * plain text                       goal.submit to the target repo ({@link RepoTarget}; shown as the prompt)
  * @name text  /  @all text         user.message
  * /answer [dN] &lt;n|label&gt; [text]    decision.answer (n is 1-based, as on the decision buttons)
+ * /repo                           the repo manager (pick the target, add, remove)
+ * /repo use &lt;name&gt;               set the target repo for new goals
  * /repo add [--init] &lt;path&gt;      repo.add (--init: git init a plain folder first)
  * /repo add, /repo browse [path]  the repo folder picker (fs.list)
- * /repos                          list repos
+ * /repo remove &lt;name&gt;            repo.remove (the folder stays)
+ * /repos, /repo list               list repos
  * /pause|/resume|/stop @x [@y|all] agent.action
  * /spawn @x [taskId]               agent.action spawn
  * /task &lt;id&gt; cancel|retry|prioritize [n]|reassign @x
@@ -42,12 +45,12 @@ public final class ConsoleCommands {
 
 	// ------------------------------------------------------------------ intents
 
-	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, RepoBrowse, Repos, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
+	public sealed interface Intent permits Goal, Message, Answer, RepoAdd, RepoBrowse, Repos, RepoManage, RepoUse, RepoRemove, AgentAction, TaskAction, ShowDiff, Status, Help, Decide, Clear,
 		Sound, Invalid, Empty {
 	}
 
-	/** {@code repoId} null = the Foreman's default; {@code choices} non-empty = ask which repo first. */
-	public record Goal(String text, @Nullable String repoId, List<Repo> choices) implements Intent {
+	/** {@code repoId}: the target repo; null only while no repo is registered (the Foreman then says how to add one). */
+	public record Goal(String text, @Nullable String repoId) implements Intent {
 	}
 
 	/** {@code to} = agent id or "all". */
@@ -66,6 +69,17 @@ public final class ConsoleCommands {
 	}
 
 	public record Repos() implements Intent {
+	}
+
+	/** Open the repo manager. */
+	public record RepoManage() implements Intent {
+	}
+
+	/** Make {@code repoId} the target of new goals (local, sticky). */
+	public record RepoUse(String repoId) implements Intent {
+	}
+
+	public record RepoRemove(String repoId) implements Intent {
 	}
 
 	public record AgentAction(List<String> agentIds, String action, @Nullable String arg) implements Intent {
@@ -111,12 +125,16 @@ public final class ConsoleCommands {
 		new Command("stop", "/stop @agent", "take an agent off shift"),
 		new Command("spawn", "/spawn @agent [task]", "bring an agent on shift"),
 		new Command("task", "/task <id> cancel|retry|prioritize|reassign", "steer a task"),
-		new Command("repo", "/repo add [--init] [path]", "register a repo (no path: pick a folder)"),
+		new Command("repo", "/repo [use|add|remove] [name|path]", "repo manager: where goals go, add or remove repos"),
 		new Command("repos", "/repos", "list repos"),
 		new Command("status", "/status", "goal, agents, tasks and decisions"),
 		new Command("sound", "/sound on|off", "decision bell and done chime"),
 		new Command("clear", "/clear", "clear the console's own lines"),
 		new Command("help", "/help", "this list"));
+
+	/** {@code /repo} sub-commands for completion ({@code browse} still works but is not offered: {@code add} without a path is the same). */
+	private static final List<String[]> REPO_SUBCOMMANDS = List.of(new String[] {"use", "set where new goals go"}, new String[] {"add",
+		"register a repo (no path: pick a folder)"}, new String[] {"remove", "unregister a repo (the folder stays)"}, new String[] {"list", "list repos"});
 
 	private static final List<String> AGENT_ACTIONS = List.of("pause", "resume", "stop", "spawn");
 	private static final List<String> TASK_ACTIONS = List.of("cancel", "retry", "prioritize", "reassign");
@@ -139,23 +157,42 @@ public final class ConsoleCommands {
 	}
 
 	private static Intent goal(String text, ForemanState s) {
-		List<Repo> repos = new ArrayList<>(s.repos().values());
-		if (repos.size() <= 1) {
-			return new Goal(text, repos.isEmpty() ? null : repos.get(0).id(), List.of());
+		if (s.repos().isEmpty()) {
+			return new Goal(text, null);
 		}
-		return new Goal(text, defaultRepo(s), repos);
+		Repo r = RepoTarget.resolve(s);
+		if (r == null) {
+			return new Invalid("pick a repo for this goal first: " + PICK_REPO);
+		}
+		if (!r.usable()) {
+			return new Invalid(r.name() + " is " + r.health().problem() + ": " + PICK_REPO + " to pick or repair");
+		}
+		return new Goal(text, r.id());
 	}
 
-	/** The repo a new goal goes to by default: the current goal's repo, else the most recently added. */
-	public static @Nullable String defaultRepo(ForemanState s) {
-		if (s.goal() != null && s.goal().repoId() != null && s.repo(s.goal().repoId()) != null) {
-			return s.goal().repoId();
+	/** How to open the repo manager, for messages. */
+	public static final String PICK_REPO = "Ctrl+R or /repo";
+
+	/** A registered repo by id or name (case-insensitive), else by a unique prefix of either. */
+	public static @Nullable Repo findRepo(String name, ForemanState s) {
+		String n = name.strip().toLowerCase(Locale.ROOT);
+		if (n.isEmpty()) {
+			return null;
 		}
-		String last = null;
-		for (String id : s.repos().keySet()) {
-			last = id;
+		Repo prefix = null;
+		int prefixes = 0;
+		for (Repo r : s.repos().values()) {
+			String id = r.id().toLowerCase(Locale.ROOT);
+			String nm = r.name().toLowerCase(Locale.ROOT);
+			if (id.equals(n) || nm.equals(n)) {
+				return r;
+			}
+			if (id.startsWith(n) || nm.startsWith(n)) {
+				prefix = r;
+				prefixes++;
+			}
 		}
-		return last;
+		return prefixes == 1 ? prefix : null;
 	}
 
 	private static Intent parseMessage(String trimmed, ForemanState s) {
@@ -183,7 +220,7 @@ public final class ConsoleCommands {
 		List<String> args = splitArgs(rest);
 		return switch (cmd) {
 			case "answer", "a" -> parseAnswer(rest, s);
-			case "repo" -> parseRepo(rest, args);
+			case "repo" -> parseRepo(rest, args, s);
 			case "repos" -> new Repos();
 			case "pause", "resume", "stop", "spawn" -> parseAgentAction(cmd, args, s);
 			case "task", "t" -> parseTask(args, s);
@@ -212,16 +249,28 @@ public final class ConsoleCommands {
 		};
 	}
 
-	private static Intent parseRepo(String rest, List<String> args) {
+	private static Intent parseRepo(String rest, List<String> args, ForemanState s) {
 		if (args.isEmpty()) {
-			return new Repos();
+			return new RepoManage();
 		}
 		String sub = args.get(0).toLowerCase(Locale.ROOT);
 		if (sub.equals("list") || sub.equals("ls")) {
 			return new Repos();
 		}
+		if (sub.equals("use") || sub.equals("remove") || sub.equals("rm")) {
+			boolean use = sub.equals("use");
+			String name = rest.strip().substring(sub.length()).strip();
+			if (name.isEmpty()) {
+				return use ? new RepoManage() : new Invalid("usage: /repo remove <name>" + repoListSuffix(s));
+			}
+			Repo r = findRepo(name, s);
+			if (r == null) {
+				return new Invalid("no repo \"" + name + "\"" + repoListSuffix(s));
+			}
+			return use ? new RepoUse(r.id()) : new RepoRemove(r.id());
+		}
 		if (!sub.equals("add") && !sub.equals("browse")) {
-			return new Invalid("usage: /repo add [--init] [path]  (no path: pick a folder)");
+			return new Invalid("usage: /repo [use <name> | add [--init] [path] | remove <name> | list]");
 		}
 		String path = rest.strip().substring(sub.length()).strip();
 		boolean init = false;
@@ -497,6 +546,9 @@ public final class ConsoleCommands {
 			case RepoAdd r -> r.init() ? "add repo (git init if needed)" : "add repo";
 			case RepoBrowse r -> "pick a folder";
 			case Repos r -> "list repos";
+			case RepoManage r -> "open the repo manager";
+			case RepoUse r -> "new goals go to " + repoName(r.repoId(), s);
+			case RepoRemove r -> "remove " + repoName(r.repoId(), s) + " from AgentCraft (its folder stays)";
 			case AgentAction a -> a.action() + " " + (a.agentIds().size() == 1 ? displayName(a.agentIds().get(0), s) : a.agentIds().size() + " agents");
 			case TaskAction t -> t.action() + " " + t.taskId();
 			case ShowDiff d -> "diff " + d.worktree();
@@ -615,11 +667,21 @@ public final class ConsoleCommands {
 				}
 			}
 			case "/repo" -> {
-				if (argIndex == 1 && "add".startsWith(lower)) {
-					out.add(new Completion(ts, cursor, "add ", "add", "register a repo (no path: pick a folder)", null, null));
+				if (argIndex == 1) {
+					for (String[] sc : REPO_SUBCOMMANDS) {
+						if (sc[0].startsWith(lower)) {
+							out.add(new Completion(ts, cursor, sc[0] + " ", sc[0], sc[1], null, null));
+						}
+					}
 				}
-				if (argIndex == 1 && "browse".startsWith(lower)) {
-					out.add(new Completion(ts, cursor, "browse ", "browse", "pick a folder", null, null));
+				if (argIndex == 2 && List.of("use", "remove", "rm").contains(before.get(1).toLowerCase(Locale.ROOT))) {
+					Repo target = RepoTarget.resolve(s);
+					for (Repo r : s.repos().values()) {
+						if (r.id().toLowerCase(Locale.ROOT).startsWith(lower) || r.name().toLowerCase(Locale.ROOT).startsWith(lower)) {
+							String detail = !r.usable() ? r.health().problem() : target != null && target.id().equals(r.id()) ? "current target" : r.branch();
+							out.add(new Completion(ts, cursor, r.id(), r.name(), detail, null, null));
+						}
+					}
 				}
 				if (argIndex == 2 && before.get(1).equalsIgnoreCase("add") && "--init".startsWith(lower) && !lower.isEmpty()) {
 					out.add(new Completion(ts, cursor, "--init ", "--init", "git init a plain folder first", null, null));
@@ -708,6 +770,13 @@ public final class ConsoleCommands {
 		return r != null ? r.name() : repoId;
 	}
 
+	private static String repoListSuffix(ForemanState s) {
+		if (s.repos().isEmpty()) {
+			return " (no repos yet: /repo add)";
+		}
+		return " (" + String.join(", ", s.repos().keySet()) + ")";
+	}
+
 	private static String agentListSuffix(ForemanState s) {
 		if (s.agents().isEmpty()) {
 			return " (no agents yet)";
@@ -786,7 +855,6 @@ public final class ConsoleCommands {
 			case Goal g -> {
 				m.put("text", g.text());
 				m.put("repoId", g.repoId());
-				m.put("askRepo", !g.choices().isEmpty());
 			}
 			case Message msg -> {
 				m.put("to", msg.to());
@@ -802,6 +870,8 @@ public final class ConsoleCommands {
 				m.put("init", r.init());
 			}
 			case RepoBrowse r -> m.put("path", r.path());
+			case RepoUse r -> m.put("repoId", r.repoId());
+			case RepoRemove r -> m.put("repoId", r.repoId());
 			case AgentAction a -> {
 				m.put("agents", a.agentIds());
 				m.put("action", a.action());

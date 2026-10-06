@@ -19,9 +19,13 @@ public final class TextFieldView {
 	public static final int LINE = 10;
 	public static final int BASE_H = 18;
 
-	/** What to draw besides the text. */
+	/** What to draw besides the text. {@code tag}: a pill before the prefix (the console's target repo). */
 	public record Style(@Nullable String prefix, int prefixColor, @Nullable String placeholder, @Nullable String ghost, @Nullable String hintRight,
-		int hintColor, int maxLines) {
+		int hintColor, int maxLines, @Nullable String tag, int tagColor) {
+		public Style(@Nullable String prefix, int prefixColor, @Nullable String placeholder, @Nullable String ghost, @Nullable String hintRight,
+			int hintColor, int maxLines) {
+			this(prefix, prefixColor, placeholder, ghost, hintRight, hintColor, maxLines, null, 0);
+		}
 	}
 
 	private int scrollLine;
@@ -51,7 +55,26 @@ public final class TextFieldView {
 	}
 
 	private static int prefixW(Font font, Style st) {
-		return st.prefix() == null ? 0 : font.width(st.prefix()) + 4;
+		return tagW(font, st) + (st.prefix() == null ? 0 : font.width(st.prefix()) + 4);
+	}
+
+	/** Width of the tag pill plus its gap (0 without a tag). */
+	private static int tagW(Font font, Style st) {
+		return st.tag() == null ? 0 : font.width(st.tag()) + 8 + 4;
+	}
+
+	/** Text start offset from the field's left edge (tag + prefix), for anchoring popups at a character. */
+	public static int textOffset(Font font, Style st) {
+		return Kit.padding("text_field").left() + prefixW(font, st);
+	}
+
+	/** Whether (mx, my) is on the tag pill of a field drawn at (x, y). */
+	public static boolean tagHit(Font font, Style st, int x, int y, double mx, double my) {
+		if (st.tag() == null) {
+			return false;
+		}
+		int tx = x + Kit.padding("text_field").left();
+		return mx >= tx - 2 && mx < tx + tagW(font, st) - 2 && my >= y && my < y + BASE_H;
 	}
 
 	private static int innerW(Font font, int w, Style st) {
@@ -74,8 +97,12 @@ public final class TextFieldView {
 		Panels.sprite(g, focused ? Kit.TEXT_FIELD_FOCUSED : Kit.TEXT_FIELD, x, y, w, h);
 		int tx = x + p.left() + prefixW(font, st);
 		int ty = y + 5;
+		if (st.tag() != null) {
+			Panels.sprite(g, Kit.PILL, x + p.left(), ty - 2, font.width(st.tag()) + 8, 11);
+			g.text(font, st.tag(), x + p.left() + 4, ty, st.tagColor(), false);
+		}
 		if (st.prefix() != null) {
-			g.text(font, st.prefix(), x + p.left(), ty, st.prefixColor(), false);
+			g.text(font, st.prefix(), x + p.left() + tagW(font, st), ty, st.prefixColor(), false);
 		}
 		int caretLine = TextModel.lineOf(lines, m.cursor());
 		if (caretLine < scrollLine) {

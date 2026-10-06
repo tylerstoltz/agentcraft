@@ -17,7 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { Ctx } from './context.js';
 import { parseUnifiedDiff, type ParsedDiff } from './diff.js';
-import type { CiStatus, Decision, FsEntry, FsGitState, FsListing, Repo, Worktree } from './protocol.js';
+import type { CiStatus, Decision, FsEntry, FsGitState, FsListing, Repo, RepoHealth, Worktree } from './protocol.js';
 import { withGitSafety } from './gitsafety.js';
 import { ensureDir, isInsideOrEqual } from './util/fsx.js';
 import { agentGitIdentity, git, gitConfigGet, gitOut, identityEnv, listWorktrees } from './util/git.js';
@@ -231,9 +231,8 @@ export class RepoManager {
       this.ctx.log.info(`repo.add: initialized a git repository in ${abs}`);
     }
     const existing = this.repos.find((r) => path.resolve(r.path).toLowerCase() === root.toLowerCase());
-    if (existing) {
-      await this.refresh(existing.id);
-      return existing;
+    if (existing && (existing.health ?? 'ok') !== 'ok' && existing.worktrees.some((w) => w.status === 'active')) {
+      throw new RepoError(`${existing.name} still has agent worktrees from its old history: remove it (/repo remove ${existing.id}) and add the folder again`, 'refused');
     }
     let head = await git(root, ['rev-parse', '--verify', 'HEAD'], { allowFail: true });
     if (head.code !== 0) {
@@ -243,6 +242,16 @@ export class RepoManager {
       await git(root, ['commit', '-q', '--allow-empty', '-m', 'Initial commit'], { env });
       head = await git(root, ['rev-parse', '--verify', 'HEAD'], { allowFail: true });
       this.ctx.log.info(`repo.add: made the first commit in ${root}`);
+    }
+    if (existing) {
+      // adding a registered folder again repairs it: after its history was recreated (git init,
+      // possibly on another branch), the base branch follows what is checked out now
+      if ((await this.checkHealth(existing)) === 'no_branch') {
+        const current = (await git(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFail: true })).stdout.trim();
+        if (current) existing.branch = current;
+      }
+      await this.refresh(existing.id);
+      return existing;
     }
     const branch = (await git(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFail: true })).stdout.trim();
     if (!branch) throw new RepoError(`repository is in detached HEAD state; check out a branch first: ${root}`, 'refused');
@@ -315,6 +324,11 @@ export class RepoManager {
   /** Update head/dirty and worktree stats, then broadcast. */
   async refresh(repoId: string): Promise<Repo> {
     const r = this.require(repoId);
+    r.health = await this.checkHealth(r);
+    if (r.health !== 'ok') {
+      this.emitRepo(r);
+      return r;
+    }
     const h = await git(r.path, ['rev-parse', '--short', `refs/heads/${r.branch}`], { allowFail: true });
     if (h.code === 0) r.head = h.stdout.trim();
     r.dirty = await this.isDirty(r.path);
@@ -336,7 +350,14 @@ export class RepoManager {
    */
   async pollStatus(repoId: string): Promise<boolean> {
     const r = this.get(repoId);
-    if (!r || !fs.existsSync(r.path)) return false;
+    if (!r) return false;
+    const health = await this.checkHealth(r);
+    if (health !== (r.health ?? 'ok')) {
+      r.health = health;
+      this.emitRepo(r);
+      return true;
+    }
+    if (health !== 'ok') return false;
     const h = await git(r.path, ['rev-parse', '--short', `refs/heads/${r.branch}`], { allowFail: true });
     const head = h.code === 0 ? h.stdout.trim() : r.head;
     const dirty = await this.isDirty(r.path);
@@ -377,6 +398,40 @@ export class RepoManager {
   }
 
   /** Tracked changes (staged or unstaged) in a checkout. Untracked files do not count. */
+  /**
+   * Whether the registered checkout is still usable: the folder exists, is still a repository root
+   * (not just a folder inside another repository after its .git was deleted), and has the base branch.
+   */
+  async checkHealth(r: Repo): Promise<RepoHealth> {
+    if (!fs.existsSync(r.path)) return 'missing';
+    const top = await git(r.path, ['rev-parse', '--show-toplevel'], { allowFail: true });
+    if (top.code !== 0 || !sameRealPath(r.path, path.resolve(top.stdout.trim()))) return 'not_git';
+    const base = await git(r.path, ['rev-parse', '--verify', '--quiet', `refs/heads/${r.branch}`], { allowFail: true });
+    if (base.code === 0) return 'ok';
+    return (await git(r.path, ['rev-parse', '--verify', '--quiet', 'HEAD'], { allowFail: true })).code === 0 ? 'no_branch' : 'no_commits';
+  }
+
+  /**
+   * Unregister a repo. Nothing on disk is touched: the folder, its history and the agentcraft/*
+   * branches stay. Refused while agents have active worktrees in it (unless the checkout is gone or
+   * no longer a repository, where those worktrees cannot be merged anyway).
+   */
+  remove(repoId: string): Repo {
+    const r = this.require(repoId);
+    const active = r.worktrees.filter((w) => w.status === 'active');
+    if (active.length > 0 && (r.health ?? 'ok') === 'ok') {
+      const who = [...new Set(active.map((w) => w.agentId))].join(', ');
+      throw new RepoError(`${r.name} has ${active.length} active worktree${active.length === 1 ? '' : 's'} (${who}): merge or reject that work first`, 'refused');
+    }
+    this.repos.splice(this.repos.indexOf(r), 1);
+    const t = this.refreshTimers.get(r.id);
+    if (t) clearTimeout(t);
+    this.refreshTimers.delete(r.id);
+    this.ctx.store.markDirty();
+    this.ctx.emit({ type: 'repo.removed', repoId: r.id });
+    return r;
+  }
+
   async isDirty(checkout: string): Promise<boolean> {
     const s = await git(checkout, ['status', '--porcelain', '--untracked-files=no'], { allowFail: true });
     return s.code !== 0 || s.stdout.trim().length > 0;

@@ -21,6 +21,7 @@ import dev.agentcraft.foreman.Protocol.MemoryEntry;
 import dev.agentcraft.foreman.Protocol.MemoryUpsert;
 import dev.agentcraft.foreman.Protocol.Notify;
 import dev.agentcraft.foreman.Protocol.Repo;
+import dev.agentcraft.foreman.Protocol.RepoRemoved;
 import dev.agentcraft.foreman.Protocol.RepoUpsert;
 import dev.agentcraft.foreman.Protocol.Snapshot;
 import dev.agentcraft.foreman.Protocol.Task;
@@ -409,6 +410,13 @@ public final class ForemanState {
 				if (r != null && r.id() != null) {
 					Repo prev = repos.put(r.id(), r);
 					fire(l -> l.onRepo(prev, r));
+				}
+			}
+			case "repo.removed" -> {
+				String id = ForemanJson.read(json, RepoRemoved.class).repoId();
+				Repo prev = id == null ? null : repos.remove(id);
+				if (prev != null) {
+					fire(l -> l.onRepoRemoved(prev));
 				}
 			}
 			case "memory.upsert" -> {

@@ -13,6 +13,9 @@ import dev.agentcraft.client.console.ConsoleCommands.Invalid;
 import dev.agentcraft.client.console.ConsoleCommands.Message;
 import dev.agentcraft.client.console.ConsoleCommands.RepoAdd;
 import dev.agentcraft.client.console.ConsoleCommands.RepoBrowse;
+import dev.agentcraft.client.console.ConsoleCommands.RepoManage;
+import dev.agentcraft.client.console.ConsoleCommands.RepoRemove;
+import dev.agentcraft.client.console.ConsoleCommands.RepoUse;
 import dev.agentcraft.client.console.ConsoleCommands.Repos;
 import dev.agentcraft.client.console.ConsoleCommands.ShowDiff;
 import dev.agentcraft.client.console.ConsoleCommands.Sound;
@@ -142,6 +145,19 @@ public final class ConsoleActions {
 				clearFeedback();
 				return After.CLEAR;
 			}
+			case RepoManage m -> {
+				ConsoleLog.remember(raw);
+				clearFeedback();
+				net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+				mc.gui.setScreen(new RepoManagerScreen(mc.gui.screen()));
+				return After.CLOSE;
+			}
+			case RepoUse u -> {
+				ConsoleLog.remember(raw);
+				RepoTarget.select(u.repoId());
+				setFeedback("new goals go to " + ConsoleCommands.repoName(u.repoId(), s) + " " + UiBits.CHECK, Tone.OK, false);
+				return After.CLEAR;
+			}
 			case RepoBrowse b -> {
 				ConsoleLog.remember(raw);
 				clearFeedback();
@@ -207,6 +223,16 @@ public final class ConsoleActions {
 				String rid = ack.result() != null && ack.result().has("repoId") ? ack.result().get("repoId").getAsString() : null;
 				return "repo " + (rid != null ? rid + " " : "") + "added " + UiBits.CHECK;
 			}, "adding the repo\u2026");
+			case RepoRemove r -> {
+				String name = ConsoleCommands.repoName(r.repoId(), s);
+				track(Foreman.removeRepo(r.repoId()), raw, restore, ack -> {
+					String note = ack.result() != null && ack.result().has("note") ? ack.result().get("note").getAsString() : null;
+					if (note != null) {
+						ConsoleLog.add(Tone.INFO, name + ": " + note);
+					}
+					return "removed " + name + " (its folder is untouched) " + UiBits.CHECK;
+				}, "removing " + name + "\u2026");
+			}
 			case AgentAction a -> {
 				List<CompletableFuture<Ack>> all = new ArrayList<>();
 				for (String id : a.agentIds()) {
@@ -288,7 +314,7 @@ public final class ConsoleActions {
 
 	private static void help(@Nullable String topic) {
 		ConsoleLog.add(Tone.HEADER, "Console");
-		ConsoleLog.add(Tone.HELP, "plain text\ta new goal for Marlow (several repos: you pick one)");
+		ConsoleLog.add(Tone.HELP, "plain text\ta new goal for Marlow, in the repo at the prompt (Ctrl+R changes it)");
 		ConsoleLog.add(Tone.HELP, "@juniper text\tmessage an agent (Tab completes, @all = everyone)");
 		for (Command c : ConsoleCommands.COMMANDS) {
 			if (topic == null || c.name().startsWith(topic)) {
@@ -361,9 +387,13 @@ public final class ConsoleActions {
 			ConsoleLog.add(Tone.INFO, "none yet: /repo add to pick a folder, or /repo add " + example);
 			return;
 		}
+		Repo target = RepoTarget.resolve(s);
 		for (Repo r : s.repos().values()) {
-			ConsoleLog.add(Tone.INFO, r.name() + " \u00b7 " + r.branch() + (r.head() != null ? " @ " + r.head() : "") + (r.dirty() ? " \u00b7 uncommitted changes"
-				: "") + " \u00b7 " + r.path());
+			String state = !r.usable() ? " \u00b7 " + r.health().problem() : r.dirty() ? " \u00b7 uncommitted changes" : "";
+			ConsoleLog.add(r.usable() ? Tone.INFO : Tone.ERROR, (target != null && target.id().equals(r.id()) ? "\u25b8 " : "  ") + r.name() + " \u00b7 " + r.branch()
+				+ (r.head() != null ? " @ " + r.head() : "") + state + " \u00b7 " + r.path());
 		}
+		ConsoleLog.add(Tone.INFO, target != null ? "new goals go to " + target.name() + " (\u25b8) \u00b7 Ctrl+R or /repo to change"
+			: "no target repo yet: pick one with Ctrl+R or /repo");
 	}
 }

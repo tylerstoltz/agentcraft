@@ -352,6 +352,91 @@ describe('adding plain folders with init, and browsing for one', () => {
   });
 });
 
+describe('repo health and removal', () => {
+  let fm: Harness;
+  let fhome: string;
+  let root: string;
+  beforeAll(() => {
+    fhome = tempDir();
+    root = tempDir('ac-health-');
+    fm = makeForeman(fhome, ['--backend', 'sim']);
+  });
+  afterAll(async () => {
+    await fm.fm.close();
+    rmrf(fhome);
+    rmrf(root);
+  });
+
+  async function plainRepo(name: string) {
+    const dir = path.join(root, name);
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, 'a.txt'), 'a\n');
+    return { dir, r: await fm.fm.repos.add(dir, { init: true }) };
+  }
+
+  it('a deleted .git or folder is noticed by the poll and broadcast once', async () => {
+    const { dir, r } = await plainRepo('gone-git');
+    expect(r.health).toBe('ok');
+    expect(await fm.fm.repos.pollStatus(r.id)).toBe(false);
+    const sent: string[] = [];
+    const off = fm.fm.subscribe((m) => {
+      if (m.type === 'repo.upsert' && m.repo.id === r.id) sent.push(m.repo.health ?? 'ok');
+    });
+    fs.rmSync(path.join(dir, '.git'), { recursive: true, force: true });
+    expect(await fm.fm.repos.pollStatus(r.id)).toBe(true);
+    expect(await fm.fm.repos.pollStatus(r.id)).toBe(false); // no repeat while it stays broken
+    expect(r.health).toBe('not_git');
+    rmrf(dir);
+    await fm.fm.repos.pollStatus(r.id);
+    expect(r.health).toBe('missing');
+    off();
+    expect(sent).toEqual(['not_git', 'missing']);
+  });
+
+  it('a recreated history on another branch reads no_branch; adding the folder again repairs it', async () => {
+    const { dir, r } = await plainRepo('rebranched');
+    fs.rmSync(path.join(dir, '.git'), { recursive: true, force: true });
+    await git(dir, ['init', '-q', '-b', 'fresh-start']);
+    await git(dir, ['add', '-A']);
+    await git(dir, ['-c', 'user.name=U', '-c', 'user.email=u@x', 'commit', '-qm', 'again']);
+    await fm.fm.repos.refresh(r.id);
+    expect(r.health).toBe(r.branch === 'fresh-start' ? 'ok' : 'no_branch');
+    expect((await fm.fm.repos.add(dir)).id).toBe(r.id);
+    expect(r.branch).toBe('fresh-start');
+    expect(r.health).toBe('ok');
+  });
+
+  it('a folder whose .git was deleted is repaired by adding it again with init (a fresh history)', async () => {
+    const { dir, r } = await plainRepo('fresh-history');
+    fs.rmSync(path.join(dir, '.git'), { recursive: true, force: true });
+    await fm.fm.repos.pollStatus(r.id);
+    expect(r.health).toBe('not_git');
+    await expect(fm.fm.repos.add(dir)).rejects.toThrow(/not a git repository/);
+    expect((await fm.fm.repos.add(dir, { init: true })).id).toBe(r.id);
+    expect(r.health).toBe('ok');
+    expect(await gitOut(dir, ['rev-list', '--count', 'HEAD'])).toBe('1');
+    expect(fm.fm.repos.list().filter((x) => x.name === 'fresh-history')).toHaveLength(1);
+  });
+
+  it('remove unregisters without touching the folder, refuses while agents work there, and broadcasts repo.removed', async () => {
+    const { dir, r } = await plainRepo('removable');
+    const t = fm.fm.tasks.create({ title: 'Busy', createdBy: 'marlow', repoId: r.id, assignee: 'kit' });
+    const wt = await fm.fm.repos.createWorktree(r.id, 'kit', t);
+    expect(() => fm.fm.repos.remove(r.id)).toThrow(/active worktree.*kit/);
+    await fm.fm.repos.abandon(r.id, wt.id);
+    const sent: string[] = [];
+    const off = fm.fm.subscribe((m) => {
+      if (m.type === 'repo.removed') sent.push(m.repoId);
+    });
+    fm.fm.repos.remove(r.id);
+    off();
+    expect(sent).toEqual([r.id]);
+    expect(fm.fm.repos.get(r.id)).toBeUndefined();
+    expect(fs.existsSync(path.join(dir, '.git'))).toBe(true);
+    expect(() => fm.fm.repos.remove(r.id)).toThrow(/no repo/);
+  });
+});
+
 /** Equal after resolving links (macOS tmp is /var -> /private/var). */
 function samePathLike(a: string, b: string): boolean {
   return fs.realpathSync.native(a) === fs.realpathSync.native(b);

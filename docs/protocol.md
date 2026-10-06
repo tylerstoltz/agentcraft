@@ -121,6 +121,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `dirty` | boolean | yes | user checkout has uncommitted tracked changes (merges are refused while dirty) |
 | `worktrees` | [Worktree](#worktree)[] | yes |  |
 | `ci` | `unknown` \| `running` \| `pass` \| `fail` | yes | latest CI/test result across this repo |
+| `health` | `ok` \| `missing` \| `not_git` \| `no_commits` \| `no_branch` | no | whether the checkout is still usable (re-checked on every poll); omitted = ok. Goals are refused while it is not ok |
 
 ### <a id="worktree"></a>Worktree
 
@@ -575,7 +576,7 @@ Decision opened, answered or cancelled. Replace by `decision.id`.
 
 ### `repo.upsert`
 
-Repo added or changed (worktrees, CI, head, dirty). Replace by `repo.id`.
+Repo added or changed (worktrees, CI, head, dirty, health). Replace by `repo.id`.
 
 | field | type | required | notes |
 | --- | --- | --- | --- |
@@ -610,6 +611,23 @@ Repo added or changed (worktrees, CI, head, dirty). Replace by `repo.id`.
       }
     ]
   }
+}
+```
+
+### `repo.removed`
+
+A repo was unregistered (`repo.remove`). Drop it; nothing on disk was touched.
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `repoId` | string | yes |  |
+
+```json
+{
+  "v": 1,
+  "type": "repo.removed",
+  "repoId": "old-notes"
 }
 ```
 
@@ -1043,6 +1061,24 @@ Register a local git repo (console: `/repo add <path>`, or the folder picker). W
   "type": "repo.add",
   "id": "c18",
   "path": "C:\\Projects\\agentcraft\\sandbox\\demo-app"
+}
+```
+
+### `repo.remove`
+
+Unregister a repo (console: `/repo remove <name>`, or the repo manager). Its folder, branches and history are left alone. Refused while agents have active worktrees in it.
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | no | client correlation id; the Foreman answers with `ack` {re: id} |
+| `repoId` | string | yes |  |
+
+```json
+{
+  "v": 1,
+  "type": "repo.remove",
+  "id": "c20",
+  "repoId": "old-notes"
 }
 ```
 

@@ -42,6 +42,10 @@ public interface ForemanListener {
 	default void onRepo(@Nullable Repo previous, Repo repo) {
 	}
 
+	/** A repo was unregistered ({@code repo.removed}). */
+	default void onRepoRemoved(Repo repo) {
+	}
+
 	default void onMemory(@Nullable MemoryEntry previous, MemoryEntry entry) {
 	}
 

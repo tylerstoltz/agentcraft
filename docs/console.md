@@ -27,20 +27,43 @@ Juniper ✔"); a refusal shows a red strip above the bar, a line in the feed, an
 so you can fix it. Esc never loses a draft: whatever is in the bar when the console closes comes
 back the next time it opens (this session), and the console terminal shows it on its screen.
 
+**Target repo.** The tag before the `>` prompt is the repo a goal typed now goes to, like a shell
+prompt's working directory, so where a goal lands is clear before it is written. It is chosen
+explicitly and is sticky (kept across game restarts in `config/agentcraft-console.properties`)
+until it is changed: click the tag, press Ctrl+R, type `/repo`, or `/repo use <name>`. With a
+single repo that one is used. With several and none chosen yet (or the chosen one was removed), the
+tag says "pick a repo" and a goal is not sent until one is picked. A repo that is no longer usable
+shows its tag in red and goals to it are refused (the Foreman refuses them too).
+
+**Repo manager** (`/repo`, Ctrl+R, or a click on the tag): the registered repos with branch, head,
+path and state (active worktrees, uncommitted changes, or what is wrong with it). Enter / double-click
+/ "Use for goals" makes the selected one the target; `1`-`9` select; "Add…" opens the folder
+picker; Del / "Remove" unregisters it after a second press (the folder, history and branches are
+untouched; refused while agents have active worktrees in it). The Foreman re-checks every repo on
+its poll: a missing folder, a folder whose `.git` was deleted, one without commits, or one whose
+base branch is gone is shown with "Repair", which adds the folder again (`git init` and a first
+commit where needed, after a second press; or the branch checked out now becomes the base).
+
 | input | sends |
 | --- | --- |
-| plain text | `goal.submit` (with several repos you pick one first: 1-9 / arrows, Enter) |
+| plain text | `goal.submit` to the target repo shown at the prompt |
 | `@juniper text`, `@all text` | `user.message` |
 | `/answer [d4] <n\|option> [text]` | `decision.answer`; `n` is the 1-based button number; the id can be left out when one decision is open; free text for questions; `Request changes` needs the feedback text |
-| `/repo add [--init] <path>`, `/repos` | `repo.add` (`--init`: `git init` a plain folder and commit it first), list repos |
-| `/repo add`, `/repo browse [path]` | the folder picker: browses the Foreman's machine with `fs.list`, then `repo.add`; a folder that is not a repository root is shown with a warning and needs a second press to `git init` it |
+| `/repo` | opens the repo manager (also Ctrl+R, or a click on the prompt's repo tag) |
+| `/repo use <name>` | sets the target repo for new goals (local, sticky) |
+| `/repo add [--init] <path>` | `repo.add` (`--init`: `git init` a plain folder and commit it first) |
+| `/repo add` (no path) | the folder picker: browses the Foreman's machine with `fs.list`, then `repo.add`; a folder that is not a repository root is shown with a warning and needs a second press to `git init` it. `/repo browse [path]` still opens it (at `path`) |
+| `/repo remove <name>` | `repo.remove`: unregisters it; its folder, history and branches stay |
+| `/repos`, `/repo list` | lists repos (▸ marks the target) |
 | `/pause @x`, `/resume @x`, `/stop @x` (also `all`), `/spawn @x [task]` | `agent.action` |
 | `/task <id> cancel\|retry\|prioritize [n]\|reassign @x` | `task.action` |
 | `/diff [worktree\|@agent\|task]` | opens the diff screen (`diff`, owned by the diff feature); without one, prints a file summary from `diff.request` |
 | `/status`, `/help`, `/decide`, `/clear`, `/sound on\|off` | local |
 
 Tab completes agent names (also after `/pause` etc.), commands, decision ids and options, task ids
-and worktrees; repeated Tab cycles, Up/Down move in the popup. Up/Down otherwise walk the history
+and worktrees, repo names after `/repo use` and `/repo remove`; repeated Tab cycles, Up/Down move
+in the popup, which scrolls when there are more than six (the mouse wheel too, with "3/14" showing
+where you are). Up/Down otherwise walk the history
 (kept in `<game dir>/agentcraft/console-history.txt`). Shift+Enter adds a line; a multi-line
 paste grows the bar (up to 6 lines, then it scrolls).
 

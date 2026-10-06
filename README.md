@@ -282,7 +282,8 @@ All keys can be rebound in Options, Controls.
 | `/status` | Goal, agents, tasks, decisions and spend |
 | `/pause @x`, `/resume @x` | Pause an agent, keeping its task |
 | `/stop @x`, `/spawn @x [task]` | Take an agent off shift, or bring one on |
-| `/repo add`, `/repo add <path>`, `/repos` | Pick a project folder in game, register one by path, list repos |
+| `/repo` (or Ctrl+R) | Repo manager: pick the repo new goals go to (shown at the prompt), add, remove or repair repos |
+| `/repo add`, `/repo add <path>`, `/repo use <name>` | Pick a project folder in game, register one by path, switch the target repo |
 | `/help` | Everything else |
 
 <br>

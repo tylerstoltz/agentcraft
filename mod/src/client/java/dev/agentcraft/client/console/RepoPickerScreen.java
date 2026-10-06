@@ -14,6 +14,7 @@ import dev.agentcraft.foreman.Protocol.FsListing;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletionException;
+import java.util.function.Consumer;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
@@ -39,6 +40,8 @@ public class RepoPickerScreen extends Screen {
 
 	private final @Nullable Screen parent;
 	private final @Nullable String startPath;
+	/** Told the new repo's id after a successful add (client thread), before the picker closes. */
+	private final @Nullable Consumer<String> onAdded;
 	private @Nullable FsListing listing;
 	private boolean hidden;
 	private boolean loading;
@@ -68,9 +71,14 @@ public class RepoPickerScreen extends Screen {
 	}
 
 	public RepoPickerScreen(@Nullable String startPath, @Nullable Screen parent) {
+		this(startPath, parent, null);
+	}
+
+	public RepoPickerScreen(@Nullable String startPath, @Nullable Screen parent, @Nullable Consumer<String> onAdded) {
 		super(Component.literal("Add a repo"));
 		this.parent = parent;
 		this.startPath = startPath != null ? startPath : lastPath;
+		this.onAdded = onAdded;
 	}
 
 	@Override
@@ -503,6 +511,9 @@ public class RepoPickerScreen extends Screen {
 			String rid = ack.result() != null && ack.result().has("repoId") ? ack.result().get("repoId").getAsString() : lastSegment(path);
 			ConsoleLog.add(Tone.OK, "repo " + rid + " added: " + path + (init ? " (git init and a first commit)" : ""));
 			ConsoleActions.setFeedback("repo " + rid + " added " + UiBits.CHECK, Tone.OK, false);
+			if (onAdded != null && ack.result() != null && ack.result().has("repoId")) {
+				onAdded.accept(rid);
+			}
 			if (minecraft.gui.screen() == this) {
 				onClose();
 			}

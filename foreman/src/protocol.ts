@@ -166,6 +166,11 @@ export const Worktree = z.object({
 });
 export type Worktree = z.infer<typeof Worktree>;
 
+export const RepoHealth = z
+  .enum(['ok', 'missing', 'not_git', 'no_commits', 'no_branch'])
+  .describe('ok: usable; missing: the folder is gone; not_git: the folder is no longer a repository root (its .git was removed); no_commits: a repository without commits; no_branch: the base branch no longer exists');
+export type RepoHealth = z.infer<typeof RepoHealth>;
+
 export const Repo = z.object({
   id: Id.describe('e.g. "demo-app"'),
   name: z.string(),
@@ -175,6 +180,7 @@ export const Repo = z.object({
   dirty: z.boolean().describe('user checkout has uncommitted tracked changes (merges are refused while dirty)'),
   worktrees: z.array(Worktree),
   ci: CiStatus.describe('latest CI/test result across this repo'),
+  health: RepoHealth.optional().describe('whether the checkout is still usable (re-checked on every poll); omitted = ok. Goals are refused while it is not ok'),
 });
 export type Repo = z.infer<typeof Repo>;
 
@@ -313,6 +319,7 @@ export const AgentSayMsg = z.object({
 export const TaskUpsertMsg = z.object({ ...envelope('task.upsert'), task: Task });
 export const DecisionUpsertMsg = z.object({ ...envelope('decision.upsert'), decision: Decision });
 export const RepoUpsertMsg = z.object({ ...envelope('repo.upsert'), repo: Repo });
+export const RepoRemovedMsg = z.object({ ...envelope('repo.removed'), repoId: Id });
 export const MemoryUpsertMsg = z.object({ ...envelope('memory.upsert'), entry: MemoryEntry });
 export const GoalUpsertMsg = z.object({ ...envelope('goal.upsert'), goal: Goal });
 export const FeedAddMsg = z.object({ ...envelope('feed.add'), item: FeedItem });
@@ -357,6 +364,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   TaskUpsertMsg,
   DecisionUpsertMsg,
   RepoUpsertMsg,
+  RepoRemovedMsg,
   MemoryUpsertMsg,
   GoalUpsertMsg,
   FeedAddMsg,
@@ -425,6 +433,10 @@ export const RepoAddMsg = z.object({
     .optional()
     .describe('when the folder is not a repository root (or has no commits): `git init` it and commit everything in it (respecting .gitignore) as the user'),
 });
+export const RepoRemoveMsg = z.object({
+  ...envelope('repo.remove'),
+  repoId: Id,
+});
 export const FsListMsg = z.object({
   ...envelope('fs.list'),
   path: z.string().optional().describe('folder to list; omitted = the home folder; `~` expands'),
@@ -440,6 +452,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
   AgentActionMsg,
   DiffRequestMsg,
   RepoAddMsg,
+  RepoRemoveMsg,
   FsListMsg,
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
@@ -494,7 +507,8 @@ export const SERVER_MESSAGES = {
   'agent.say': { schema: AgentSayMsg, doc: 'Speech bubble above the agent; also mirrored to the feed.' },
   'task.upsert': { schema: TaskUpsertMsg, doc: 'Task created or changed. Replace by `task.id`.' },
   'decision.upsert': { schema: DecisionUpsertMsg, doc: 'Decision opened, answered or cancelled. Replace by `decision.id`.' },
-  'repo.upsert': { schema: RepoUpsertMsg, doc: 'Repo added or changed (worktrees, CI, head, dirty). Replace by `repo.id`.' },
+  'repo.upsert': { schema: RepoUpsertMsg, doc: 'Repo added or changed (worktrees, CI, head, dirty, health). Replace by `repo.id`.' },
+  'repo.removed': { schema: RepoRemovedMsg, doc: 'A repo was unregistered (`repo.remove`). Drop it; nothing on disk was touched.' },
   'memory.upsert': { schema: MemoryUpsertMsg, doc: 'Memory entry written. Replace by `entry.id`.' },
   'goal.upsert': { schema: GoalUpsertMsg, doc: 'Goal created or progress/status changed. Replace by `goal.id`; latest goal is current.' },
   'feed.add': { schema: FeedAddMsg, doc: 'Append to the activity feed.' },
@@ -514,6 +528,7 @@ export const CLIENT_MESSAGES = {
   'agent.action': { schema: AgentActionMsg, doc: 'Pause/resume/stop an agent, or spawn (activate) an off-shift worker.' },
   'diff.request': { schema: DiffRequestMsg, doc: 'Ask for the structured diff of a worktree. Answered with `diff` (same requestId).' },
   'repo.add': { schema: RepoAddMsg, doc: 'Register a local git repo (console: `/repo add <path>`, or the folder picker). With `init`, a plain folder is made into one first.' },
+  'repo.remove': { schema: RepoRemoveMsg, doc: 'Unregister a repo (console: `/repo remove <name>`, or the repo manager). Its folder, branches and history are left alone. Refused while agents have active worktrees in it.' },
   'fs.list': { schema: FsListMsg, doc: 'List the sub-folders of a folder on the Foreman\'s machine, for the repo folder picker. Answered by the `ack`, whose `result` is an `FsListing`.' },
 } as const;
 

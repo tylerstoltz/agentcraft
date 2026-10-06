@@ -120,6 +120,7 @@ export const SERVER_EXAMPLES: Ex<ServerMessage> = {
   'task.upsert': { v: 1, type: 'task.upsert', task },
   'decision.upsert': { v: 1, type: 'decision.upsert', decision },
   'repo.upsert': { v: 1, type: 'repo.upsert', repo },
+  'repo.removed': { v: 1, type: 'repo.removed', repoId: 'old-notes' },
   'memory.upsert': { v: 1, type: 'memory.upsert', entry: memory },
   'goal.upsert': { v: 1, type: 'goal.upsert', goal: { id: 'g1', text: 'Add #tags to pocket-notes', progress: 0.56, status: 'active', repoId: 'demo-app', createdAt: ts, updatedAt: ts + 200_000 } },
   'feed.add': { v: 1, type: 'feed.add', item: { ts: ts + 210_000, kind: 'merge', text: 'Merged agentcraft/kit/t2-tag-parser-module into main (7cf1999, 2 files)', agentId: 'marlow' } },
@@ -193,5 +194,6 @@ export const CLIENT_EXAMPLES: Ex<ClientMessage> = {
   'agent.action': { v: 1, type: 'agent.action', id: 'c16', agentId: 'juniper', action: 'pause' },
   'diff.request': { v: 1, type: 'diff.request', id: 'c17', requestId: 'r7', repoId: 'demo-app', worktree: 'kit-t2' },
   'repo.add': { v: 1, type: 'repo.add', id: 'c18', path: 'C:\\Projects\\agentcraft\\sandbox\\demo-app' },
+  'repo.remove': { v: 1, type: 'repo.remove', id: 'c20', repoId: 'old-notes' },
   'fs.list': { v: 1, type: 'fs.list', id: 'c19', path: 'C:\\Projects' },
 };

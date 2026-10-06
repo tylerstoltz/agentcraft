@@ -57,8 +57,8 @@ public class ConsoleScreen extends Screen {
 	private int compSel;
 	private boolean popupHidden;
 	private String lastValue = "";
-	private @Nullable Goal pendingGoal;
-	private int repoSel;
+	/** First completion row shown when there are more than {@link #MAX_POPUP}. */
+	private int popupTop;
 	private long errorShownAt;
 
 	// derived per frame
@@ -67,6 +67,8 @@ public class ConsoleScreen extends Screen {
 	private String intentFor = "\u0000";
 	private long intentRev = -1;
 	private int intentCursor = -1;
+	/** The target repo the intent was parsed for (it is local state, not part of the Foreman revision). */
+	private @Nullable String intentTarget;
 
 	// layout (hit-testing)
 	private int fieldX;
@@ -190,8 +192,15 @@ public class ConsoleScreen extends Screen {
 		return intent;
 	}
 
-	public boolean repoChooserOpen() {
-		return pendingGoal != null;
+	/** The repo a goal typed now would go to (null: none chosen yet, or no repos). */
+	public @Nullable String targetRepo() {
+		Repo r = RepoTarget.resolve(Foreman.state());
+		return r == null ? null : r.id();
+	}
+
+	/** The repo manager over this console; Esc comes back here with the input as it was. */
+	public void openRepoManager() {
+		minecraft.gui.setScreen(new RepoManagerScreen(this));
 	}
 
 	// ------------------------------------------------------------------ derived state
@@ -203,9 +212,6 @@ public class ConsoleScreen extends Screen {
 			lastValue = v;
 			compSel = 0;
 			popupHidden = false;
-			if (pendingGoal != null) {
-				pendingGoal = null;
-			}
 			historyIndex = historyIndex >= 0 && !v.equals(historyAt(historyIndex)) ? -1 : historyIndex;
 		}
 		if (s == null) {
@@ -213,12 +219,14 @@ public class ConsoleScreen extends Screen {
 			intent = null;
 			return;
 		}
-		if (!v.equals(intentFor) || s.revision() != intentRev || input.cursor() != intentCursor) {
+		String target = RepoTarget.selected();
+		if (!v.equals(intentFor) || s.revision() != intentRev || input.cursor() != intentCursor || !java.util.Objects.equals(target, intentTarget)) {
 			intent = ConsoleCommands.parse(v, s);
 			completions = ConsoleCommands.complete(v, input.cursor(), s);
 			intentFor = v;
 			intentRev = s.revision();
 			intentCursor = input.cursor();
+			intentTarget = target;
 		}
 		if (compSel >= completions.size()) {
 			compSel = 0;
@@ -292,21 +300,6 @@ public class ConsoleScreen extends Screen {
 		}
 		String raw = input.value();
 		Intent in = ConsoleCommands.parse(raw, s);
-		if (pendingGoal != null) {
-			List<Repo> choices = pendingGoal.choices();
-			Repo r = choices.get(Math.max(0, Math.min(repoSel, choices.size() - 1)));
-			in = new Goal(pendingGoal.text(), r.id(), List.of());
-			pendingGoal = null;
-		} else if (in instanceof Goal g && !g.choices().isEmpty()) {
-			pendingGoal = g;
-			repoSel = 0;
-			for (int i = 0; i < g.choices().size(); i++) {
-				if (g.choices().get(i).id().equals(g.repoId())) {
-					repoSel = i;
-				}
-			}
-			return;
-		}
 		if (in instanceof Invalid) {
 			errorShownAt = Util.getMillis();
 		}
@@ -320,6 +313,11 @@ public class ConsoleScreen extends Screen {
 				ConsoleLog.keepDraft(restored, restored.length());
 			}
 		});
+		if (after != After.KEEP) {
+			// the input is about to be cleared: completions for the old text must not outlive it
+			completions = List.of();
+			intentFor = "\u0000";
+		}
 		switch (after) {
 			case CLEAR -> {
 				input.clear();
@@ -383,10 +381,6 @@ public class ConsoleScreen extends Screen {
 		refresh();
 		int k = e.key();
 		if (e.isEscape()) {
-			if (pendingGoal != null) {
-				pendingGoal = null;
-				return true;
-			}
 			if (popupVisible()) {
 				popupHidden = true;
 				return true;
@@ -394,30 +388,13 @@ public class ConsoleScreen extends Screen {
 			onClose();
 			return true;
 		}
-		if (Keys.matches(Keys.console, e) && input.isEmpty() && pendingGoal == null && Util.getMillis() - openedAt > 150) {
+		if (Keys.matches(Keys.console, e) && input.isEmpty() && Util.getMillis() - openedAt > 150) {
 			onClose();
 			return true;
 		}
-		if (pendingGoal != null) {
-			List<Repo> choices = pendingGoal.choices();
-			int digit = TextKeys.digit(e);
-			if (digit > 0 && digit <= choices.size()) {
-				repoSel = digit - 1;
-				submit();
-				return true;
-			}
-			if (k == InputConstants.KEY_LEFT || k == InputConstants.KEY_UP || k == InputConstants.KEY_TAB && e.hasShiftDown()) {
-				repoSel = (repoSel - 1 + choices.size()) % choices.size();
-				return true;
-			}
-			if (k == InputConstants.KEY_RIGHT || k == InputConstants.KEY_DOWN || k == InputConstants.KEY_TAB) {
-				repoSel = (repoSel + 1) % choices.size();
-				return true;
-			}
-			if (TextKeys.isEnter(e)) {
-				submit();
-				return true;
-			}
+		if (TextKeys.ctrl(e, 'r', InputConstants.KEY_R)) {
+			openRepoManager();
+			return true;
 		}
 		if (TextKeys.isEnter(e)) {
 			if (e.hasShiftDown()) {
@@ -492,10 +469,15 @@ public class ConsoleScreen extends Screen {
 		if (popupVisible() && mx >= popupX && mx < popupX + popupW && my >= popupY) {
 			int i = (int) ((my - popupY - 5) / popupRowH);
 			if (i >= 0 && i < popupCount) {
-				compSel = i;
+				compSel = popupTop + i;
 				applyCompletion();
 				return true;
 			}
+		}
+		// the target repo tag before the prompt
+		if (TextFieldView.tagHit(font, fieldStyle(), fieldX, fieldY, mx, my)) {
+			openRepoManager();
+			return true;
 		}
 		// roster chips: start a message
 		for (int[] hit : chipHits) {
@@ -531,6 +513,11 @@ public class ConsoleScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+		if (popupVisible() && completions.size() > popupCount && x >= popupX && x < popupX + popupW && y >= popupY) {
+			int dir = scrollY > 0 ? -1 : 1;
+			compSel = Math.max(0, Math.min(completions.size() - 1, compSel + dir));
+			return true;
+		}
 		scroll.scrollBy(scrollY > 0 ? -3 : 3);
 		return true;
 	}
@@ -556,9 +543,6 @@ public class ConsoleScreen extends Screen {
 				hint = fb.text();
 				hintColor = fb.tone() == Tone.OK ? UiBits.okText() : UiBits.muted();
 			}
-		} else if (pendingGoal != null) {
-			Repo r = pendingGoal.choices().get(Math.max(0, Math.min(repoSel, pendingGoal.choices().size() - 1)));
-			hint = "new goal \u2192 " + r.name();
 		} else if (intent != null) {
 			ForemanState s = Foreman.state();
 			if (s != null && s.hasData() && s.isStale() && sendsToForeman(intent)) {
@@ -572,13 +556,39 @@ public class ConsoleScreen extends Screen {
 			}
 		}
 		String placeholder = "Type a goal, @agent to message, or /help";
-		return new TextFieldView.Style(">", UiStyle.BRASS, placeholder, ghostText(), hint, hintColor, 6);
+		// the target repo, shell-prompt style: what a goal typed here lands in, before it is typed
+		String tag = null;
+		int tagColor = UiBits.ink();
+		ForemanState s = Foreman.state();
+		if (s != null && !s.repos().isEmpty()) {
+			Repo target = RepoTarget.resolve(s);
+			if (target == null) {
+				tag = "pick a repo";
+				tagColor = UiStyle.CLAY_DARK;
+			} else {
+				tag = TextUtil.ellipsize(font, target.name(), 90);
+				tagColor = target.usable() ? UiStyle.color("paper.path", 0xFF6C5415) : UiBits.errorText();
+			}
+		}
+		return new TextFieldView.Style(">", UiStyle.BRASS, placeholder, ghostText(), hint, hintColor, 6, tag, tagColor);
+	}
+
+	private void tagTooltip(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+		TextFieldView.Style st = fieldStyle();
+		if (!TextFieldView.tagHit(font, st, fieldX, fieldY, mouseX, mouseY)) {
+			return;
+		}
+		Repo target = RepoTarget.resolve(Foreman.state());
+		String text = target == null ? "No repo picked for goals yet: click or Ctrl+R to pick one"
+			: !target.usable() ? target.name() + ": " + target.health().problem() + ". Click or Ctrl+R to pick another"
+				: "New goals go to " + target.name() + " (" + target.branch() + ") · click or Ctrl+R to change";
+		g.setTooltipForNextFrame(font, Component.literal(text), mouseX, mouseY);
 	}
 
 	/** Intents that go to the Foreman (everything but the local commands). */
 	private static boolean sendsToForeman(Intent in) {
 		return in instanceof Goal || in instanceof ConsoleCommands.Message || in instanceof ConsoleCommands.Answer || in instanceof ConsoleCommands.RepoAdd
-			|| in instanceof ConsoleCommands.AgentAction || in instanceof ConsoleCommands.TaskAction;
+			|| in instanceof ConsoleCommands.RepoRemove || in instanceof ConsoleCommands.AgentAction || in instanceof ConsoleCommands.TaskAction;
 	}
 
 	@Override
@@ -604,20 +614,19 @@ public class ConsoleScreen extends Screen {
 		panelY = panelBottom - panelH;
 		drawPanel(g, s, mouseX, mouseY);
 
-		// ---- error strip / repo chooser above the bar
+		// ---- error strip above the bar
 		int above = fieldY - 4;
-		if (pendingGoal != null) {
-			above = drawRepoChooser(g, above);
-		} else if (errorStripVisible()) {
+		if (errorStripVisible()) {
 			above = drawErrorStrip(g, ConsoleActions.feedback().text(), above);
 		}
 
 		field.draw(g, font, input, fieldX, fieldY, fieldW, true, st);
 
 		if (popupVisible()) {
-			drawPopup(g, above, mouseX, mouseY);
+			drawPopup(g, above, st, mouseX, mouseY);
 		} else {
 			popupCount = 0;
+			tagTooltip(g, mouseX, mouseY);
 		}
 	}
 
@@ -706,21 +715,21 @@ public class ConsoleScreen extends Screen {
 		int fy = panelY + panelH - p.bottom() - footerH + 2;
 		String dk = Keys.label(Keys.decisions);
 		int waiting = DecisionsFeature.waitingCount();
-		String[] hints = waiting > 0 ? new String[] {"Enter", "send", "Tab", "complete", "↑↓", "history", dk, waiting + " waiting", "Esc", "close"}
-			: new String[] {"Enter", "send", "Tab", "complete", "↑↓", "history", "Shift+Enter", "new line", "Esc", "close"};
+		String[] hints = waiting > 0 ? new String[] {"Enter", "send", "Tab", "complete", "Ctrl+R", "repo", dk, waiting + " waiting", "Esc", "close"}
+			: new String[] {"Enter", "send", "Tab", "complete", "Ctrl+R", "repo", "↑↓", "history", "Esc", "close"};
 		if (UiBits.hintsWidth(font, hints) > w) {
-			hints = new String[] {"Enter", "send", "Tab", "complete", "↑↓", "history", "Esc", "close"};
+			hints = new String[] {"Enter", "send", "Tab", "complete", "Ctrl+R", "repo", "Esc", "close"};
 		}
 		UiBits.hints(g, font, x, fy, false, hints);
 	}
 
 	private boolean overlayOpen() {
-		return pendingGoal != null || popupVisible() || errorStripVisible();
+		return popupVisible() || errorStripVisible();
 	}
 
 	private boolean errorStripVisible() {
 		Feedback fb = ConsoleActions.feedback();
-		return pendingGoal == null && fb != null && fb.tone() == Tone.ERROR && Util.getMillis() - errorShownAt < 9000 && fb.at() >= openedAt - 1;
+		return fb != null && fb.tone() == Tone.ERROR && Util.getMillis() - errorShownAt < 9000 && fb.at() >= openedAt - 1;
 	}
 
 	private String headerSub(@Nullable ForemanState s) {
@@ -799,42 +808,23 @@ public class ConsoleScreen extends Screen {
 		return y - 2;
 	}
 
-	private int drawRepoChooser(GuiGraphicsExtractor g, int bottom) {
-		Goal pg = pendingGoal;
-		Kit.Padding p = Kit.padding("panel_paper");
-		int h = p.top() + 12 + 16 + p.bottom() - 2;
-		int y = bottom - h;
-		int w = Math.max(panelW, Math.min(fieldW, 300));
-		Panels.panel(g, fieldX, y, w, h);
-		int x = fieldX + p.left();
-		g.text(font, "Which repo is this goal for?", x, y + p.top(), UiBits.ink(), false);
-		String hint = "Enter send · 1-" + pg.choices().size() + " pick · Esc back";
-		g.text(font, hint, fieldX + w - p.right() - font.width(hint), y + p.top(), UiBits.muted(), false);
-		int cx = x;
-		int cy = y + p.top() + 13;
-		for (int i = 0; i < pg.choices().size(); i++) {
-			Repo r = pg.choices().get(i);
-			String label = (i + 1) + "  " + r.name();
-			int pw = font.width(label) + 12;
-			if (cx + pw > fieldX + w - p.right()) {
-				break;
-			}
-			boolean sel = i == repoSel;
-			Panels.sprite(g, sel ? Kit.button(true, "normal") : Kit.PILL, cx, cy - 1, pw, sel ? 13 : 11);
-			g.text(font, label, cx + 6, cy + 1, sel ? UiBits.panelHi() : UiBits.ink(), false);
-			cx += pw + 4;
+	private void drawPopup(GuiGraphicsExtractor g, int bottom, TextFieldView.Style st, int mouseX, int mouseY) {
+		int total = completions.size();
+		int n = Math.min(MAX_POPUP, total);
+		// a window of rows that follows the selection (Up/Down, Tab cycling, the mouse wheel)
+		if (compSel < popupTop) {
+			popupTop = compSel;
+		} else if (compSel >= popupTop + n) {
+			popupTop = compSel - n + 1;
 		}
-		return y - 2;
-	}
-
-	private void drawPopup(GuiGraphicsExtractor g, int bottom, int mouseX, int mouseY) {
-		int n = Math.min(MAX_POPUP, completions.size());
+		popupTop = Math.max(0, Math.min(popupTop, total - n));
 		popupCount = n;
 		popupRowH = 11;
 		Kit.Padding p = Kit.padding("tooltip");
 		int maxLabel = 0;
 		int maxDetail = 0;
-		for (int i = 0; i < n; i++) {
+		// measured over every completion, so the card does not change width while it scrolls
+		for (int i = 0; i < total; i++) {
 			Completion c = completions.get(i);
 			maxLabel = Math.max(maxLabel, font.width(c.label()));
 			if (c.detail() != null) {
@@ -847,8 +837,7 @@ public class ConsoleScreen extends Screen {
 		w = Math.max(w, p.left() + UiBits.hintsWidth(font, "Tab", tabHint) + p.right() + 30);
 		int h = p.top() + n * popupRowH + footer + p.bottom();
 		Completion first = completions.get(0);
-		Kit.Padding fp = Kit.padding("text_field");
-		int caretX = fieldX + fp.left() + font.width(">") + 4 + font.width(input.value().substring(0, Math.min(first.start(), input.length())));
+		int caretX = fieldX + TextFieldView.textOffset(font, st) + font.width(input.value().substring(0, Math.min(first.start(), input.length())));
 		int x = Math.max(M, Math.min(caretX - p.left() - 11 - 4, width - M - w));
 		int y = bottom - h;
 		popupX = x;
@@ -858,7 +847,7 @@ public class ConsoleScreen extends Screen {
 		g.fill(x - 1, y - 1, x + w + 1, y + h + 1, UiStyle.BRASS);
 		Panels.sprite(g, Kit.PANEL_PAPER, x, y, w, h);
 		int ry = y + p.top();
-		for (int i = 0; i < n; i++) {
+		for (int i = popupTop; i < popupTop + n; i++) {
 			Completion c = completions.get(i);
 			boolean sel = i == compSel;
 			if (sel) {
@@ -886,7 +875,8 @@ public class ConsoleScreen extends Screen {
 		}
 		UiBits.hints(g, font, x + p.left(), ry + 2, false, "Tab", tabHint);
 		if (n > 1) {
-			String nav = "↑↓";
+			// more rows than fit: say where in the list the selection is, and which way the rest are
+			String nav = total > n ? (popupTop > 0 ? "↑ " : "") + (compSel + 1) + "/" + total + (popupTop + n < total ? " ↓" : "") : "↑↓";
 			g.text(font, nav, x + w - p.right() - font.width(nav) - 2, ry + 4, UiBits.muted(), false);
 		}
 	}

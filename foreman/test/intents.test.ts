@@ -49,6 +49,20 @@ describe('client intents', () => {
     expect(ack(bad).ok).toBe(false);
   });
 
+  it('goal.submit is refused for a repo that is no longer usable; repo.remove unregisters it', async () => {
+    const r = h.fm.repos.get('demo-app')!;
+    r.health = 'not_git';
+    const refused = await send({ type: 'goal.submit', text: 'do things', repoId: 'demo-app' });
+    expect(ack(refused).error).toMatch(/demo-app can't take goals: the folder is no longer a git repository/);
+    r.health = 'ok';
+    const removed = await send({ type: 'repo.remove', repoId: 'demo-app' });
+    expect(ack(removed)).toMatchObject({ ok: true, result: { repoId: 'demo-app' } });
+    expect(removed.some((m) => m.type === 'repo.removed')).toBe(false); // broadcast, not a reply
+    expect(h.fm.repos.get('demo-app')).toBeUndefined();
+    expect(ack(await send({ type: 'repo.remove', repoId: 'demo-app' })).ok).toBe(false);
+    expect(ack(await send({ type: 'repo.add', path: repoPath })).ok).toBe(true); // back for the tests below
+  });
+
   it('fs.list answers with a folder listing in the ack; a missing folder fails', async () => {
     const ok = await send({ type: 'fs.list', path: path.dirname(repoPath) });
     expect(ack(ok)).toMatchObject({ ok: true, result: { git: 'none', entries: [{ name: 'demo-app', repo: true }] } });

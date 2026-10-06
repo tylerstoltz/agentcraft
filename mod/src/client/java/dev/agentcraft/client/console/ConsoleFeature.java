@@ -124,7 +124,7 @@ public final class ConsoleFeature {
 				comps.add(c.label());
 			}
 			o.add("completions", comps);
-			o.addProperty("repoChooser", cs.repoChooserOpen());
+			o.addProperty("targetRepo", cs.targetRepo());
 			var intent = cs.intent();
 			o.addProperty("intent", intent == null ? null : ConsoleCommands.describe(intent, Foreman.state()));
 		} else {
