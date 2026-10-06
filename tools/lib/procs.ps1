@@ -21,9 +21,14 @@ function Read-JsonFile([string]$Path) {
         $raw = [System.IO.File]::ReadAllText($Path)
         if ($raw.Length -gt 0 -and $raw[0] -eq [char]0xFEFF) { $raw = $raw.Substring(1) }
         if (-not $raw.Trim()) { return $null }
+        # keep ISO dates (startTime, wrapperStart, ...) as strings: PowerShell 7 would make them
+        # DateTimes, and [string]$Start then renders them without the Z, read back as local time
+        if ($script:JsonDateKind) { return $raw | ConvertFrom-Json -DateKind String }
         return $raw | ConvertFrom-Json
     } catch { return $null }
 }
+# -DateKind: PowerShell 7.5+ (5.1 never converts dates)
+$script:JsonDateKind = (Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')
 
 # Quote one argument for a Windows command line (CommandLineToArgvW rules).
 function ConvertTo-CmdArg([string]$s) {
