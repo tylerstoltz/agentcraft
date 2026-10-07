@@ -94,8 +94,8 @@ export class DecisionQueue {
     throw new DecisionError(`"${option}" is not one of: ${d.options.join(' | ')}`);
   }
 
-  /** Record an answer. Does not wake waiters; call settle() after side effects. */
-  answer(id: string, option?: string | number, text?: string): Decision {
+  /** Record an answer (`by`: the player who gave it). Does not wake waiters; call settle() after side effects. */
+  answer(id: string, option?: string | number, text?: string, by?: string): Decision {
     const d = this.get(id);
     if (!d) throw new DecisionError(`no decision ${id}`);
     if (d.status !== 'open') throw new DecisionError(`decision ${id} is already ${d.status}`);
@@ -110,6 +110,7 @@ export class DecisionQueue {
     d.answer = { ts: this.ctx.now() };
     if (opt) d.answer.option = opt;
     if (freeText) d.answer.text = freeText;
+    if (by) d.answer.by = by;
     this.unsettled.add(d.id);
     this.touch(d);
     return d;

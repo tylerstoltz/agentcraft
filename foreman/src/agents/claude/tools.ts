@@ -10,7 +10,7 @@ import type { AgentState, Decision, TaskStatus } from '../../protocol.js';
 import { MERGE_OPTIONS } from '../../protocol.js';
 import { truncate } from '../../util/text.js';
 import { boardSummary } from './prompts.js';
-import { userName } from '../../user.js';
+import { configuredUserName, userName, Who } from '../../user.js';
 
 export const MCP_SERVER = 'agentcraft';
 
@@ -72,7 +72,7 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
   const tools: Array<SdkMcpToolDefinition<any>> = [
     tool(
       'send_message',
-      `Send a short message to a teammate (id or name), "lead", "all", or "user" (${userName()}; not a question — use ask_user for questions).`,
+      `Send a short message to a teammate (id or name), "lead", "all", or "user" (${configuredUserName() ?? 'the players you work for'}; not a question — use ask_user for questions).`,
       { to: z.string().describe('agent id/name, "lead", "all" or "user"'), text: z.string().describe('the message (1-3 sentences)') },
       async ({ to, text }) => {
         let target = to.trim().toLowerCase();
@@ -128,7 +128,7 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
         fm.setAgent(agentId, { state: prevState.state as AgentState, station: prevState.station, activity: 'got your answer' });
         if (done.status === 'cancelled') return withInbox('The question was cancelled. Use your best judgement and note the assumption.');
         const ans = [done.answer?.option, done.answer?.text].filter(Boolean).join(' — ');
-        return withInbox(`${userName()} answered: ${ans}`);
+        return withInbox(`${Who(done.answer?.by)} answered: ${ans}`);
       },
     ),
     tool(

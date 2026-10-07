@@ -55,6 +55,7 @@ public final class ForemanLink {
 	private volatile Supplier<ForemanSocket.Connector> connectors;
 	private volatile ForemanSocket.@Nullable Connector active;
 	private volatile String clientName = "mod";
+	private volatile Supplier<@Nullable String> playerName = () -> null;
 	private final AtomicInteger generation = new AtomicInteger();
 	private final AtomicLong ids = new AtomicLong();
 	private final Map<String, CompletableFuture<Ack>> pendingAcks = new ConcurrentHashMap<>();
@@ -96,6 +97,15 @@ public final class ForemanLink {
 	/** How this link introduces itself in {@code hello} (the Foreman log names it); default {@code mod}. */
 	public void setClientName(String name) {
 		this.clientName = name;
+	}
+
+	/**
+	 * The player this link acts for, sent as {@code hello.player}: the agents name them as the sender of
+	 * its goals, messages and answers. Through a server's relay the server replaces it with the
+	 * authenticated player name.
+	 */
+	public void setPlayerName(Supplier<@Nullable String> name) {
+		this.playerName = name;
 	}
 
 	/** Reconnect now if the chooser would now pick a different connector (joined / left a relay server). */
@@ -202,6 +212,10 @@ public final class ForemanLink {
 					lastPing = lastInbound;
 					publish(status.with(Phase.HANDSHAKE, null, 0));
 					JsonObject hello = ForemanJson.msg("hello").put("modVersion", modVersion).put("protocol", Protocol.VERSION).put("client", clientName).json();
+					String player = playerName.get();
+					if (player != null && !player.isBlank()) {
+						hello.addProperty("player", player);
+					}
 					sendRaw(socket, hello.toString());
 				});
 		} catch (Throwable t) {

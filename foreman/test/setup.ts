@@ -1,3 +1,3 @@
 // Foremans that tests start as child processes inherit this, so prompts and feed lines are
-// deterministic regardless of the OS account name.
+// deterministic (the Foreman never uses the OS account name; without a name they say "the user").
 process.env.AGENTCRAFT_USER_NAME = 'Alex';

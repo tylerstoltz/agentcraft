@@ -38,7 +38,7 @@ import { leadSystemPrompt, planPrompt, RESUME_PROMPT, reviewPrompt, workerSystem
 import { detectApiAuth, NO_API_AUTH_MESSAGE, withAuthMode } from './auth.js';
 import { StreamMapper, type TurnStats } from './stream.js';
 import { buildMcpServer, MCP_SERVER, type ToolHooks, type TurnHandle } from './tools.js';
-import { userName } from '../../user.js';
+import { userName, who, Who } from '../../user.js';
 import { externalMcpFor, mcpPromptNote, mcpRulesFor } from '../../mcp.js';
 
 type JobKind = 'plan' | 'work' | 'review' | 'followup';
@@ -132,6 +132,8 @@ export class ClaudeBackend implements Backend {
   private queues = new Map<string, Job[]>();
   private running = new Map<string, Running>();
   private pausedJobs = new Map<string, Job>();
+  /** who paused an agent (named in the resumed job's prompt) */
+  private pausedBy = new Map<string, string>();
   private tickTimer: NodeJS.Timeout | undefined;
   private authFailed = false;
   private stopping = false;
@@ -659,11 +661,11 @@ export class ClaudeBackend implements Backend {
           for (const k of verdict.ruleKeys) if (!rules.includes(k)) rules.push(k);
           this.fm.store.markDirty();
         }
-        this.fm.agentLog(agentId, 'result', `${userName()} allowed: ${describeToolCall(toolName, input)}`);
+        this.fm.agentLog(agentId, 'result', `${Who(res.answer?.by)} allowed: ${describeToolCall(toolName, input)}`);
         return { behavior: 'allow', updatedInput: input };
       }
-      this.fm.agentLog(agentId, 'error', `${res.status === 'cancelled' ? 'Permission request withdrawn' : `${userName()} denied`}: ${describeToolCall(toolName, input)}`);
-      return { behavior: 'deny', message: `${userName()} denied this${res.answer?.text ? `: ${res.answer.text}` : ''}. Find another way or ask_user.` };
+      this.fm.agentLog(agentId, 'error', `${res.status === 'cancelled' ? 'Permission request withdrawn' : `${Who(res.answer?.by)} denied`}: ${describeToolCall(toolName, input)}`);
+      return { behavior: 'deny', message: `${Who(res.answer?.by)} denied this${res.answer?.text ? `: ${res.answer.text}` : ''}. Find another way or ask_user.` };
     };
   }
 
@@ -784,7 +786,7 @@ export class ClaudeBackend implements Backend {
     delete this.st.inflight[agentId];
     this.fm.store.markDirty();
     if (reason === 'pause') {
-      const next: Job = { ...job, fresh: false, resumed: true, prompt: `${userName()} paused you and has now resumed you. Any question you had open was withdrawn; ask again if you still need it. Continue your current job.` };
+      const next: Job = { ...job, fresh: false, resumed: true, prompt: `${Who(this.pausedBy.get(agentId))} paused you and has now resumed you. Any question you had open was withdrawn; ask again if you still need it. Continue your current job.` };
       // resume may already have arrived while the aborted turn was unwinding
       if (this.fm.agent(agentId)?.paused) {
         this.pausedJobs.set(agentId, next);
@@ -817,8 +819,9 @@ export class ClaudeBackend implements Backend {
     if (!a?.active || a.paused) return;
     const fromUser = this.fm.bus.inbox(agentId).filter((m) => m.from === 'user' && m.to === agentId);
     if (!fromUser.length) return;
-    this.fm.log.info(`delivering ${fromUser.length} message(s) from ${userName()} to ${agentId} that arrived after its last turn`);
-    this.onUserMessage(agentId, fromUser[fromUser.length - 1]!.text);
+    this.fm.log.info(`delivering ${fromUser.length} message(s) from the user to ${agentId} that arrived after its last turn`);
+    const last = fromUser[fromUser.length - 1]!;
+    this.onUserMessage(agentId, last.text, last.by);
   }
 
   private recordSession(key: string, sessionId: string, model: string, stats?: TurnStats): void {
@@ -992,8 +995,8 @@ export class ClaudeBackend implements Backend {
 
   // ---- user intents -------------------------------------------------------------------------
 
-  /** `note`: extra instructions for the agent only (not shown in the feed). */
-  onUserMessage(to: string, text: string, note?: string): void {
+  /** `by`: the player who sent it; `note`: extra instructions for the agent only (not shown in the feed). */
+  onUserMessage(to: string, text: string, by?: string, note?: string): void {
     const id = to === 'all' ? LEAD : to;
     const a = this.fm.agent(id);
     if (!a) return;
@@ -1007,9 +1010,14 @@ export class ClaudeBackend implements Backend {
     if (this.running.has(id) || this.pausedJobs.has(id)) return;
     // every unread message from the user to this agent goes into one follow-up
     const mine = this.fm.bus.inbox(id).filter((m) => m.from === 'user' && (m.to === id || (to === 'all' && m.to === 'all')));
-    const body = mine.length ? mine.map((m) => m.text).join('\n\n') : text;
+    const msgs = mine.length ? mine.map((m) => ({ by: m.by, text: m.text })) : [{ by, text }];
+    const body = msgs.map((m) => m.text).join('\n\n');
+    // several players may have written: name each one
+    const senders = [...new Set(msgs.map((m) => who(m.by)))];
+    const said = senders.length === 1 ? `Message from ${senders[0]}: ${body}` : `Messages from the user:\n${msgs.map((m) => `- ${who(m.by)}: ${m.text}`).join('\n')}`;
+    const lastBy = msgs[msgs.length - 1]!.by;
     const consume = () => this.fm.bus.markRead(id, mine.map((m) => m.id));
-    const prompt = `Message from ${userName()}: ${body}\n\n${note ? `${note}\n\n` : ''}Respond briefly with send_message(to "user") and act on it if needed (lead: create or update tasks; worker: adjust your work).`;
+    const prompt = `${said}\n\n${note ? `${note}\n\n` : ''}Respond briefly with send_message(to "user") and act on it if needed (lead: create or update tasks; worker: adjust your work).`;
     if (id === LEAD) {
       const goal = this.fm.currentGoal();
       if (!goal) {
@@ -1025,11 +1033,12 @@ export class ClaudeBackend implements Backend {
     consume();
     if (!t) {
       this.fm.bus.send(id, 'user', 'I am not on a task right now - Marlow will pick that up.');
-      this.fm.bus.send('user', LEAD, `(for ${this.fm.nameOf(id)}) ${body}`);
+      this.fm.bus.send('user', LEAD, `(for ${this.fm.nameOf(id)}) ${body}`, lastBy);
       const name = this.fm.nameOf(id);
       this.onUserMessage(
         LEAD,
         `(originally for ${name}) ${body}`,
+        lastBy,
         `${name} is not on a task, and workers only read messages while they work on one. If this needs ${name} to do something, create a task for it with create_task (assignee "${id}"); a send_message alone will not reach ${name}.`,
       );
       return;
@@ -1055,7 +1064,7 @@ export class ClaudeBackend implements Backend {
             resumed: true,
             ...(t ? { taskId: t.id } : inf?.taskId ? { taskId: inf.taskId } : {}),
             ...(goalId ? { goalId } : {}),
-            prompt: `Earlier you asked ${userName()}: "${d.question}". ${userName()} answered: ${ans}. (Your ask_user call was interrupted by an orchestrator restart.) Continue.`,
+            prompt: `Earlier you asked the user: "${d.question}". ${Who(d.answer?.by)} answered: ${ans}. (Your ask_user call was interrupted by an orchestrator restart.) Continue.`,
           });
         }
       }
@@ -1075,7 +1084,7 @@ export class ClaudeBackend implements Backend {
         }
         this.tick();
       } else if (d.answer?.option === 'Request changes') {
-        this.sendBackToWorker(t.id, `${userName()} reviewed ${t.id} and requested changes:\n${d.answer.text ?? '(no details given - ask_user if unclear)'}\n\nMake the changes, re-run the tests, then update_task("${t.id}", status "review", summary).`);
+        this.sendBackToWorker(t.id, `${Who(d.answer?.by)} reviewed ${t.id} and requested changes:\n${d.answer.text ?? '(no details given - ask_user if unclear)'}\n\nMake the changes, re-run the tests, then update_task("${t.id}", status "review", summary).`);
       } else if (d.answer?.option === 'Reject') {
         if (t.assignee && this.fm.agent(t.assignee)?.taskId === t.id) this.fm.setAgent(t.assignee, { state: 'idle', station: 'lounge', activity: `${t.id} rejected`, taskId: null, worktree: null });
         this.tick();
@@ -1083,12 +1092,12 @@ export class ClaudeBackend implements Backend {
     }
   }
 
-  onMergeConflict(task: Task, info: { base: string; branch: string; files: string[]; reason: string }): boolean {
+  onMergeConflict(task: Task, info: { base: string; branch: string; files: string[]; reason: string }, by?: string): boolean {
     if (!task.assignee || this.isStopped(task.assignee)) return false; // the user decides (decision stays open)
     const files = info.files.length ? info.files.join(', ') : '(see git status)';
     this.sendBackToWorker(
       task.id,
-      `${userName()} approved merging ${task.id}, but ${info.branch} now conflicts with ${info.base} (other work was merged into ${info.base} after you started) in: ${files}.\n` +
+      `${Who(by)} approved merging ${task.id}, but ${info.branch} now conflicts with ${info.base} (other work was merged into ${info.base} after you started) in: ${files}.\n` +
         `In your worktree run \`git merge ${info.base}\`, resolve every conflict so that both sides' changes are kept, run the tests, and commit the merge (git commit --no-edit). ` +
         `Do not rebase, reset or check out other branches. Then update_task("${task.id}", status "review", summary).`,
     );
@@ -1115,10 +1124,12 @@ export class ClaudeBackend implements Backend {
     for (const d of this.fm.decisions.open().filter((x) => x.agentId === agentId && x.kind !== 'merge')) this.fm.decisions.cancel(d.id, why);
   }
 
-  async onAgentAction(agentId: string, action: 'pause' | 'resume' | 'stop' | 'spawn'): Promise<void> {
+  async onAgentAction(agentId: string, action: 'pause' | 'resume' | 'stop' | 'spawn', _arg?: string, by?: string): Promise<void> {
     const r = this.running.get(agentId);
     const name = this.fm.nameOf(agentId);
     if (action === 'pause') {
+      if (by) this.pausedBy.set(agentId, by);
+      else this.pausedBy.delete(agentId);
       if (r) this.abortTurn(r, 'pause');
       this.fm.setAgent(agentId, { state: 'idle', activity: 'paused' });
     } else if (action === 'resume' || action === 'spawn') {

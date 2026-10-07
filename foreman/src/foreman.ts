@@ -29,7 +29,7 @@ import type {
 import { RepoError, RepoManager } from './repos.js';
 import { Store } from './store.js';
 import { TaskError, TaskGraph } from './taskgraph.js';
-import { setUserName, userName } from './user.js';
+import { cleanName, configuredUserName, setUserName, userName, who, Who } from './user.js';
 import { truncate } from './util/text.js';
 
 export interface Backend {
@@ -38,7 +38,8 @@ export interface Backend {
   start(): Promise<void>;
   stop(): Promise<void>;
   submitGoal(goal: Goal): Promise<void>;
-  onUserMessage(to: string, text: string): void;
+  /** `by`: the player who sent it (undefined: a client without a player). */
+  onUserMessage(to: string, text: string, by?: string): void;
   /** After a decision was answered and its side effects (merge etc.) applied. */
   onDecisionSettled(d: Decision): void;
   /**
@@ -46,12 +47,17 @@ export interface Backend {
    * the backend sent the task back to its worker to merge the base and resolve it; false (or no
    * method) leaves the merge decision open with the reason, for the user to handle.
    */
-  onMergeConflict?(task: Task, info: { base: string; branch: string; files: string[]; reason: string }): boolean;
-  onTaskAction(task: Task, action: 'reassign' | 'cancel' | 'retry' | 'prioritize', arg?: string): void;
-  onAgentAction(agentId: string, action: 'pause' | 'resume' | 'stop' | 'spawn', arg?: string): Promise<void> | void;
+  onMergeConflict?(task: Task, info: { base: string; branch: string; files: string[]; reason: string }, by?: string): boolean;
+  onTaskAction(task: Task, action: 'reassign' | 'cancel' | 'retry' | 'prioritize', arg?: string, by?: string): void;
+  onAgentAction(agentId: string, action: 'pause' | 'resume' | 'stop' | 'spawn', arg?: string, by?: string): Promise<void> | void;
 }
 
 export type Reply = (msg: Outbound) => void;
+
+/** Who sent an intent: the player on that connection (see `hello.player`), if any. */
+export interface Sender {
+  player?: string;
+}
 
 export class ClientError extends Error {}
 
@@ -103,7 +109,8 @@ export class Foreman {
     this.cast = cast;
     this.log.debug(`cast from ${source}`);
     setUserName(opts.config.userName);
-    this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', userName: userName() };
+    const named = configuredUserName();
+    this.status = { version: FOREMAN_VERSION, backend: opts.config.backend, auth: opts.config.backend === 'sim' ? 'ok' : 'unknown', ...(named ? { userName: named } : {}) };
     if (opts.config.backend === 'sim') this.status.message = 'Simulated team (sim backend)';
     this.initRoster();
     this.decisions.onCreated((d) => this.onDecisionCreated(d));
@@ -182,7 +189,7 @@ export class Foreman {
   }
 
   nameOf(id: string): string {
-    if (id === 'user') return `${userName()}`;
+    if (id === 'user') return userName();
     return this.agent(id)?.name ?? id;
   }
 
@@ -273,14 +280,15 @@ export class Foreman {
     return this.store.data.goals.find((g) => g.id === id);
   }
 
-  createGoal(text: string, repoId?: string): Goal {
+  createGoal(text: string, repoId?: string, by?: string): Goal {
     const now = this.ctx.now();
     const goal: Goal = { id: this.store.nextId('g'), text: text.trim(), progress: 0, status: 'planning', createdAt: now, updatedAt: now };
     if (repoId) goal.repoId = repoId;
+    if (by) goal.by = by;
     this.store.data.goals.push(goal);
     this.store.markDirty();
     this.emit({ type: 'goal.upsert', goal: { ...goal } });
-    this.bus.feed('goal', `New goal: ${goal.text}`, { agentId: 'user' });
+    this.bus.feed('goal', `New goal: ${goal.text}`, { agentId: 'user', by });
     return goal;
   }
 
@@ -363,17 +371,17 @@ export class Foreman {
     this.emit(m);
   }
 
-  /** Answer a decision, run kind-specific side effects, then wake the waiting agent. */
-  async answerDecision(id: string, option?: string | number, text?: string): Promise<Decision> {
+  /** Answer a decision (`by`: the player answering), run kind-specific side effects, then wake the waiting agent. */
+  async answerDecision(id: string, option?: string | number, text?: string, by?: string): Promise<Decision> {
     let d: Decision;
     try {
-      d = this.decisions.answer(id, option, text);
+      d = this.decisions.answer(id, option, text, by);
     } catch (e) {
       if (e instanceof DecisionError) throw new ClientError(e.message);
       throw e;
     }
     const answerText = [d.answer?.option, d.answer?.text].filter(Boolean).join(' — ');
-    this.bus.feed('decision', `${userName()} answered ${this.nameOf(d.agentId)}: ${answerText}`, { agentId: 'user', to: d.agentId });
+    this.bus.feed('decision', `${Who(by)} answered ${this.nameOf(d.agentId)}: ${answerText}`, { agentId: 'user', to: d.agentId, by });
     if (d.kind === 'merge') await this.applyMergeAnswer(d);
     if (d.status === 'answered' || d.status === 'cancelled') {
       this.decisions.settle(d.id);
@@ -412,7 +420,7 @@ export class Foreman {
           const info = { base: wt?.base ?? 'main', branch: wt?.branch ?? d.worktree, files: e.files, reason };
           let handled = false;
           try {
-            handled = this.backend.onMergeConflict(task, info);
+            handled = this.backend.onMergeConflict(task, info, d.answer?.by);
           } catch (err) {
             this.log.error(`backend.onMergeConflict: ${(err as Error).message}`);
           }
@@ -482,13 +490,13 @@ export class Foreman {
 
   // ---- inbound ------------------------------------------------------------------------------
 
-  /** Apply a client intent. `reply` sends to the originating client only. */
-  async handle(msg: ClientMessage, reply: Reply): Promise<void> {
+  /** Apply a client intent. `reply` sends to the originating client only; `from` names its sender. */
+  async handle(msg: ClientMessage, reply: Reply, from: Sender = {}): Promise<void> {
     const ack = (ok: boolean, extra: { error?: string; result?: Record<string, unknown> } = {}) => {
       if (msg.id) reply({ type: 'ack', re: msg.id, ok, ...extra });
     };
     try {
-      const result = await this.dispatch(msg, reply);
+      const result = await this.dispatch(msg, reply, cleanName(from.player));
       ack(true, result ? { result } : {});
     } catch (e) {
       const known = e instanceof ClientError || e instanceof TaskError || e instanceof RepoError || e instanceof DecisionError || e instanceof MemoryError;
@@ -499,28 +507,28 @@ export class Foreman {
     }
   }
 
-  private async dispatch(msg: ClientMessage, reply: Reply): Promise<Record<string, unknown> | undefined> {
+  private async dispatch(msg: ClientMessage, reply: Reply, by: string | undefined): Promise<Record<string, unknown> | undefined> {
     switch (msg.type) {
       case 'hello':
         reply(this.snapshot());
         return undefined;
       case 'goal.submit':
-        return { goalId: (await this.submitGoal(msg.text, msg.repoId)).id };
+        return { goalId: (await this.submitGoal(msg.text, msg.repoId, by)).id };
       case 'user.message': {
         const { to, text } = this.routeUserMessage(msg.to, msg.text);
-        this.bus.send('user', to, text);
-        this.backend?.onUserMessage(to, text);
+        this.bus.send('user', to, text, by);
+        this.backend?.onUserMessage(to, text, by);
         return { to };
       }
       case 'decision.answer': {
-        const d = await this.answerDecision(msg.decisionId, msg.option, msg.text);
+        const d = await this.answerDecision(msg.decisionId, msg.option, msg.text, by);
         return { decisionId: d.id, status: d.status };
       }
       case 'task.action':
-        this.taskAction(msg.taskId, msg.action, msg.arg);
+        this.taskAction(msg.taskId, msg.action, msg.arg, by);
         return { taskId: msg.taskId };
       case 'agent.action':
-        await this.agentAction(msg.agentId, msg.action, msg.arg);
+        await this.agentAction(msg.agentId, msg.action, msg.arg, by);
         return { agentId: msg.agentId };
       case 'diff.request': {
         try {
@@ -547,13 +555,13 @@ export class Foreman {
     }
   }
 
-  async submitGoal(text: string, repoId?: string): Promise<Goal> {
+  async submitGoal(text: string, repoId?: string, by?: string): Promise<Goal> {
     const repo = repoId ? this.repos.get(repoId) : this.repos.defaultRepo();
     if (repoId && !repo) throw new ClientError(`no repo "${repoId}"`);
     if (!repo) throw new ClientError('no repo connected yet — add one with /repo add (pick a folder) or /repo add <path>');
     if (repo.health && repo.health !== 'ok') throw new ClientError(`${repo.name} can't take goals: ${repoHealthText(repo)}`);
     if (!this.backend) throw new ClientError('no backend running');
-    const goal = this.createGoal(text, repo.id);
+    const goal = this.createGoal(text, repo.id, by);
     await this.backend.submitGoal(goal);
     return goal;
   }
@@ -577,24 +585,24 @@ export class Foreman {
     return { to: target, text: body };
   }
 
-  taskAction(taskId: string, action: 'reassign' | 'cancel' | 'retry' | 'prioritize', arg?: string): void {
+  taskAction(taskId: string, action: 'reassign' | 'cancel' | 'retry' | 'prioritize', arg?: string, by?: string): void {
     const t = this.tasks.require(taskId);
     switch (action) {
       case 'cancel':
         this.tasks.setStatus(t.id, 'cancelled', { force: true });
         for (const d of this.decisions.open().filter((d) => d.taskId === t.id)) this.decisions.cancel(d.id, 'task cancelled');
-        this.bus.feed('task', `Task ${t.id} cancelled by ${userName()}: ${t.title}`, { agentId: 'user' });
+        this.bus.feed('task', `Task ${t.id} cancelled by ${who(by)}: ${t.title}`, { agentId: 'user', by });
         break;
       case 'retry':
         this.tasks.update(t.id, { ci: 'unknown', blockedReason: null });
         this.tasks.setStatus(t.id, 'todo', { force: true });
-        this.bus.feed('task', `Task ${t.id} queued again: ${t.title}`, { agentId: 'user' });
+        this.bus.feed('task', `Task ${t.id} queued again: ${t.title}`, { agentId: 'user', by });
         break;
       case 'prioritize': {
         const top = Math.max(0, ...this.tasks.list().map((x) => x.priority));
         const p = arg !== undefined && arg !== '' && Number.isFinite(Number(arg)) ? Math.trunc(Number(arg)) : top + 1;
         this.tasks.update(t.id, { priority: p });
-        this.bus.feed('task', `Task ${t.id} priority -> ${p}`, { agentId: 'user' });
+        this.bus.feed('task', `Task ${t.id} priority -> ${p}`, { agentId: 'user', by });
         break;
       }
       case 'reassign': {
@@ -604,14 +612,14 @@ export class Foreman {
         if (this.agent(id)?.role === 'lead') throw new ClientError('tasks are assigned to workers, not the lead');
         this.tasks.update(t.id, { assignee: id });
         if (t.status === 'doing') this.tasks.setStatus(t.id, 'todo', { force: true });
-        this.bus.feed('task', `Task ${t.id} reassigned to ${this.nameOf(id)}`, { agentId: 'user' });
+        this.bus.feed('task', `Task ${t.id} reassigned to ${this.nameOf(id)}`, { agentId: 'user', by });
         break;
       }
     }
-    this.backend?.onTaskAction(this.tasks.require(taskId), action, arg);
+    this.backend?.onTaskAction(this.tasks.require(taskId), action, arg, by);
   }
 
-  async agentAction(agentId: string, action: 'pause' | 'resume' | 'stop' | 'spawn', arg?: string): Promise<void> {
+  async agentAction(agentId: string, action: 'pause' | 'resume' | 'stop' | 'spawn', arg?: string, by?: string): Promise<void> {
     const id = this.resolveAgentId(agentId);
     if (!id) throw new ClientError(`no agent named "${agentId}"`);
     if (action === 'pause') this.setAgent(id, { paused: true });
@@ -619,10 +627,10 @@ export class Foreman {
     if (action === 'spawn' && arg && !this.tasks.get(arg)) throw new ClientError(`no task "${arg}"`);
     if (action === 'spawn' && arg && this.agent(id)?.role === 'lead') throw new ClientError('tasks are assigned to workers, not the lead');
     if (action === 'spawn') this.setAgent(id, { active: true, paused: false });
-    this.bus.feed('system', `${this.nameOf(id)}: ${action}${arg ? ` ${arg}` : ''}`, { agentId: 'user' });
-    await this.backend?.onAgentAction(id, action, arg);
+    this.bus.feed('system', `${this.nameOf(id)}: ${action}${arg ? ` ${arg}` : ''}`, { agentId: 'user', by });
+    await this.backend?.onAgentAction(id, action, arg, by);
     // spawn @wren t3: on shift, and t3 is hers
-    if (action === 'spawn' && arg) this.taskAction(arg, 'reassign', id);
+    if (action === 'spawn' && arg) this.taskAction(arg, 'reassign', id, by);
   }
 
   // ---- lifecycle ----------------------------------------------------------------------------

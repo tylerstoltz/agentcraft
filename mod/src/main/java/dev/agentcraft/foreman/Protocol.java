@@ -174,7 +174,8 @@ public final class Protocol {
 		}
 	}
 
-	public record DecisionAnswer(@Nullable String option, @Nullable String text, long ts) {
+	/** {@code by}: Minecraft name of the player who answered (null: a client without a player). */
+	public record DecisionAnswer(@Nullable String option, @Nullable String text, @Nullable String by, long ts) {
 	}
 
 	public record Decision(String id, String agentId, DecisionKind kind, String question, List<String> options, @Nullable String context,
@@ -233,14 +234,17 @@ public final class Protocol {
 		}
 	}
 
-	public record Goal(String id, String text, double progress, GoalStatus status, @Nullable String repoId, long createdAt, long updatedAt) {
+	/** {@code by}: Minecraft name of the player who set it. */
+	public record Goal(String id, String text, double progress, GoalStatus status, @Nullable String repoId, @Nullable String by, long createdAt,
+		long updatedAt) {
 		public Goal {
 			text = text == null ? "" : text;
 			status = status == null ? GoalStatus.UNKNOWN : status;
 		}
 	}
 
-	public record FeedItem(long ts, FeedKind kind, String text, @Nullable String agentId, @Nullable String to) {
+	/** {@code by}: with agentId "user", the Minecraft name of the player who did it (null: a client without a player). */
+	public record FeedItem(long ts, FeedKind kind, String text, @Nullable String agentId, @Nullable String to, @Nullable String by) {
 		public FeedItem {
 			kind = kind == null ? FeedKind.UNKNOWN : kind;
 			text = text == null ? "" : text;

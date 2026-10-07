@@ -100,8 +100,8 @@ export const SERVER_EXAMPLES: Ex<ServerMessage> = {
     decisions: [decision],
     repos: [repo],
     memory: [memory],
-    goal: { id: 'g1', text: 'Add #tags to pocket-notes', progress: 0.39, status: 'active', repoId: 'demo-app', createdAt: ts, updatedAt: ts + 120_000 },
-    goals: [{ id: 'g1', text: 'Add #tags to pocket-notes', progress: 0.39, status: 'active', repoId: 'demo-app', createdAt: ts, updatedAt: ts + 120_000 }],
+    goal: { id: 'g1', text: 'Add #tags to pocket-notes', progress: 0.39, status: 'active', repoId: 'demo-app', by: 'Steve', createdAt: ts, updatedAt: ts + 120_000 },
+    goals: [{ id: 'g1', text: 'Add #tags to pocket-notes', progress: 0.39, status: 'active', repoId: 'demo-app', by: 'Steve', createdAt: ts, updatedAt: ts + 120_000 }],
     feed: [{ ts: ts + 5_000, kind: 'plan', text: 'Marlow planned the goal into 9 tasks', agentId: 'marlow' }],
     logs: [{ agentId: 'kit', entries: [{ ts: ts + 90_000, kind: 'tool', text: 'Edit src/tags.ts' }] }],
   },
@@ -122,7 +122,7 @@ export const SERVER_EXAMPLES: Ex<ServerMessage> = {
   'repo.upsert': { v: 1, type: 'repo.upsert', repo },
   'repo.removed': { v: 1, type: 'repo.removed', repoId: 'old-notes' },
   'memory.upsert': { v: 1, type: 'memory.upsert', entry: memory },
-  'goal.upsert': { v: 1, type: 'goal.upsert', goal: { id: 'g1', text: 'Add #tags to pocket-notes', progress: 0.56, status: 'active', repoId: 'demo-app', createdAt: ts, updatedAt: ts + 200_000 } },
+  'goal.upsert': { v: 1, type: 'goal.upsert', goal: { id: 'g1', text: 'Add #tags to pocket-notes', progress: 0.56, status: 'active', repoId: 'demo-app', by: 'Steve', createdAt: ts, updatedAt: ts + 200_000 } },
   'feed.add': { v: 1, type: 'feed.add', item: { ts: ts + 210_000, kind: 'merge', text: 'Merged agentcraft/kit/t2-tag-parser-module into main (7cf1999, 2 files)', agentId: 'marlow' } },
   diff: {
     v: 1,
@@ -186,7 +186,7 @@ export const SERVER_EXAMPLES: Ex<ServerMessage> = {
 };
 
 export const CLIENT_EXAMPLES: Ex<ClientMessage> = {
-  hello: { v: 1, type: 'hello', modVersion: '0.1.0', protocol: 1, client: 'mod' },
+  hello: { v: 1, type: 'hello', modVersion: '0.1.0', protocol: 1, client: 'mod', player: 'Steve' },
   'goal.submit': { v: 1, type: 'goal.submit', id: 'c12', text: 'Add a --version flag to the CLI', repoId: 'demo-app' },
   'user.message': { v: 1, type: 'user.message', id: 'c13', to: 'all', text: '@kit please also cover #tags with emoji' },
   'decision.answer': { v: 1, type: 'decision.answer', id: 'c14', decisionId: 'd2', option: 'Request changes', text: 'Export TAG_RE so format.ts can reuse it.' },

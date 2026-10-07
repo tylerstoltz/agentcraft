@@ -15,7 +15,7 @@ import { run } from '../../util/proc.js';
 import { truncate } from '../../util/text.js';
 import { toolActivity } from '../activity.js';
 import { appendReviewNote, applyPatch, miniDiff, type Patch } from './edits.js';
-import { userName } from '../../user.js';
+import { Who } from '../../user.js';
 
 export class Stopped extends Error {
   constructor() {
@@ -476,7 +476,7 @@ export class SimDirector {
         return 'merged';
       }
       if (d.answer?.option === 'Reject' || d.status === 'cancelled') {
-        this.say('marlow', 'all', `${userName()} rejected ${t.id}. I'll stop the work that depends on it.`);
+        this.say('marlow', 'all', `${Who(d.answer?.by)} rejected ${t.id}. I'll stop the work that depends on it.`);
         this.act(worker, 'idle', 'lounge', `${t.id} rejected`);
         this.fm.setAgent(worker, { taskId: null, worktree: null });
         this.vars.rejected = true;
@@ -485,7 +485,7 @@ export class SimDirector {
       }
       // Request changes
       const note = d.answer?.text ?? 'please tidy this up';
-      this.say('marlow', worker, `${userName()} asked for changes on ${t.id}: "${note}"`);
+      this.say('marlow', worker, `${Who(d.answer?.by)} asked for changes on ${t.id}: "${note}"`);
       await this.sleep(800);
       const wt = this.wt(taskKey);
       await this.think(worker, `Addressing review feedback: ${note}`, 'desk');

@@ -938,14 +938,16 @@ public class ConsoleScreen extends Screen {
 			}
 		} else {
 			FeedKind kind = l.kind() == null ? FeedKind.UNKNOWN : l.kind();
-			String user = UiBits.userName();
+			// a user action names its player in the text ("Steve answered Kit"); shown as "You" when it was yours
+			String user = UiBits.userPrefix(l.by());
+			String you = UiBits.userLabel(l.by());
 			if (agent != null && UiBits.isUser(agent) && !body.startsWith(user)) {
-				// the Foreman's echo of your own actions ("Kit: pause") reads as "You paused Kit"
+				// the Foreman's echo of a user action ("Kit: pause") reads as "You paused Kit"
 				java.util.regex.Matcher am = AGENT_ACTION.matcher(body);
 				if (am.matches()) {
 					body = pastTense(am.group(2)) + " " + am.group(1) + am.group(3);
 				}
-				lead.add(new Run("You", UiStyle.CLAY_DARK));
+				lead.add(new Run(you, UiStyle.CLAY_DARK));
 				lead.add(new Run(" ", ink));
 				agent = null;
 				stripe = UiStyle.CLAY;
@@ -964,11 +966,11 @@ public class ConsoleScreen extends Screen {
 				}
 				lead.add(new Run("  ", ink));
 			} else if (name != null && body.startsWith(name)) {
-				lead.add(new Run(name, UiBits.nameOnLight(agent)));
+				lead.add(new Run(UiBits.isUser(agent) ? you : name, UiBits.nameOnLight(agent)));
 				body = body.substring(name.length());
 				bodyColor = muted;
 			} else if (name != null && body.startsWith(user)) {
-				lead.add(new Run(user, UiStyle.CLAY_DARK));
+				lead.add(new Run(you, UiStyle.CLAY_DARK));
 				body = body.substring(user.length());
 				bodyColor = muted;
 			} else {
@@ -991,13 +993,13 @@ public class ConsoleScreen extends Screen {
 				case MERGE -> bodyColor = UiBits.okText();
 				case GOAL, USER -> {
 					// goal lines without an author are the Foreman's ("Goal complete: ...", "Goal
-					// closed: ..."), not yours; only a goal you typed (agentId "user", handled above,
-					// or an older Foreman's bare "New goal: ...") reads as "You"
+					// closed: ..."), not a player's; only a goal a player typed (agentId "user", handled
+					// above, or an older Foreman's bare "New goal: ...") reads as "You" / their name
 					boolean yours = kind == FeedKind.USER || body.startsWith("New goal");
 					if (lead.isEmpty() && !yours) {
 						bodyColor = body.startsWith("Goal complete") ? UiBits.okText() : ink;
 					} else if (lead.isEmpty()) {
-						lead.add(new Run("You", UiStyle.CLAY_DARK));
+						lead.add(new Run(you, UiStyle.CLAY_DARK));
 						if (kind == FeedKind.USER && l.to() != null && !UiBits.isUser(l.to())) {
 							lead.add(new Run(" \u2192 ", muted));
 							lead.add(new Run(l.to().equals("all") ? "everyone" : UiBits.agentName(l.to()), UiBits.nameOnLight(l.to())));

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { readJson } from './util/fsx.js';
 import { parseMcpServers, readMcpConfigFile, type ExternalMcpServer } from './mcp.js';
 import type { BackendName } from './protocol.js';
-import { defaultUserName } from './user.js';
+import { cleanName } from './user.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 
 export const FOREMAN_VERSION = '0.1.0';
@@ -57,8 +57,11 @@ export interface SimConfig {
 
 export interface Config {
   backend: BackendName;
-  /** the person the team works for (prompts, feed, UI); default: the OS user name */
-  userName: string;
+  /**
+   * how the agents address the user when no player name is known (CLI tools, prompts); unset:
+   * "the user". Players in the game are always named by their Minecraft name.
+   */
+  userName?: string;
   home: string;
   profile: string;
   /** profile directory: <home>/<profile> */
@@ -208,7 +211,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
   const model = str(flags.model);
   const cfg: Config = {
     backend,
-    userName: (str(pick('user-name', 'AGENTCRAFT_USER_NAME')) ?? str(file.userName))?.trim().slice(0, 40) || defaultUserName(),
+    userName: cleanName(str(pick('user-name', 'AGENTCRAFT_USER_NAME')) ?? str(file.userName)),
     home,
     profile,
     dataDir: path.join(home, profile),
@@ -266,8 +269,8 @@ usage: npm run start -- [options]
   --goal "<text>"          submit a goal right away
   --port <n>               WebSocket port (default 7878, env AGENTCRAFT_PORT)
   --home <dir>             state root (default ~/.agentcraft, env AGENTCRAFT_HOME)
-  --user-name <name>       your name, as the agents address you (default: your OS user name,
-                           env AGENTCRAFT_USER_NAME, config.json "userName")
+  --user-name <name>       how the agents address you outside the game (default: "the user"; players
+                           are named by their Minecraft name; env AGENTCRAFT_USER_NAME, config.json "userName")
   --profile <name>         state profile under home (default: backend name)
   --reset                  wipe this profile's state first (sim: also recreates the demo repo)
   --notify / --no-notify   desktop notification when a decision waits (default: on for claude, off for sim)

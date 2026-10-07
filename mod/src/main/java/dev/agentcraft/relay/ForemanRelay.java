@@ -32,7 +32,8 @@ import org.jspecify.annotations.Nullable;
  * Server side of the Foreman relay (see {@link RelayPayloads}). For each modded player that asks, the
  * server opens its own WebSocket to the Foreman on {@code ws://127.0.0.1:${AGENTCRAFT_PORT:-7878}} and
  * pipes text both ways. The Foreman therefore stays loopback-only next to the server (Docker:
- * {@code network_mode: host}) and sees one ordinary client per player.
+ * {@code network_mode: host}) and sees one ordinary client per player; each pipe's {@code hello}
+ * carries that player's name ({@code player}), so the agents know who sent what.
  *
  * <p>Watching ({@code hello}, {@code diff.request}) is open to everyone unless
  * {@code AGENTCRAFT_RELAY_WATCH=trusted}, which refuses the relay itself to untrusted players. Every
@@ -179,6 +180,9 @@ public final class ForemanRelay {
 			}
 			if (type.equals("hello")) {
 				msg.addProperty("client", "mc:" + name); // the Foreman log names the player
+				// the agents name this player as the sender of everything on this pipe: the
+				// authenticated name, never what the client claims
+				msg.addProperty("player", name);
 			}
 		} else {
 			if (!trusted) {

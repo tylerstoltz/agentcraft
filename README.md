@@ -218,9 +218,10 @@ the first time; in an older world, rebuild it with `/agentcraft hq`.
 > running AgentCraft yourself. To make it permanent for yourself, put
 > `{"claude": {"useClaudeLogin": true}}` in `~/.agentcraft/config.json`.
 
-**Your name.** The agents call you by your OS user name. Change it with
-`-ForemanArgs '--user-name','Sam'`, `AGENTCRAFT_USER_NAME`, or `{"userName": "Sam"}` in
-`~/.agentcraft/config.json`.
+**Your name.** The agents call you by your Minecraft name; with friends on a server, each player
+is named for their own goals, messages and answers. Clients outside the game (CLI tools) show up as
+"the user", or a name you set with `-ForemanArgs '--user-name','Sam'`, `AGENTCRAFT_USER_NAME`, or
+`{"userName": "Sam"}` in `~/.agentcraft/config.json`. Your computer login is never used.
 
 **Your world.** By default the studio sits in a calm creative meadow. Environment variables set
 in the terminal you launch from create a different world instead. Put them in front of the launch

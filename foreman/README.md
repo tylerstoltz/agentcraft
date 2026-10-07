@@ -74,7 +74,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--backend sim\|claude` / `AGENTCRAFT_BACKEND` | `claude` | |
 | `--port` / `AGENTCRAFT_PORT` | `7878` | WebSocket port (127.0.0.1 only) |
 | `--home` / `AGENTCRAFT_HOME` | `~/.agentcraft` | state root |
-| `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
+| `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | unset ("the user") | how the agents address the user in general and for clients without a player (CLI tools); sent to the mod in `foreman.status`. Players are always named by their Minecraft name (`hello.player`, stamped by the server's relay); the OS account name is never used |
 | `--profile` | backend name | state lives in `<home>/<profile>` |
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
 | `--goal "<text>"` | | submit a goal right away |

@@ -47,6 +47,8 @@ public final class ForemanFeature {
 		// Executor: the client thread. Minecraft.getInstance() is resolved lazily (it does not exist yet during init).
 		ForemanLink link = new ForemanLink(uri, modVersion, state, r -> Minecraft.getInstance().execute(r), enabled);
 		Foreman.install(state, link);
+		// the agents call you by your Minecraft name (on a server, the relay stamps it itself)
+		link.setPlayerName(() -> Minecraft.getInstance().getUser().getName());
 		// On a server with the relay, reach the Foreman through it; switch transport whenever we join or leave.
 		RelayConnector relay = new RelayConnector();
 		relay.install();

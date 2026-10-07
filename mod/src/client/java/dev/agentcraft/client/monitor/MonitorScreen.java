@@ -362,7 +362,7 @@ final class MonitorScreen {
 			who = a != null ? a.name() : id;
 			whoColor = st.name(id);
 		} else if ("user".equals(id) || f.kind() == dev.agentcraft.foreman.Protocol.FeedKind.USER) {
-			who = "You";
+			who = UiBits.userLabel(f.by());
 			whoColor = st.text();
 		}
 		int color = switch (f.kind()) {
@@ -380,8 +380,8 @@ final class MonitorScreen {
 			if (text.startsWith(":")) {
 				text = text.substring(1).stripLeading();
 			}
-		} else if (who.equals("You") && text.startsWith(UiBits.userName() + " ")) {
-			text = text.substring(UiBits.userName().length() + 1);
+		} else if (("user".equals(id) || f.kind() == dev.agentcraft.foreman.Protocol.FeedKind.USER) && text.startsWith(UiBits.userPrefix(f.by()) + " ")) {
+			text = text.substring(UiBits.userPrefix(f.by()).length() + 1);
 		}
 		int whoW = lead.isEmpty() ? 0 : font.width(lead + " ");
 		int indent = 8;

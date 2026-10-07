@@ -11,6 +11,11 @@ In every setup the **Foreman runs once, on the hosting machine**, next to your r
 need only the mod: their client reaches the Foreman through the Minecraft connection (the server's
 relay), so the Foreman stays bound to `127.0.0.1` and is never exposed to the network.
 
+The agents know each player by their **Minecraft name**: the server stamps the logged-in name on
+every relayed connection, so goals, messages, answers and merges are credited to whoever sent them
+("Alice answered Kit"), and everyone else's console shows that name where yours says "You". The
+host's computer login never reaches the agents.
+
 ## 1. The mod in your regular Minecraft launcher
 
 **Everyone who plays needs:** Minecraft: Java Edition 26.3, Fabric Loader 0.19.5 or newer, Fabric API

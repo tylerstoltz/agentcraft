@@ -107,6 +107,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | --- | --- | --- | --- |
 | `option` | string | no | the chosen option label (one of Decision.options) |
 | `text` | string | no | free-text answer / feedback |
+| `by` | string | no | Minecraft name of the player who answered (omitted: a client without a player) |
 | `ts` | integer | yes | epoch milliseconds |
 
 ### <a id="repo"></a>Repo
@@ -179,6 +180,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `progress` | number | yes |  |
 | `status` | `planning` \| `active` \| `done` \| `failed` \| `cancelled` | yes | planning (lead is planning) -> active -> done (every non-cancelled task merged/done); cancelled: every task was cancelled or rejected (back to active if the lead adds a task); failed: planning failed |
 | `repoId` | string | no |  |
+| `by` | string | no | Minecraft name of the player who set the goal |
 | `createdAt` | integer | yes | epoch milliseconds |
 | `updatedAt` | integer | yes | epoch milliseconds |
 
@@ -191,6 +193,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `text` | string | yes |  |
 | `agentId` | string | no | who it is about / from |
 | `to` | string | no | message recipient: agent id, "user" or "all" |
+| `by` | string | no | agentId "user": Minecraft name of the player who did it (omitted: a client without a player). The text names them too |
 
 ### <a id="foremanstatus"></a>ForemanStatus
 
@@ -204,7 +207,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `speed` | number | no | sim: speed multiplier |
 | `showcase` | boolean | no | sim: holding a static showcase state (`--showcase` or `--showcase late`) |
 | `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
-| `userName` | string | no | the person the team works for, as the agents address them (UI: "<name> answered") |
+| `userName` | string | no | the configured name (--user-name) the agents use for the user outside the game; omitted when unset. Players are named by `by` on goals, feed items and answers |
 
 ### <a id="agentlogs"></a>AgentLogs
 
@@ -378,6 +381,7 @@ Full state. Sent in reply to every `hello`; the mod rebuilds its view from it.
     "progress": 0.39,
     "status": "active",
     "repoId": "demo-app",
+    "by": "Steve",
     "createdAt": 1790850000000,
     "updatedAt": 1790850120000
   },
@@ -388,6 +392,7 @@ Full state. Sent in reply to every `hello`; the mod rebuilds its view from it.
       "progress": 0.39,
       "status": "active",
       "repoId": "demo-app",
+      "by": "Steve",
       "createdAt": 1790850000000,
       "updatedAt": 1790850120000
     }
@@ -674,6 +679,7 @@ Goal created or progress/status changed. Replace by `goal.id`; latest goal is cu
     "progress": 0.56,
     "status": "active",
     "repoId": "demo-app",
+    "by": "Steve",
     "createdAt": 1790850000000,
     "updatedAt": 1790850200000
   }
@@ -907,6 +913,7 @@ First message after connecting. The Foreman replies with `snapshot`, then stream
 | `modVersion` | string | yes |  |
 | `protocol` | 1 | yes |  |
 | `client` | string | no | "mod" \| "cli" \| ... (informational) |
+| `player` | string | no | Minecraft name of the player on this connection: what the agents call whoever sends its intents. On a multiplayer server the server sets it to the authenticated player (a client-sent value is replaced) |
 
 ```json
 {
@@ -914,7 +921,8 @@ First message after connecting. The Foreman replies with `snapshot`, then stream
   "type": "hello",
   "modVersion": "0.1.0",
   "protocol": 1,
-  "client": "mod"
+  "client": "mod",
+  "player": "Steve"
 }
 ```
 

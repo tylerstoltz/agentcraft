@@ -5,7 +5,7 @@ import type { Decision, Goal, Task } from '../../protocol.js';
 import { truncate } from '../../util/text.js';
 import { SimDirector, Stopped, type SimState } from './director.js';
 import { BEATS, DEFAULT_SIM_GOAL } from './scenario.js';
-import { userName } from '../../user.js';
+import { who, Who } from '../../user.js';
 
 const CANNED_REPLIES = [
   'Got it - noted.',
@@ -142,12 +142,12 @@ export class SimBackend implements Backend {
     await this.running?.catch(() => undefined);
   }
 
-  onUserMessage(to: string, text: string): void {
+  onUserMessage(to: string, text: string, by?: string): void {
     const agents = to === 'all' ? ['marlow'] : [to];
     for (const id of agents) {
       const a = this.fm.agent(id);
       if (!a) continue;
-      this.fm.agentLog(id, 'text', `Message from ${userName()}: ${text}`);
+      this.fm.agentLog(id, 'text', `Message from ${who(by)}: ${text}`);
       const reply = CANNED_REPLIES[this.replyCount++ % CANNED_REPLIES.length]!;
       setTimeout(() => this.fm.bus.send(id, 'user', reply), 1200 / this.cfg.speed).unref?.();
     }
@@ -157,12 +157,12 @@ export class SimBackend implements Backend {
     // the scenario awaits decisions itself (DecisionQueue.wait)
   }
 
-  onTaskAction(task: Task, action: string): void {
-    this.fm.agentLog('marlow', 'text', `${userName()}: ${action} ${task.id} (${task.title}). The sim script keeps its own course.`);
+  onTaskAction(task: Task, action: string, _arg?: string, by?: string): void {
+    this.fm.agentLog('marlow', 'text', `${Who(by)}: ${action} ${task.id} (${task.title}). The sim script keeps its own course.`);
   }
 
-  onAgentAction(agentId: string, action: string): void {
-    if (action === 'pause') this.fm.agentLog(agentId, 'text', `Paused by ${userName()}.`);
+  onAgentAction(agentId: string, action: string, _arg?: string, by?: string): void {
+    if (action === 'pause') this.fm.agentLog(agentId, 'text', `Paused by ${who(by)}.`);
     if (action === 'resume' || action === 'spawn') {
       const a = this.fm.agent(agentId);
       if (a && !a.active) this.fm.setAgent(agentId, { active: true, activity: 'back on shift' });
@@ -171,7 +171,7 @@ export class SimBackend implements Backend {
     if (action === 'stop') {
       // off shift: the scripted team waits for this agent's next step until /resume
       this.fm.setAgent(agentId, { active: false, state: 'idle', station: 'lounge', activity: 'stopped - off shift' });
-      this.fm.agentLog(agentId, 'text', `Stopped by ${userName()} (off shift). The script waits for /resume.`);
+      this.fm.agentLog(agentId, 'text', `Stopped by ${who(by)} (off shift). The script waits for /resume.`);
     }
   }
 }

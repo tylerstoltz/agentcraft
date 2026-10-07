@@ -38,6 +38,8 @@ interface Client {
   id: number;
   hello: boolean;
   name: string;
+  /** the player on this connection (hello.player), named as the sender of its intents */
+  player?: string;
   alive: boolean;
 }
 
@@ -129,12 +131,13 @@ export class ForemanServer {
       if (msg.type === 'hello') {
         client.hello = true;
         client.name = `${msg.client ?? 'client'}#${client.id} (${msg.modVersion})`;
+        client.player = msg.player?.trim() || undefined;
         this.opts.log.info(`hello from ${client.name}`);
       } else if (!client.hello) {
         // be lenient: treat the first intent as an implicit hello so tools can fire-and-forget
         client.hello = true;
       }
-      void this.foreman.handle(msg, (out) => this.send(client, out));
+      void this.foreman.handle(msg, (out) => this.send(client, out), { player: client.player });
     });
     ws.on('close', () => {
       this.clients.delete(client);

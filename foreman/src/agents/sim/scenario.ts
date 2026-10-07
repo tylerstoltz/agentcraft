@@ -14,7 +14,7 @@ import type { ShowcaseCheckpoint } from '../../config.js';
 import { PERMISSION_OPTIONS } from '../../protocol.js';
 import type { SimDirector } from './director.js';
 import * as E from './edits.js';
-import { userName } from '../../user.js';
+import { userName, who, Who } from '../../user.js';
 
 export interface Beat {
   name: string;
@@ -41,10 +41,10 @@ export const BEATS: Beat[] = [
       for (const a of d.fm.agents()) d.fm.setAgent(a.id, { active: true, paused: false });
       const goal = d.fm.goal(d.goalId)!;
       d.act('marlow', 'thinking', 'meeting', 'reading the goal');
-      d.log('marlow', 'text', `New goal from ${userName()}: ${goal.text}`);
+      d.log('marlow', 'text', `New goal from ${who(goal.by)}: ${goal.text}`);
       for (const w of ['juniper', 'kit', 'wren', 'rowan', 'tove']) d.act(w, 'idle', 'meeting', 'listening to Marlow');
       await d.sleep(1200);
-      d.say('marlow', 'all', `Morning, team. New goal from ${userName()}: ${goal.text}. Give me a minute with the repo.`);
+      d.say('marlow', 'all', `Morning, team. New goal from ${who(goal.by)}: ${goal.text}. Give me a minute with the repo.`);
       await d.sleep(1500);
       for (const w of ['juniper', 'kit', 'wren', 'rowan', 'tove']) d.act(w, 'idle', 'lounge', 'waiting for the plan');
     },
@@ -208,7 +208,7 @@ Rowan reviews every branch; then it goes to ${userName()} as a merge decision. N
         d.log('wren', 'result', '(sim) install skipped - the demo stays offline');
         d.log('wren', 'text', 'Thanks! On reflection plain ANSI escapes are 4 lines; keeping pocket-notes zero-dependency.');
       } else {
-        d.log('wren', 'result', `Permission denied by ${userName()}`);
+        d.log('wren', 'result', `Permission denied by ${who(p.answer?.by)}`);
         d.log('wren', 'text', 'No problem - plain ANSI escapes it is, zero dependencies.');
       }
       d.memory('wren', 'shared', 'Decisions', `# Decisions\n\n- Tag colors use plain ANSI escapes, no chalk (${allowed ? 'install allowed, not needed' : 'install denied'}).`, 'append', 'decisions');
@@ -306,7 +306,7 @@ Rowan reviews every branch; then it goes to ${userName()} as a merge decision. N
       const includeDone = q1IncludesDone(d);
       const answer = [q.answer?.option, q.answer?.text].filter(Boolean).join(' - ');
       d.act('marlow', 'thinking', 'meeting', 'relaying your answer');
-      d.say('marlow', 'juniper', includeDone ? `${userName()} says: count completed notes too.` : `${userName()} says: open notes only; \`notes tags --all\` includes completed ones.`);
+      d.say('marlow', 'juniper', includeDone ? `${Who(q.answer?.by)} says: count completed notes too.` : `${Who(q.answer?.by)} says: open notes only; \`notes tags --all\` includes completed ones.`);
       d.memory('marlow', 'shared', 'Decisions', `- \`notes tags\`: ${answer} (asked by Marlow).`, 'append', 'decisions');
       const jun = d.wt('t3');
       await d.patch('juniper', jun.path, E.t3CliTags(includeDone), 1200);
@@ -462,9 +462,9 @@ Rowan reviews every branch; then it goes to ${userName()} as a merge decision. N
         const close = q.answer?.option === q2Options(t7.id)[0] || (!q.answer?.option && q.status === 'answered');
         if (close) {
           // cancelled tasks do not count towards the goal: the task graph completes it (100%)
-          d.setTask('t7', 'cancelled', { summary: `${userName()} publishes 0.3.0 by hand.` });
-          d.log('marlow', 'tool', `update_task ${t7.id} cancelled (${userName()} publishes)`);
-          d.say('marlow', 'all', `${userName()} will publish ${t7.id} by hand. That's the goal - thanks, team.`);
+          d.setTask('t7', 'cancelled', { summary: `${Who(q.answer?.by)} publishes 0.3.0 by hand.` });
+          d.log('marlow', 'tool', `update_task ${t7.id} cancelled (${who(q.answer?.by)} publishes)`);
+          d.say('marlow', 'all', `${Who(q.answer?.by)} will publish ${t7.id} by hand. That's the goal - thanks, team.`);
         } else {
           d.say('marlow', 'all', `${t7.id} stays on the wall for ${userName()}; the goal stays open until it is published.`);
         }

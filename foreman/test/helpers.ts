@@ -8,7 +8,7 @@ import { Foreman } from '../src/foreman.js';
 import { Notifier } from '../src/notifier.js';
 import type { Outbound } from '../src/protocol.js';
 
-/** The user name every test Foreman runs with (the default would be the OS account name). */
+/** The configured user name every test Foreman runs with (without one, prompts say "the user"). */
 export const TEST_USER = 'Alex';
 
 export function tempDir(prefix = 'ac-test-'): string {

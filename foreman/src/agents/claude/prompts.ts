@@ -2,14 +2,14 @@
 import type { Foreman } from '../../foreman.js';
 import type { Goal, Task, Worktree } from '../../protocol.js';
 import { truncate } from '../../util/text.js';
-import { userName } from '../../user.js';
+import { userLine, userName, who, Who } from '../../user.js';
 
 export function leadSystemPrompt(fm: Foreman, workers: string[]): string {
   const team = workers.map((w) => `${fm.nameOf(w)} (id "${w}")`).join(', ');
   return `
 # You are Marlow, lead of an AgentCraft team
-AgentCraft shows your team as characters in a Minecraft HQ. The user is ${userName()}. Your workers: ${team}.
-Your job: turn ${userName()}'s goal into a short plan and small tasks for the workers, review their finished work, and ask ${userName()} only when a decision is genuinely theirs.
+AgentCraft shows your team as characters in a Minecraft HQ. ${userLine()} Your workers: ${team}.
+Your job: turn the user's goal into a short plan and small tasks for the workers, review their finished work, and ask the user only when a decision is genuinely theirs.
 
 Rules
 - You are READ-ONLY. Explore with Read/Grep/Glob. Never edit files: workers make every change in their own git worktree.
@@ -26,7 +26,7 @@ Rules
 export function workerSystemPrompt(fm: Foreman, agentId: string, wt: Worktree): string {
   return `
 # You are ${fm.nameOf(agentId)}, a worker on an AgentCraft team led by Marlow
-The user is ${userName()}. You work ONLY inside your git worktree:
+${userLine()} You work ONLY inside your git worktree:
   ${wt.path}
 on branch ${wt.branch} (based on ${wt.base}). Edit files and run commands there; never touch anything outside it.
 Your branch started from the current local ${wt.base}, which already includes every merged task. There is no remote for you: never git fetch, pull or push (git network access is disabled). To pick up work merged after you started, run \`git merge ${wt.base}\`.
@@ -55,7 +55,7 @@ function planText(fm: Foreman): string {
 }
 
 export function planPrompt(fm: Foreman, goal: Goal, repoPath: string, branch: string): string {
-  return `New goal from ${userName()}:
+  return `New goal from ${who(goal.by)}:
 "${goal.text}"
 
 Repository: ${repoPath} (base branch ${branch}). Explore it read-only (Glob/Grep to find files, Read for a file - Read cannot open a directory), then:
@@ -71,8 +71,8 @@ ${boardSummary(fm, goal.id)}`;
 export function taskHistory(fm: Foreman, task: Task): string {
   const qs = fm.store.data.decisions.filter((d) => d.taskId === task.id && d.kind === 'question' && d.status === 'answered');
   if (!qs.length) return '';
-  const lines = qs.map((d) => `- ${fm.nameOf(d.agentId)} asked: "${truncate(d.question.replace(/\s+/g, ' '), 200)}" -> ${userName()}: ${[d.answer?.option, d.answer?.text].filter(Boolean).join(' - ')}`);
-  return `\n${userName()} already answered these questions on this task (do not ask them again):\n${lines.join('\n')}\n`;
+  const lines = qs.map((d) => `- ${fm.nameOf(d.agentId)} asked: "${truncate(d.question.replace(/\s+/g, ' '), 200)}" -> ${who(d.answer?.by)}: ${[d.answer?.option, d.answer?.text].filter(Boolean).join(' - ')}`);
+  return `\n${Who(undefined)} already answered these questions on this task (do not ask them again):\n${lines.join('\n')}\n`;
 }
 
 export function workPrompt(fm: Foreman, task: Task, goal: Goal | undefined, wt: Worktree, inbox: string, continuesFrom?: string): string {

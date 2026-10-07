@@ -127,8 +127,9 @@ Example: a hardcore world on random terrain with the HQ at the best spot near sp
 
 The defaults (muted, no focus) suit unattended agent runs. `tools/launch.ps1` should set
 `AGENTCRAFT_MUTE=0 AGENTCRAFT_FOCUS=1` for real use (when you launch the game yourself; it does
-without `-Dev`). The name the agents call you comes from the Foreman (`--user-name`, see
-foreman/README.md) and reaches the mod in `foreman.status`.
+without `-Dev`). The agents call you by your Minecraft name: the client sends it as `hello.player`
+(through a server's relay, the server replaces it with the authenticated name). The Foreman's
+`--user-name` (see foreman/README.md) only names clients without a player.
 
 ### Focus behaviour (what was verified)
 `RenderSystemMixin` sets the SDL hints `SDL_WINDOW_ACTIVATE_WHEN_SHOWN=0`,

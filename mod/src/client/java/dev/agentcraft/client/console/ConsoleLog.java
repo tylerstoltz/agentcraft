@@ -27,8 +27,9 @@ public final class ConsoleLog {
 		INFO, OK, ERROR, ECHO, HEADER, HELP, FILE
 	}
 
-	/** One display line: a feed item or a local line. */
-	public record Line(long ts, @Nullable String agentId, @Nullable String to, @Nullable FeedKind kind, String text, Tone tone, boolean local) {
+	/** One display line: a feed item or a local line. {@code by}: the player behind a "user" feed item. */
+	public record Line(long ts, @Nullable String agentId, @Nullable String to, @Nullable FeedKind kind, String text, Tone tone, boolean local,
+		@Nullable String by) {
 	}
 
 	private static final int LOCAL_MAX = 300;
@@ -56,7 +57,7 @@ public final class ConsoleLog {
 		// keep local lines strictly ordered even when several are added in the same millisecond
 		long ts = Math.max(System.currentTimeMillis(), lastLocalTs + 1);
 		lastLocalTs = ts;
-		LOCAL.addLast(new Line(ts, agentId, null, null, text, tone, true));
+		LOCAL.addLast(new Line(ts, agentId, null, null, text, tone, true, null));
 		while (LOCAL.size() > LOCAL_MAX) {
 			LOCAL.removeFirst();
 		}
@@ -87,7 +88,8 @@ public final class ConsoleLog {
 		if (s != null) {
 			for (FeedItem f : s.feed()) {
 				if (f.ts() >= clearedAt) {
-					feed.add(new Line(f.ts(), f.agentId(), f.to(), f.kind(), f.text(), f.kind() == FeedKind.ERROR ? Tone.ERROR : Tone.INFO, false));
+					feed.add(new Line(f.ts(), f.agentId(), f.to(), f.kind(), f.text(), f.kind() == FeedKind.ERROR ? Tone.ERROR : Tone.INFO, false,
+						f.by()));
 				}
 			}
 		}

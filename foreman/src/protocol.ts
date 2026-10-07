@@ -127,6 +127,7 @@ export type Task = z.infer<typeof Task>;
 export const DecisionAnswer = z.object({
   option: z.string().optional().describe('the chosen option label (one of Decision.options)'),
   text: z.string().optional().describe('free-text answer / feedback'),
+  by: z.string().optional().describe('Minecraft name of the player who answered (omitted: a client without a player)'),
   ts: Ts,
 });
 export type DecisionAnswer = z.infer<typeof DecisionAnswer>;
@@ -223,6 +224,7 @@ export const Goal = z.object({
   progress: z.number().min(0).max(1),
   status: GoalStatus.describe('planning (lead is planning) -> active -> done (every non-cancelled task merged/done); cancelled: every task was cancelled or rejected (back to active if the lead adds a task); failed: planning failed'),
   repoId: Id.optional(),
+  by: z.string().optional().describe('Minecraft name of the player who set the goal'),
   createdAt: Ts,
   updatedAt: Ts,
 });
@@ -234,6 +236,7 @@ export const FeedItem = z.object({
   text: z.string(),
   agentId: Id.optional().describe('who it is about / from'),
   to: z.string().optional().describe('message recipient: agent id, "user" or "all"'),
+  by: z.string().optional().describe('agentId "user": Minecraft name of the player who did it (omitted: a client without a player). The text names them too'),
 });
 export type FeedItem = z.infer<typeof FeedItem>;
 
@@ -246,7 +249,7 @@ export const ForemanStatus = z.object({
   speed: z.number().optional().describe('sim: speed multiplier'),
   showcase: z.boolean().optional().describe('sim: holding a static showcase state (`--showcase` or `--showcase late`)'),
   costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
-  userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
+  userName: z.string().optional().describe('the configured name (--user-name) the agents use for the user outside the game; omitted when unset. Players are named by `by` on goals, feed items and answers'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
 
@@ -383,6 +386,11 @@ export const HelloMsg = z.object({
   modVersion: z.string(),
   protocol: z.literal(PROTOCOL_VERSION),
   client: z.string().optional().describe('"mod" | "cli" | ... (informational)'),
+  player: z
+    .string()
+    .max(64)
+    .optional()
+    .describe('Minecraft name of the player on this connection: what the agents call whoever sends its intents. On a multiplayer server the server sets it to the authenticated player (a client-sent value is replaced)'),
 });
 export const GoalSubmitMsg = z.object({
   ...envelope('goal.submit'),

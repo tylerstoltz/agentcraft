@@ -3,7 +3,7 @@ import type { Ctx } from './context.js';
 import type { FeedItem, FeedKind } from './protocol.js';
 import type { BusMessage } from './store.js';
 import { truncate } from './util/text.js';
-import { userName } from './user.js';
+import { configuredUserName } from './user.js';
 
 export class MessageBus {
   private listeners: Array<(m: BusMessage) => void> = [];
@@ -11,28 +11,31 @@ export class MessageBus {
   constructor(private ctx: Ctx) {}
 
   /** Append to the activity feed (persisted + broadcast). */
-  feed(kind: FeedKind, text: string, extra: { agentId?: string; to?: string } = {}): FeedItem {
+  feed(kind: FeedKind, text: string, extra: { agentId?: string; to?: string; by?: string } = {}): FeedItem {
     const item: FeedItem = { ts: this.ctx.now(), kind, text: truncate(text, 400) };
     if (extra.agentId) item.agentId = extra.agentId;
     if (extra.to) item.to = extra.to;
+    if (extra.by) item.by = extra.by;
     this.ctx.store.pushFeed(item);
     this.ctx.emit({ type: 'feed.add', item });
     return item;
   }
 
   /**
-   * Send a message. `from` is an agent id or "user"; `to` is an agent id, "user" or "all".
-   * Agents speak through `agent.say` (speech bubble); every message is also a feed item.
+   * Send a message. `from` is an agent id or "user" (then `by`: the player who sent it); `to` is an
+   * agent id, "user" or "all". Agents speak through `agent.say` (speech bubble); every message is
+   * also a feed item.
    */
-  send(from: string, to: string, text: string): BusMessage {
+  send(from: string, to: string, text: string, by?: string): BusMessage {
     const msg: BusMessage = { id: this.ctx.store.nextId('m'), ts: this.ctx.now(), from, to, text, readBy: [] };
+    if (from === 'user' && by) msg.by = by;
     this.ctx.store.pushMessage(msg);
     if (from !== 'user') {
       const say = { type: 'agent.say' as const, agentId: from, text: truncate(text, 600), ts: msg.ts, ...(to ? { to } : {}) };
       this.ctx.emit(say);
       this.feed('message', text, { agentId: from, to });
     } else {
-      this.feed('user', text, { to });
+      this.feed('user', text, { to, ...(by ? { by } : {}) });
     }
     for (const l of this.listeners) l(msg);
     return msg;
@@ -80,6 +83,12 @@ export class MessageBus {
 /** Format inbox messages for injection into an agent prompt / tool result. */
 export function formatInbox(msgs: BusMessage[], nameOf: (id: string) => string): string {
   return msgs
-    .map((m) => `- from ${m.from === 'user' ? `the user (${userName()})` : nameOf(m.from)}${m.to === 'all' ? ' to everyone' : ''}: ${m.text}`)
+    .map((m) => `- from ${m.from === 'user' ? fromUser(m.by) : nameOf(m.from)}${m.to === 'all' ? ' to everyone' : ''}: ${m.text}`)
     .join('\n');
+}
+
+/** "the user (Alex)": the player who sent it, else the configured name, else "the user". */
+function fromUser(by: string | undefined): string {
+  const n = by ?? configuredUserName();
+  return n ? `the user (${n})` : 'the user';
 }

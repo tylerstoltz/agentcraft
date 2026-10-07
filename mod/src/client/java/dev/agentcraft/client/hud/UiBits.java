@@ -13,6 +13,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -102,13 +103,41 @@ public final class UiBits {
 	}
 
 	/**
-	 * The person the team works for, as the Foreman reports it (foreman.status userName, set with
-	 * --user-name / AGENTCRAFT_USER_NAME; default the OS account name). "You" before the first status.
+	 * The configured user name the Foreman reports (foreman.status userName, set with --user-name /
+	 * AGENTCRAFT_USER_NAME), or "You". Players are named per action instead: see {@link #userLabel}.
 	 */
 	public static String userName() {
 		var st = Foreman.state().status();
 		String n = st == null ? null : st.userName();
 		return n == null || n.isBlank() ? "You" : n;
+	}
+
+	/** Your Minecraft name (what the Foreman records as {@code by} for your actions). */
+	public static String playerName() {
+		return Minecraft.getInstance().getUser().getName();
+	}
+
+	/** A user action ({@code by}: the player behind it) is yours: no player recorded, or your own name. */
+	public static boolean isMine(@Nullable String by) {
+		return by == null || by.isBlank() || by.equalsIgnoreCase(playerName());
+	}
+
+	/** How to show who did a user action: "You", or the other player's name. */
+	public static String userLabel(@Nullable String by) {
+		return isMine(by) ? "You" : by;
+	}
+
+	/**
+	 * How the Foreman's feed text names the actor of a user action ("Steve answered Kit"): the
+	 * player, else the configured name, else "The user". The UI strips it and shows {@link #userLabel}.
+	 */
+	public static String userPrefix(@Nullable String by) {
+		if (by != null && !by.isBlank()) {
+			return by;
+		}
+		var st = Foreman.state().status();
+		String n = st == null ? null : st.userName();
+		return n == null || n.isBlank() ? "The user" : n;
 	}
 
 	/** Display name of an agent id (Foreman name, then cast name, then the id). */

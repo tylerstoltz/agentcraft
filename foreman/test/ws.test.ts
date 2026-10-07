@@ -201,4 +201,30 @@ describe('WebSocket server + sim backend', () => {
     await server.stop();
     await h.fm.close();
   }, 180_000);
+
+  it('names the player each connection said hello as', async () => {
+    const home = tempDir();
+    const repoPath = await demoRepo();
+    cleanup.push(home, path.dirname(repoPath));
+    const { h, server, port } = await boot(home, repoPath);
+    const steve = await connect(port);
+    const alex = await connect(port);
+    steve.send({ type: 'hello', modVersion: 'test', protocol: 1, client: 'mc:Steve', player: 'Steve' });
+    alex.send({ type: 'hello', modVersion: 'test', protocol: 1, player: 'Alex' });
+    await until(() => steve.msgs.some((m) => m.type === 'snapshot') && alex.msgs.some((m) => m.type === 'snapshot'));
+    steve.send({ type: 'goal.submit', id: 'g', text: 'Add tags' });
+    await until(() => steve.msgs.some((m) => m.type === 'ack' && m.re === 'g'));
+    alex.send({ type: 'user.message', id: 'm', to: 'marlow', text: 'keep it small' });
+    await until(() => alex.msgs.some((m) => m.type === 'ack' && m.re === 'm'));
+    expect(h.fm.currentGoal()?.by).toBe('Steve');
+    // every client sees who did what
+    const feed = alex.msgs.flatMap((m) => (m.type === 'feed.add' ? [m.item] : []));
+    expect(feed.find((f) => f.kind === 'goal' && f.agentId === 'user')?.by).toBe('Steve');
+    expect(feed.find((f) => f.kind === 'user')).toMatchObject({ to: 'marlow', by: 'Alex' });
+    expect(steve.invalid).toEqual([]);
+    steve.close();
+    alex.close();
+    await server.stop();
+    await h.fm.close();
+  }, 60_000);
 });

@@ -153,14 +153,14 @@ public class ConsoleTerminalRenderer extends StationRenderer<ConsoleTerminalBloc
 				name = "Foreman";
 				nameColor = UiStyle.color("monitor.muted", 0xFF655E55);
 			} else if (UiBits.isUser(agent)) {
-				name = "You";
+				name = UiBits.userLabel(f.by());
 				nameColor = UiStyle.CLAY_DARK;
 			} else {
 				name = UiBits.agentName(agent);
 				nameColor = UiBits.nameOnLight(agent);
 			}
-			// "Kit: tests fail" / "<user> answered" -> the name line already says who
-			for (String who : new String[] {name, UiBits.userName()}) {
+			// "Kit: tests fail" / "<player> answered" -> the name line already says who
+			for (String who : new String[] {name, UiBits.userPrefix(f.by())}) {
 				if (text.startsWith(who + ": ")) {
 					text = text.substring(who.length() + 2);
 				} else if (text.startsWith(who + " ")) {

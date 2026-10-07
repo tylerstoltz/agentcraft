@@ -19,6 +19,8 @@ export interface BusMessage {
   ts: number;
   from: string; // agent id or "user"
   to: string; // agent id, "user" or "all"
+  /** from "user": the player who sent it */
+  by?: string;
   text: string;
   /** agent ids that have consumed this message */
   readBy: string[];
