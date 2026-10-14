@@ -250,7 +250,8 @@ Hardcore worlds have commands off unless you add `AGENTCRAFT_CHEATS=1`. All opti
 the Foreman on the server machine; each player's client reaches it through the server, so players
 need only the mod. Name the server's world `AgentCraft HQ` (or set `AGENTCRAFT_HQ=1`), op or
 allowlist the players who may drive the agents, and everyone sees the same team, lamps and podium.
-Only ops can change the HQ site; explosions, mobs, pistons and fluids from outside leave it alone
+Only ops can change the HQ site; explosions, mobs, fire, pistons and fluids from outside leave it
+and its item frames, paintings and armor stands alone
 (`/agentcraft protect off` lifts that).
 [server-docker/](server-docker/README.md) has a ready Docker setup; details in
 [mod/DEV.md](mod/DEV.md) "Multiplayer". You can also host from your own game with **Open to LAN**.

@@ -5,6 +5,8 @@
 	"mixins": [
 		"DispenserBlockMixin",
 		"EndermanTakeBlockGoalMixin",
+		"FireBlockMixin",
+		"FixtureHurtMixin",
 		"FlowingFluidMixin",
 		"LevelMixin",
 		"PistonStructureResolverMixin",

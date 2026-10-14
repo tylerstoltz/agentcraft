@@ -20,10 +20,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.MenuProvider;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.decoration.BlockAttachedEntity;
@@ -69,8 +71,9 @@ import org.jspecify.annotations.Nullable;
  *   <li><b>The world</b> cannot change the box from outside or through mobs (mixins in
  *       {@code dev.agentcraft.mixin}): explosions leave its blocks alone, pistons and dispensers
  *       outside cannot push or pour into it, fluids from outside do not flow in, and non-player entities
- *       (endermen, ravagers, falling blocks, sheep, ...) cannot set blocks in it. Mob griefing outside
- *       the box stays as the game rule says.</li>
+ *       (endermen, ravagers, falling blocks, sheep, ...) cannot set blocks in it. Fire burns none of
+ *       its blocks, and its fixtures take no damage from explosions, mobs or projectiles (only from
+ *       operators). Mob griefing outside the box stays as the game rule says.</li>
  * </ul>
  *
  * <p>The region follows the published layout's builder ({@link HqBuilder#siteBox}); a builder that does
@@ -280,6 +283,18 @@ public final class HqProtection {
 		}
 		refused = true;
 		return true;
+	}
+
+	/**
+	 * {@code hurtServer} of a fixture (item frame, painting, armor stand, mannequin): true when the damage
+	 * must be refused. Only operators (by hand or projectile) and damage that bypasses invulnerability
+	 * ({@code /kill}, the void) still get through.
+	 */
+	public static boolean refuseFixtureDamage(Entity entity, DamageSource source) {
+		if (!fixture(entity) || !protects(entity.level(), entity.blockPosition()) || source.is(DamageTypeTags.BYPASSES_INVULNERABILITY)) {
+			return false;
+		}
+		return !(source.getEntity() instanceof ServerPlayer sp && Trust.isOperator(sp.level().getServer(), sp));
 	}
 
 	/** True once after a refused entity edit (an enderman then does not get the block it failed to take). */

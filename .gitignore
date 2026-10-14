@@ -20,3 +20,5 @@ mod/build/
 
 notes/
 /*.txt
+
+/sagecraft/
